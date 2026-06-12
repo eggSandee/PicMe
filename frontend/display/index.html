@@ -120,16 +120,12 @@
         // Metadata overlay
         const overlay = document.createElement('div');
         overlay.className = 'slot-overlay';
-        const datePill = document.createElement('div');
-        datePill.className = 'overlay-pill';
-        datePill.dataset.role = 'date';
-        const locPill = document.createElement('div');
-        locPill.className = 'overlay-pill';
-        locPill.dataset.role = 'location';
-        const camPill = document.createElement('div');
-        camPill.className = 'overlay-pill';
-        camPill.dataset.role = 'camera';
-        overlay.append(datePill, locPill, camPill);
+        for (const role of ['date', 'location', 'camera', 'fstop', 'shutter_speed', 'iso', 'focal_length']) {
+          const pill = document.createElement('div');
+          pill.className = 'overlay-pill';
+          pill.dataset.role = role;
+          overlay.appendChild(pill);
+        }
 
         div.append(imgA, imgB, overlay);
         collage.appendChild(div);
@@ -215,35 +211,42 @@
       }
     }
 
+    // Maps config flag -> API response key, in priority order.
+    // Pills are shown in this order and stopped once max_metadata_pills is reached.
+    const METADATA_FIELDS = [
+      { flag: 'show_date',         key: 'date' },
+      { flag: 'show_location',     key: 'location' },
+      { flag: 'show_camera',       key: 'camera' },
+      { flag: 'show_fstop',        key: 'fstop' },
+      { flag: 'show_shutter_speed',key: 'shutter_speed' },
+      { flag: 'show_iso',          key: 'iso' },
+      { flag: 'show_focal_length', key: 'focal_length' },
+    ];
+
     async function updateOverlay(slotCfg, imagePath) {
       const meta = slotCfg.metadata || {};
-      if (!meta.show_date && !meta.show_location) return;
+      const maxPills = config.max_metadata_pills ?? Infinity;
+      const anyEnabled = METADATA_FIELDS.some(f => meta[f.flag]);
+      if (!anyEnabled) return;
 
       const slotEl = document.getElementById(`slot-${slotCfg.id}`);
       if (!slotEl) return;
-      const datePill = slotEl.querySelector('[data-role="date"]');
-      const locPill  = slotEl.querySelector('[data-role="location"]');
-      const camPill  = slotEl.querySelector('[data-role="camera"]');
 
-      // Hide pills while we fetch
-      datePill.classList.remove('visible');
-      locPill.classList.remove('visible');
-      camPill.classList.remove('visible');
+      // Hide all pills while we fetch
+      slotEl.querySelectorAll('.overlay-pill').forEach(p => p.classList.remove('visible'));
 
       try {
         const data = await fetchJSON(`${API}/api/metadata?path=${encodeURIComponent(imagePath)}`);
 
-        if (meta.show_date && data.date) {
-          datePill.textContent = data.date;
-          datePill.classList.add('visible');
-        }
-        if (meta.show_location && data.location) {
-          locPill.textContent = data.location;
-          locPill.classList.add('visible');
-        }
-        if (meta.show_camera && data.camera) {
-          camPill.textContent = data.camera;
-          camPill.classList.add('visible');
+        let shown = 0;
+        for (const { flag, key } of METADATA_FIELDS) {
+          if (shown >= maxPills) break;
+          if (!meta[flag] || !data[key]) continue;
+          const pill = slotEl.querySelector(`[data-role="${key}"]`);
+          if (!pill) continue;
+          pill.textContent = data[key];
+          pill.classList.add('visible');
+          shown++;
         }
       } catch (e) {
         // Metadata is non-critical — fail silently

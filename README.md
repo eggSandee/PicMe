@@ -174,6 +174,10 @@ Each slot supports the following settings:
     "show_date": true,
     "show_location": true,
     "show_camera": false,
+    "show_fstop": false,
+    "show_shutter_speed": false,
+    "show_iso": false,
+    "show_focal_length": false,
     "show_people": false
   },
   "video_loops": 2             // For video mode: how many loops before advancing
@@ -297,6 +301,15 @@ Press **Ctrl+C** in the terminal where the server is running.
 
 The file `config.json` in the project root controls which layout is used and how each slot behaves. It is created automatically with defaults on first run. You can edit it directly — changes take effect after restarting the server.
 
+Top-level settings:
+
+```json
+{
+  "layout": "classic-4",
+  "max_metadata_pills": 3        // max overlays shown per slot across all enabled fields; omit for no limit
+}
+```
+
 Key per-slot settings:
 
 ```json
@@ -305,12 +318,18 @@ Key per-slot settings:
   "source_path": "photos",        // relative to project root, or an absolute path
   "cycle_seconds": 30,            // how often this slot advances
   "metadata": {
-    "show_date": true,            // show photo date from EXIF
-    "show_location": false,       // show city/region from GPS data
-    "show_camera": false          // show camera make/model from EXIF
+    "show_date": true,            // photo date from EXIF
+    "show_location": false,       // city/region from GPS data (requires internet for geocoding)
+    "show_camera": false,         // camera make/model from EXIF
+    "show_fstop": false,          // aperture, e.g. f/2.8
+    "show_shutter_speed": false,  // shutter speed, e.g. 1/250s
+    "show_iso": false,            // ISO sensitivity, e.g. ISO 400
+    "show_focal_length": false    // focal length, e.g. 50mm
   }
 }
 ```
+
+Pills are shown in the order listed above. If `max_metadata_pills` is set, only the first N enabled fields that have data are shown — so put your highest-priority fields first.
 
 To use a different photo folder (e.g. a folder elsewhere on your PC), set `source_path` to the full path:
 

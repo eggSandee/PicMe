@@ -97,6 +97,57 @@ def reverse_geocode(lat: float, lon: float) -> str | None:
         return None
 
 
+def _to_float(val) -> float | None:
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ZeroDivisionError):
+        try:
+            return val[0] / val[1]
+        except Exception:
+            return None
+
+
+def extract_fstop(image_path: str) -> str | None:
+    exif = _get_exif(image_path)
+    val = _to_float(exif.get("FNumber"))
+    if val is None:
+        return None
+    return f"f/{val:.1f}".rstrip("0").rstrip(".")
+
+
+def extract_shutter_speed(image_path: str) -> str | None:
+    exif = _get_exif(image_path)
+    val = _to_float(exif.get("ExposureTime"))
+    if val is None:
+        return None
+    if val >= 1:
+        return f"{val:.1f}s".rstrip("0").rstrip(".")
+    # Express as a fraction e.g. 1/250s
+    denom = round(1 / val)
+    return f"1/{denom}s"
+
+
+def extract_iso(image_path: str) -> str | None:
+    exif = _get_exif(image_path)
+    val = exif.get("ISOSpeedRatings")
+    if val is None:
+        return None
+    # Can be an int or a tuple
+    if isinstance(val, (list, tuple)):
+        val = val[0]
+    return f"ISO {int(val)}"
+
+
+def extract_focal_length(image_path: str) -> str | None:
+    exif = _get_exif(image_path)
+    val = _to_float(exif.get("FocalLength"))
+    if val is None:
+        return None
+    return f"{val:.0f}mm"
+
+
 def extract_camera(image_path: str) -> str | None:
     exif = _get_exif(image_path)
     make  = (exif.get("Make")  or "").strip()
@@ -114,4 +165,16 @@ def get_metadata(image_path: str) -> dict:
     coords = extract_gps(image_path)
     location = reverse_geocode(*coords) if coords else None
     camera = extract_camera(image_path)
-    return {"date": date, "location": location, "camera": camera}
+    fstop = extract_fstop(image_path)
+    shutter = extract_shutter_speed(image_path)
+    iso = extract_iso(image_path)
+    focal_length = extract_focal_length(image_path)
+    return {
+        "date": date,
+        "location": location,
+        "camera": camera,
+        "fstop": fstop,
+        "shutter_speed": shutter,
+        "iso": iso,
+        "focal_length": focal_length,
+    }
