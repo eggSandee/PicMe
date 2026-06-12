@@ -52,13 +52,13 @@ PicMe/
 ### ✅ Milestone 1 — Core Engine (Local Photos)
 *Goal: A working collage viewer with local photos. No cloud, no complexity.*
 
-- [ ] FastAPI backend that serves images from a local folder
-- [ ] Fullscreen browser display with configurable slot grid
-- [ ] Independent per-slot cycling timers
-- [ ] Slot grouping (define groups that cycle together)
-- [ ] No duplicate photos across slots — shuffled per-folder queue ensures each image appears in at most one slot at a time
-- [ ] 3–5 built-in layout templates (e.g., 2x2, 3x2, asymmetric hero)
-- [ ] Basic config file (auto-managed JSON)
+- [x] FastAPI backend that serves images from a local folder
+- [x] Fullscreen browser display with configurable slot grid
+- [x] Independent per-slot cycling timers
+- [x] Slot grouping (define groups that cycle together)
+- [x] No duplicate photos across slots — shuffled per-folder queue ensures each image appears in at most one slot at a time
+- [x] 3–5 built-in layout templates (e.g., 2x2, 3x2, asymmetric hero)
+- [x] Basic config file (auto-managed JSON)
 
 **Definition of done:** Open a browser on a TV, see a collage of local photos cycling independently.
 
@@ -67,16 +67,16 @@ PicMe/
 ### ✅ Milestone 2 — Metadata Overlays
 *Goal: Optionally show photo context without cluttering the image.*
 
-- [ ] EXIF date extraction from image files
-- [ ] GPS coordinate extraction + reverse geocoding to city/region names
-- [ ] Per-slot metadata overlay toggle (date, location, camera, or any combination)
-- [ ] Global metadata toggle (show/hide all overlays at once)
-- [ ] Overlay styling: subtle, non-intrusive (semi-transparent pill at corner)
+- [x] EXIF date extraction from image files
+- [x] GPS coordinate extraction + reverse geocoding to city/region names
+- [x] Per-slot metadata overlay toggle (date, location, camera, or any combination)
+- [x] Global metadata toggle (`show_metadata: false` hides all overlays instantly)
+- [x] Overlay styling: subtle, non-intrusive (semi-transparent pill at corner)
 
 **Notes:**
 - Reverse geocoding uses a free API (e.g., OpenStreetMap Nominatim) — no API key required
 - Photos without GPS data simply show no location overlay
-- Date format is user-configurable (e.g., "July 4, 2019" vs "7/4/19")
+- Date format is configurable via `date_format`: `long`, `medium`, `short`, or `iso`
 
 ---
 
@@ -86,6 +86,8 @@ PicMe/
 - [ ] Visual layout editor — see slot arrangement, click to configure each slot
 - [ ] Per-slot settings: source folder, cycle timer, group assignment, metadata toggle
 - [ ] Per-slot fill mode toggle: **fill** (crop to fit, no bars) vs **fit** (full photo, letterboxed)
+- [ ] Per-slot and global frame settings: mat color, mat width, frame color, frame width
+- [ ] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
 - [ ] Layout template picker with visual previews
 - [ ] Live preview of changes before applying
 - [ ] Settings saved automatically to config.json
@@ -307,7 +309,21 @@ Top-level settings:
 ```json
 {
   "layout": "classic-4",
+<<<<<<< HEAD
+  "wall_color": "#1a1a1a",       // background color shown between and around frames (the "wall")
+  "show_metadata": true,         // global kill switch — false hides all overlays on all slots instantly
+  "date_format": "long",         // "long" (July 4, 2019) | "medium" (Jul 4, 2019) | "short" (7/4/2019) | "iso" (2019-07-04)
   "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
+  "frame_defaults": {            // mat and frame style applied to every slot; per-slot frame: {} overrides
+    "mat_color": "#000000",      // mat color behind the photo (any CSS color) — future: sync with time-of-day (e.g. warm white during day, black at night)
+    "mat_width": 16,             // mat thickness in pixels
+    "show_frame": true,          // show outer frame border
+    "frame_color": "#2c2318",    // dark wood frame (any CSS color)
+    "frame_width": 8             // frame border thickness in pixels
+  },
+=======
+  "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
+>>>>>>> origin/main
   "metadata_defaults": {         // applied to every slot; per-slot metadata overrides these
     "show_date": true,
     "show_location": false,
@@ -322,14 +338,23 @@ Top-level settings:
 }
 ```
 
+<<<<<<< HEAD
+Per-slot `metadata` and `frame` are both optional. If omitted, the slot inherits the global defaults. If present, only the fields listed override the defaults.
+=======
 Per-slot `metadata` is optional. If omitted entirely, the slot inherits `metadata_defaults` as-is. If present, only the fields listed override the defaults — unmentioned fields still fall back to the global value.
+>>>>>>> origin/main
 
 ```json
 {
   "id": 1,
   "source_path": "photos",
   "cycle_seconds": 30,
+<<<<<<< HEAD
+  "metadata": { "show_camera": true },       // inherits everything else from metadata_defaults
+  "frame": { "mat_color": "#ffffff" }        // white mat on this slot only; inherits frame_defaults for the rest
+=======
   "metadata": { "show_camera": true }   // inherits everything else from metadata_defaults
+>>>>>>> origin/main
 }
 ```
 

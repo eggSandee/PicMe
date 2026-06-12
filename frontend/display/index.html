@@ -17,7 +17,9 @@
     #collage {
       width: 100vw; height: 100vh;
       display: grid;
-      gap: 4px;
+      gap: 12px;
+      padding: 12px;
+      background: #1a1a1a;
     }
 
     .slot {
@@ -26,7 +28,18 @@
       background: #111;
     }
 
-    .slot img {
+    /* Mat sits inside the slot, providing the matte border around the photo */
+    .mat-frame {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f5f0e8;
+      box-sizing: border-box;
+    }
+
+    .mat-frame img {
       width: 100%; height: 100%;
       object-fit: contain;
       position: absolute;
@@ -34,8 +47,33 @@
       transition: opacity 0.8s ease;
     }
 
-    .slot img.hidden { opacity: 0; }
-    .slot img.visible { opacity: 1; }
+    .mat-frame img.hidden { opacity: 0; }
+    .mat-frame img.visible { opacity: 1; }
+
+    .slot-overlay {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .overlay-pill {
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      font-size: 12px;
+      padding: 3px 9px;
+      border-radius: 20px;
+      backdrop-filter: blur(4px);
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+
+    .overlay-pill.visible { opacity: 1; }
 
     #error-banner {
       position: fixed;
@@ -86,18 +124,52 @@
         div.id = `slot-${slotDef.id}`;
         div.style.gridArea = slotDef.grid_area;
 
-        // Two img elements for crossfade
+        // Mat/frame wrapper — provides the matte border and optional outer frame
+        const matFrame = document.createElement('div');
+        matFrame.className = 'mat-frame';
+
+        // Two img elements for crossfade, inside the mat
         const imgA = document.createElement('img');
         const imgB = document.createElement('img');
         imgA.className = 'visible';
         imgB.className = 'hidden';
-        div.append(imgA, imgB);
+        matFrame.append(imgA, imgB);
+
+        // Metadata overlay sits above the mat, anchored to the slot
+        const overlay = document.createElement('div');
+        overlay.className = 'slot-overlay';
+        for (const role of ['location', 'camera', 'megapixels', 'fstop', 'shutter_speed', 'iso', 'focal_length', 'date']) {
+          const pill = document.createElement('div');
+          pill.className = 'overlay-pill';
+          pill.dataset.role = role;
+          overlay.appendChild(pill);
+        }
+
+        div.append(matFrame, overlay);
         collage.appendChild(div);
       }
     }
 
     function imageUrl(filePath) {
       return `${API}/api/image?path=${encodeURIComponent(filePath)}`;
+    }
+
+    function applyFrameStyle(slotEl, slotCfg) {
+      const matFrame = slotEl.querySelector('.mat-frame');
+      if (!matFrame) return;
+
+      // Merge global frame_defaults with per-slot frame overrides
+      const frameCfg = { ...(config.frame_defaults || {}), ...(slotCfg.frame || {}) };
+
+      const matWidth  = frameCfg.mat_width  ?? 16;
+      const matColor  = frameCfg.mat_color  ?? '#000000';
+      const frameOn   = frameCfg.show_frame ?? true;
+      const frameWidth = frameCfg.frame_width ?? 8;
+      const frameColor = frameCfg.frame_color ?? '#2c2318';
+
+      matFrame.style.padding    = `${matWidth}px`;
+      matFrame.style.background = matColor;
+      matFrame.style.border     = frameOn ? `${frameWidth}px solid ${frameColor}` : 'none';
     }
 
     // Shuffled queue per folder — ensures no image repeats until all are shown,
@@ -168,8 +240,76 @@
         next.className = 'visible';
         current.className = 'hidden';
         state.activeImg = state.activeImg === 'A' ? 'B' : 'A';
+
+        updateOverlay(slotCfg, nextPath);
       } catch (e) {
         console.warn(`Slot ${slotCfg.id}: failed to load image`, e);
+      }
+    }
+
+    // Non-date fields in priority order. max_metadata_pills applies to these only.
+    // Date is handled separately — always rendered last (bottom) if enabled.
+    const METADATA_FIELDS = [
+      { flag: 'show_location',      key: 'location' },
+      { flag: 'show_camera',        key: 'camera' },
+      { flag: 'show_megapixels',    key: 'megapixels' },
+      { flag: 'show_fstop',         key: 'fstop' },
+      { flag: 'show_shutter_speed', key: 'shutter_speed' },
+      { flag: 'show_iso',           key: 'iso' },
+      { flag: 'show_focal_length',  key: 'focal_length' },
+    ];
+
+    const DATE_FORMATS = {
+      long:   { year: 'numeric', month: 'long',    day: 'numeric' }, // July 4, 2019
+      medium: { year: 'numeric', month: 'short',   day: 'numeric' }, // Jul 4, 2019
+      short:  { year: 'numeric', month: 'numeric', day: 'numeric' }, // 7/4/2019
+    };
+
+    function formatDate(isoDate) {
+      const fmt = config.date_format || 'long';
+      if (fmt === 'iso') return isoDate;
+      const opts = DATE_FORMATS[fmt] || DATE_FORMATS.long;
+      // Parse as local date (append T00:00 to avoid UTC shift)
+      return new Intl.DateTimeFormat(undefined, opts).format(new Date(isoDate + 'T00:00'));
+    }
+
+    async function updateOverlay(slotCfg, imagePath) {
+      // Global kill switch
+      if (config.show_metadata === false) return;
+
+      // Merge: global defaults first, slot-specific fields override
+      const meta = { ...(config.metadata_defaults || {}), ...(slotCfg.metadata || {}) };
+      const maxPills = config.max_metadata_pills ?? Infinity;
+      const anyEnabled = meta.show_date || METADATA_FIELDS.some(f => meta[f.flag]);
+      if (!anyEnabled) return;
+
+      const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+      if (!slotEl) return;
+
+      slotEl.querySelectorAll('.overlay-pill').forEach(p => p.classList.remove('visible'));
+
+      try {
+        const data = await fetchJSON(`${API}/api/metadata?path=${encodeURIComponent(imagePath)}`);
+
+        // Show non-date fields up to the cap
+        let shown = 0;
+        for (const { flag, key } of METADATA_FIELDS) {
+          if (shown >= maxPills) break;
+          if (!meta[flag] || !data[key]) continue;
+          const pill = slotEl.querySelector(`[data-role="${key}"]`);
+          if (!pill) continue;
+          pill.textContent = data[key];
+          pill.classList.add('visible');
+          shown++;
+        }
+
+        // Date always appears at the bottom, not counted against the cap
+        if (meta.show_date && data.date_iso) {
+          const pill = slotEl.querySelector('[data-role="date"]');
+          if (pill) { pill.textContent = formatDate(data.date_iso); pill.classList.add('visible'); }
+        }
+      } catch (e) {
+        // Metadata is non-critical — fail silently
       }
     }
 
@@ -209,6 +349,13 @@
 
       const activeSlots = config.slots.slice(0, layout.slots.length);
       applyLayout(layout, activeSlots.length);
+
+      // Apply wall color, frame, and mat styles
+      document.getElementById('collage').style.background = config.wall_color || '#1a1a1a';
+      for (const slotCfg of activeSlots) {
+        const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+        if (slotEl) applyFrameStyle(slotEl, slotCfg);
+      }
 
       // Initialize state and load first image for each slot
       for (const slotCfg of activeSlots) {
