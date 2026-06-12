@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PicMe Editor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1a1a1a;
+      --surface: #242424;
+      --surface2: #2e2e2e;
+      --border: #3a3a3a;
+      --text: #e8e8e8;
+      --text-muted: #888;
+      --accent: #4a90d9;
+      --accent-hover: #5aa0e9;
+      --danger: #c0392b;
+      --success: #27ae60;
+      --slot-selected: #4a90d9;
+      --radius: 6px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+    }
+
+    /* ── Layout ── */
+    #app {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      grid-template-rows: 1fr auto;
+      height: 100vh;
+      gap: 0;
+    }
+
+    #sidebar {
+      grid-row: 1 / 3;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    #main {
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    #footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    /* ── Sidebar sections ── */
+    .sidebar-section {
+      border-bottom: 1px solid var(--border);
+      padding: 16px;
+    }
+
+    .sidebar-section h3 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    /* ── Layout picker ── */
+    #layout-picker {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .layout-thumb {
+      background: var(--surface2);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 8px;
+      cursor: pointer;
+      text-align: center;
+      transition: border-color 0.15s;
+    }
+
+    .layout-thumb:hover { border-color: var(--accent); }
+    .layout-thumb.active { border-color: var(--accent); background: #1e3a5a; }
+
+    .layout-thumb .thumb-grid {
+      display: grid;
+      gap: 2px;
+      width: 100%;
+      aspect-ratio: 16/9;
+      margin-bottom: 4px;
+    }
+
+    .thumb-cell {
+      background: var(--border);
+      border-radius: 2px;
+    }
+
+    .layout-thumb span {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .layout-thumb.active span { color: var(--accent); }
+
+    /* ── Form controls ── */
+    .field { margin-bottom: 12px; }
+    .field:last-child { margin-bottom: 0; }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .field input[type="text"],
+    .field input[type="number"],
+    .field select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 6px 8px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .field input:focus,
+    .field select:focus { border-color: var(--accent); }
+
+    .field input[type="color"] {
+      width: 100%;
+      height: 32px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface2);
+      cursor: pointer;
+      padding: 2px;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+
+    .toggle-row label {
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    /* Toggle switch */
+    .toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .toggle input { opacity: 0; width: 0; height: 0; }
+
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      left: 3px; top: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+
+    .toggle input:checked + .toggle-track { background: var(--accent); }
+    .toggle input:checked + .toggle-track::after { transform: translateX(16px); }
+
+    /* ── Collage preview ── */
+    #preview-area {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+
+    #preview-area h2 {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+
+    #collage-preview {
+      width: 100%;
+      aspect-ratio: 16/9;
+      display: grid;
+      gap: 4px;
+      background: #1a1a1a;
+    }
+
+    .preview-slot {
+      background: var(--surface2);
+      border: 2px solid transparent;
+      border-radius: 3px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-muted);
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+
+    .preview-slot:hover { border-color: var(--accent); background: #2a3a4a; }
+    .preview-slot.selected { border-color: var(--slot-selected); background: #1e3a5a; color: var(--accent); }
+
+    /* ── Slot config panel ── */
+    #slot-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+
+    #slot-panel h2 {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+
+    #slot-panel .panel-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0 20px;
+    }
+
+    .panel-section {
+      margin-bottom: 16px;
+    }
+
+    .panel-section h4 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px 8px;
+    }
+
+    /* ── Footer ── */
+    #status-msg {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    #status-msg.success { color: var(--success); }
+    #status-msg.error   { color: var(--danger); }
+
+    .btn {
+      padding: 8px 20px;
+      border-radius: var(--radius);
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Sidebar ── -->
+  <aside id="sidebar">
+
+    <div class="sidebar-section">
+      <h3>Layout</h3>
+      <div id="layout-picker"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Global Settings</h3>
+
+      <div class="field">
+        <label>Wall color</label>
+        <input type="color" id="g-wall-color" />
+      </div>
+
+      <div class="field">
+        <label>Date format</label>
+        <select id="g-date-format">
+          <option value="long">Long — July 4, 2019</option>
+          <option value="medium">Medium — Jul 4, 2019</option>
+          <option value="short">Short — 7/4/2019</option>
+          <option value="iso">ISO — 2019-07-04</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Max metadata pills (0 = no limit)</label>
+        <input type="number" id="g-max-pills" min="0" max="10" />
+      </div>
+
+      <div class="toggle-row">
+        <label>Show all metadata</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-show-metadata" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Default Frame</h3>
+
+      <div class="field">
+        <label>Mat color</label>
+        <input type="color" id="g-mat-color" />
+      </div>
+
+      <div class="field">
+        <label>Mat width (px)</label>
+        <input type="number" id="g-mat-width" min="0" max="80" />
+      </div>
+
+      <div class="toggle-row" style="margin-bottom:8px">
+        <label>Show frame border</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-show-frame" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label>Frame color</label>
+        <input type="color" id="g-frame-color" />
+      </div>
+
+      <div class="field">
+        <label>Frame width (px)</label>
+        <input type="number" id="g-frame-width" min="0" max="40" />
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Default Metadata</h3>
+      <div id="g-meta-toggles"></div>
+    </div>
+
+  </aside>
+
+  <!-- ── Main ── -->
+  <main id="main">
+
+    <div id="preview-area">
+      <h2>Layout Preview — click a slot to configure it</h2>
+      <div id="collage-preview"></div>
+    </div>
+
+    <div id="slot-panel">
+      <h2 id="slot-panel-title">Select a slot to configure it</h2>
+      <div id="slot-panel-body"></div>
+    </div>
+
+  </main>
+
+  <!-- ── Footer ── -->
+  <footer id="footer">
+    <span id="status-msg">Unsaved changes will not affect the display until you save.</span>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary" onclick="reloadConfig()">Discard changes</button>
+      <button class="btn btn-primary" onclick="saveConfig()">Save changes</button>
+    </div>
+  </footer>
+
+</div>
+<script>
+  const API = '';
+  const META_FIELDS = [
+    { key: 'show_date',         label: 'Date' },
+    { key: 'show_location',     label: 'Location' },
+    { key: 'show_camera',       label: 'Camera' },
+    { key: 'show_megapixels',   label: 'Megapixels' },
+    { key: 'show_fstop',        label: 'F-stop' },
+    { key: 'show_shutter_speed',label: 'Shutter speed' },
+    { key: 'show_iso',          label: 'ISO' },
+    { key: 'show_focal_length', label: 'Focal length' },
+  ];
+
+  let config = null;
+  let layouts = null;
+  let selectedSlotId = null;
+
+  async function fetchJSON(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`${url} returned ${r.status}`);
+    return r.json();
+  }
+
+  function setStatus(msg, type = '') {
+    const el = document.getElementById('status-msg');
+    el.textContent = msg;
+    el.className = type;
+    if (type === 'success') setTimeout(() => { el.textContent = 'Unsaved changes will not affect the display until you save.'; el.className = ''; }, 3000);
+  }
+
+  // ── Helpers ──
+
+  function getGlobalFrame() {
+    return config.frame_defaults || {};
+  }
+
+  function getSlotFrame(slotCfg) {
+    return { ...getGlobalFrame(), ...(slotCfg.frame || {}) };
+  }
+
+  function getGlobalMeta() {
+    return config.metadata_defaults || {};
+  }
+
+  function getSlotMeta(slotCfg) {
+    return { ...getGlobalMeta(), ...(slotCfg.metadata || {}) };
+  }
+
+  // ── Layout picker ──
+
+  function buildLayoutPicker() {
+    const container = document.getElementById('layout-picker');
+    container.innerHTML = '';
+    for (const layout of layouts) {
+      const thumb = document.createElement('div');
+      thumb.className = 'layout-thumb' + (layout.id === config.layout ? ' active' : '');
+      thumb.dataset.id = layout.id;
+
+      const grid = document.createElement('div');
+      grid.className = 'thumb-grid';
+      grid.style.gridTemplateColumns = layout.grid_template_columns;
+      grid.style.gridTemplateRows = layout.grid_template_rows;
+      for (const slot of layout.slots) {
+        const cell = document.createElement('div');
+        cell.className = 'thumb-cell';
+        cell.style.gridArea = slot.grid_area;
+        grid.appendChild(cell);
+      }
+
+      const label = document.createElement('span');
+      label.textContent = layout.name;
+
+      thumb.append(grid, label);
+      thumb.addEventListener('click', () => selectLayout(layout.id));
+      container.appendChild(thumb);
+    }
+  }
+
+  function selectLayout(id) {
+    config.layout = id;
+    selectedSlotId = null;
+    buildLayoutPicker();
+    buildPreview();
+    renderSlotPanel();
+  }
+
+  // ── Collage preview ──
+
+  function buildPreview() {
+    const layout = layouts.find(l => l.id === config.layout) || layouts[0];
+    const preview = document.getElementById('collage-preview');
+    preview.style.gridTemplateColumns = layout.grid_template_columns;
+    preview.style.gridTemplateRows = layout.grid_template_rows;
+    preview.style.gap = '4px';
+    preview.innerHTML = '';
+
+    const activeSlots = config.slots.slice(0, layout.slots.length);
+    for (let i = 0; i < layout.slots.length; i++) {
+      const slotDef = layout.slots[i];
+      const slotCfg = activeSlots[i] || { id: slotDef.id };
+      const frameCfg = getSlotFrame(slotCfg);
+
+      const div = document.createElement('div');
+      div.className = 'preview-slot' + (slotCfg.id === selectedSlotId ? ' selected' : '');
+      div.style.gridArea = slotDef.grid_area;
+      div.style.padding = `${frameCfg.mat_width ?? 16}px`;
+      div.style.background = frameCfg.mat_color ?? '#000';
+      if (frameCfg.show_frame ?? true) {
+        div.style.border = `${frameCfg.frame_width ?? 8}px solid ${frameCfg.frame_color ?? '#2c2318'}`;
+      }
+
+      const inner = document.createElement('div');
+      inner.style.cssText = 'width:100%;height:100%;background:#2e2e2e;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:clamp(10px,2vw,20px);font-weight:600;color:#888';
+      inner.textContent = slotCfg.id ?? slotDef.id;
+
+      div.appendChild(inner);
+      div.addEventListener('click', () => selectSlot(slotCfg.id ?? slotDef.id));
+      preview.appendChild(div);
+    }
+  }
+
+  function selectSlot(id) {
+    selectedSlotId = id;
+    buildPreview();
+    renderSlotPanel();
+  }
+
+  // ── Global settings ──
+
+  function bindGlobalSettings() {
+    const g = config;
+    const fd = g.frame_defaults || {};
+    const md = g.metadata_defaults || {};
+
+    document.getElementById('g-wall-color').value = g.wall_color || '#1a1a1a';
+    document.getElementById('g-date-format').value = g.date_format || 'long';
+    document.getElementById('g-max-pills').value = g.max_metadata_pills ?? 0;
+    document.getElementById('g-show-metadata').checked = g.show_metadata !== false;
+    document.getElementById('g-mat-color').value = fd.mat_color || '#000000';
+    document.getElementById('g-mat-width').value = fd.mat_width ?? 16;
+    document.getElementById('g-show-frame').checked = fd.show_frame !== false;
+    document.getElementById('g-frame-color').value = fd.frame_color || '#2c2318';
+    document.getElementById('g-frame-width').value = fd.frame_width ?? 8;
+
+    // Global metadata toggles
+    const container = document.getElementById('g-meta-toggles');
+    container.innerHTML = '';
+    for (const { key, label } of META_FIELDS) {
+      container.appendChild(makeToggleRow(label, md[key] || false, checked => {
+        if (!config.metadata_defaults) config.metadata_defaults = {};
+        config.metadata_defaults[key] = checked;
+      }));
+    }
+
+    // Wire global setting changes back to config
+    document.getElementById('g-wall-color').oninput = e => { config.wall_color = e.target.value; buildPreview(); };
+    document.getElementById('g-date-format').onchange = e => { config.date_format = e.target.value; };
+    document.getElementById('g-max-pills').oninput = e => {
+      const v = parseInt(e.target.value);
+      config.max_metadata_pills = v > 0 ? v : null;
+    };
+    document.getElementById('g-show-metadata').onchange = e => { config.show_metadata = e.target.checked; };
+    document.getElementById('g-mat-color').oninput = e => { ensureFrameDefaults(); config.frame_defaults.mat_color = e.target.value; buildPreview(); };
+    document.getElementById('g-mat-width').oninput = e => { ensureFrameDefaults(); config.frame_defaults.mat_width = parseInt(e.target.value); buildPreview(); };
+    document.getElementById('g-show-frame').onchange = e => { ensureFrameDefaults(); config.frame_defaults.show_frame = e.target.checked; buildPreview(); };
+    document.getElementById('g-frame-color').oninput = e => { ensureFrameDefaults(); config.frame_defaults.frame_color = e.target.value; buildPreview(); };
+    document.getElementById('g-frame-width').oninput = e => { ensureFrameDefaults(); config.frame_defaults.frame_width = parseInt(e.target.value); buildPreview(); };
+  }
+
+  function ensureFrameDefaults() {
+    if (!config.frame_defaults) config.frame_defaults = {};
+  }
+
+  // ── Slot panel ──
+
+  function renderSlotPanel() {
+    const title = document.getElementById('slot-panel-title');
+    const body = document.getElementById('slot-panel-body');
+
+    if (!selectedSlotId) {
+      title.textContent = 'Select a slot to configure it';
+      body.innerHTML = '';
+      return;
+    }
+
+    const slotCfg = config.slots.find(s => s.id === selectedSlotId);
+    if (!slotCfg) return;
+
+    title.textContent = `Slot ${selectedSlotId} settings`;
+    body.innerHTML = '';
+
+    const grid = document.createElement('div');
+    grid.className = 'panel-grid';
+
+    // Left column
+    const left = document.createElement('div');
+
+    // Source
+    const srcSection = makeSection('Source');
+    srcSection.appendChild(makeField('Photo folder', 'text', slotCfg.source_path || '', v => { slotCfg.source_path = v; }));
+    srcSection.appendChild(makeField('Cycle every (seconds)', 'number', slotCfg.cycle_seconds || 30, v => { slotCfg.cycle_seconds = parseInt(v); }));
+    srcSection.appendChild(makeField('Group (optional letter, e.g. A)', 'text', slotCfg.group || '', v => { slotCfg.group = v || null; }));
+    left.appendChild(srcSection);
+
+    // Fill mode
+    const fillSection = makeSection('Photo Fit');
+    const fillMode = slotCfg.fill_mode || 'contain';
+    const fillSelect = document.createElement('select');
+    fillSelect.className = 'field';
+    fillSelect.style.cssText = 'width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:6px 8px;font-size:13px;outline:none;';
+    [['contain', 'Fit — full photo, letterboxed'], ['cover', 'Fill — crop to fit, no bars']].forEach(([val, label]) => {
+      const opt = document.createElement('option');
+      opt.value = val; opt.textContent = label;
+      if (val === fillMode) opt.selected = true;
+      fillSelect.appendChild(opt);
+    });
+    fillSelect.onchange = e => { slotCfg.fill_mode = e.target.value; };
+    fillSection.appendChild(fillSelect);
+    left.appendChild(fillSection);
+
+    // Frame overrides
+    const frameSection = makeSection('Frame (overrides global)');
+    const slotFrame = slotCfg.frame || {};
+    frameSection.appendChild(makeColorField('Mat color', slotFrame.mat_color || config.frame_defaults?.mat_color || '#000000', v => { ensureSlotFrame(slotCfg); slotCfg.frame.mat_color = v; buildPreview(); }));
+    frameSection.appendChild(makeField('Mat width (px)', 'number', slotFrame.mat_width ?? config.frame_defaults?.mat_width ?? 16, v => { ensureSlotFrame(slotCfg); slotCfg.frame.mat_width = parseInt(v); buildPreview(); }));
+    frameSection.appendChild(makeToggleRow('Show frame border', slotFrame.show_frame ?? config.frame_defaults?.show_frame ?? true, v => { ensureSlotFrame(slotCfg); slotCfg.frame.show_frame = v; buildPreview(); }));
+    frameSection.appendChild(makeColorField('Frame color', slotFrame.frame_color || config.frame_defaults?.frame_color || '#2c2318', v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_color = v; buildPreview(); }));
+    frameSection.appendChild(makeField('Frame width (px)', 'number', slotFrame.frame_width ?? config.frame_defaults?.frame_width ?? 8, v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_width = parseInt(v); buildPreview(); }));
+    left.appendChild(frameSection);
+
+    // Right column — metadata
+    const right = document.createElement('div');
+    const metaSection = makeSection('Metadata overlays');
+    metaSection.appendChild(document.createTextNode('These override the global defaults for this slot only.'));
+    metaSection.querySelector('span, p')?.remove();
+    const note = document.createElement('p');
+    note.style.cssText = 'font-size:11px;color:var(--text-muted);margin-bottom:10px;';
+    note.textContent = 'Overrides global defaults for this slot only.';
+    metaSection.appendChild(note);
+
+    const metaGrid = document.createElement('div');
+    metaGrid.className = 'meta-grid';
+    const slotMeta = slotCfg.metadata || {};
+    const globalMeta = getGlobalMeta();
+    for (const { key, label } of META_FIELDS) {
+      const effective = key in slotMeta ? slotMeta[key] : globalMeta[key] || false;
+      metaGrid.appendChild(makeToggleRow(label, effective, checked => {
+        if (!slotCfg.metadata) slotCfg.metadata = {};
+        slotCfg.metadata[key] = checked;
+      }));
+    }
+    metaSection.appendChild(metaGrid);
+    right.appendChild(metaSection);
+
+    grid.append(left, right);
+    body.appendChild(grid);
+  }
+
+  function ensureSlotFrame(slotCfg) {
+    if (!slotCfg.frame) slotCfg.frame = {};
+  }
+
+  // ── DOM helpers ──
+
+  function makeSection(title) {
+    const sec = document.createElement('div');
+    sec.className = 'panel-section';
+    const h = document.createElement('h4');
+    h.textContent = title;
+    sec.appendChild(h);
+    return sec;
+  }
+
+  function makeField(label, type, value, onChange) {
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    const inp = document.createElement('input');
+    inp.type = type;
+    inp.value = value;
+    if (type === 'number') { inp.min = 0; }
+    inp.oninput = e => onChange(e.target.value);
+    wrap.append(lbl, inp);
+    return wrap;
+  }
+
+  function makeColorField(label, value, onChange) {
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    const inp = document.createElement('input');
+    inp.type = 'color';
+    inp.value = value;
+    inp.oninput = e => onChange(e.target.value);
+    wrap.append(lbl, inp);
+    return wrap;
+  }
+
+  function makeToggleRow(label, checked, onChange) {
+    const row = document.createElement('div');
+    row.className = 'toggle-row';
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    const toggleLabel = document.createElement('label');
+    toggleLabel.className = 'toggle';
+    const inp = document.createElement('input');
+    inp.type = 'checkbox';
+    inp.checked = checked;
+    inp.onchange = e => onChange(e.target.checked);
+    const track = document.createElement('span');
+    track.className = 'toggle-track';
+    toggleLabel.append(inp, track);
+    row.append(lbl, toggleLabel);
+    return row;
+  }
+
+  // ── Save / load ──
+
+  async function saveConfig() {
+    try {
+      const r = await fetch(`${API}/api/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      if (!r.ok) throw new Error('Server error');
+      setStatus('Saved! Reload the display to see changes.', 'success');
+    } catch (e) {
+      setStatus('Save failed — is the backend running?', 'error');
+    }
+  }
+
+  async function reloadConfig() {
+    try {
+      config = await fetchJSON(`${API}/api/config`);
+      selectedSlotId = null;
+      bindGlobalSettings();
+      buildLayoutPicker();
+      buildPreview();
+      renderSlotPanel();
+      setStatus('Changes discarded.', '');
+    } catch (e) {
+      setStatus('Could not reload config.', 'error');
+    }
+  }
+
+  // ── Init ──
+
+  async function init() {
+    try {
+      [config, layouts] = await Promise.all([
+        fetchJSON(`${API}/api/config`),
+        fetchJSON(`${API}/api/layouts`),
+      ]);
+    } catch (e) {
+      document.getElementById('main').innerHTML = '<p style="color:#c0392b;padding:24px">Could not load config — is the backend running?</p>';
+      return;
+    }
+    bindGlobalSettings();
+    buildLayoutPicker();
+    buildPreview();
+    renderSlotPanel();
+  }
+
+  init();
+</script>
+</body>
+</html>

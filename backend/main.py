@@ -14,6 +14,7 @@ ROOT = Path(__file__).parent.parent
 CONFIG_PATH = ROOT / "config.json"
 LAYOUTS_PATH = ROOT / "layouts"
 FRONTEND_DISPLAY = ROOT / "frontend" / "display"
+FRONTEND_EDITOR  = ROOT / "frontend" / "editor"
 
 app = FastAPI(title="PicMe")
 
@@ -105,8 +106,9 @@ def serve_image(path: str):
     return FileResponse(str(file_path))
 
 
-# Serve the display frontend
+# Serve the display and editor frontends
 app.mount("/display", StaticFiles(directory=str(FRONTEND_DISPLAY), html=True), name="display")
+app.mount("/editor",  StaticFiles(directory=str(FRONTEND_EDITOR),  html=True), name="editor")
 
 # Serve a simple root redirect
 @app.get("/")
