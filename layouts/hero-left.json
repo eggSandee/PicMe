@@ -1,0 +1,14 @@
+{
+  "id": "hero-left",
+  "name": "Hero Left",
+  "description": "Large slot left (2/3 width), 4 small slots right",
+  "slots": [
+    { "id": 1, "grid_area": "1 / 1 / 3 / 3" },
+    { "id": 2, "grid_area": "1 / 3 / 2 / 4" },
+    { "id": 3, "grid_area": "1 / 4 / 2 / 5" },
+    { "id": 4, "grid_area": "2 / 3 / 3 / 4" },
+    { "id": 5, "grid_area": "2 / 4 / 3 / 5" }
+  ],
+  "grid_template_columns": "1fr 1fr 1fr 1fr",
+  "grid_template_rows": "1fr 1fr"
+}

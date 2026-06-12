@@ -1,0 +1,13 @@
+{
+  "id": "classic-4",
+  "name": "Classic 4",
+  "description": "2×2 equal grid",
+  "slots": [
+    { "id": 1, "grid_area": "1 / 1 / 2 / 2" },
+    { "id": 2, "grid_area": "1 / 2 / 2 / 3" },
+    { "id": 3, "grid_area": "2 / 1 / 3 / 2" },
+    { "id": 4, "grid_area": "2 / 2 / 3 / 3" }
+  ],
+  "grid_template_columns": "1fr 1fr",
+  "grid_template_rows": "1fr 1fr"
+}
