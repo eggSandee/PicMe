@@ -28,7 +28,7 @@
 
     .slot img {
       width: 100%; height: 100%;
-      object-fit: cover;
+      object-fit: contain;
       position: absolute;
       top: 0; left: 0;
       transition: opacity 0.8s ease;
@@ -96,49 +96,87 @@
       }
     }
 
-    // Returns the absolute URL to serve a local image path via the API
     function imageUrl(filePath) {
       return `${API}/api/image?path=${encodeURIComponent(filePath)}`;
     }
 
-    // Resolve source_path: if relative, treat as relative to server root
-    function resolveFolder(slotConfig) {
-      return slotConfig.source_path;
+    // Shuffled queue per folder — ensures no image repeats until all are shown,
+    // and no two slots show the same image at the same time.
+    const folderQueues = {};     // folder -> { images, index }
+    const displayedPaths = new Set();  // paths currently visible in any slot
+
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    async function ensureQueue(folder) {
+      if (folderQueues[folder]) return;
+      const data = await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder)}`);
+      folderQueues[folder] = { images: shuffle(data.images), index: 0 };
+    }
+
+    function nextFromQueue(folder) {
+      const q = folderQueues[folder];
+      if (!q || q.images.length === 0) return null;
+      // Walk through the queue to find an image not currently displayed
+      for (let attempts = 0; attempts < q.images.length; attempts++) {
+        const candidate = q.images[q.index % q.images.length];
+        q.index++;
+        if (q.index >= q.images.length) {
+          // Reshuffle on wrap-around so we don't get the same sequence again
+          shuffle(q.images);
+          q.index = 0;
+        }
+        if (!displayedPaths.has(candidate)) return candidate;
+      }
+      // All images currently displayed (very small library) — allow a repeat
+      return q.images[0];
     }
 
     // Per-slot state
     const slotState = {};
 
-    async function loadNextImage(slotCfg, layoutSlot) {
+    async function loadNextImage(slotCfg) {
       const state = slotState[slotCfg.id];
       const slotEl = document.getElementById(`slot-${slotCfg.id}`);
       if (!slotEl) return;
 
+      const folder = slotCfg.source_path;
+      await ensureQueue(folder);
+      const nextPath = nextFromQueue(folder);
+      if (!nextPath) return;
+
       const [imgA, imgB] = slotEl.querySelectorAll('img');
       const current = state.activeImg === 'A' ? imgA : imgB;
-      const next = state.activeImg === 'A' ? imgB : imgA;
+      const next    = state.activeImg === 'A' ? imgB : imgA;
 
       try {
-        const data = await fetchJSON(`${API}/api/images/random?folder=${encodeURIComponent(resolveFolder(slotCfg))}`);
-        next.src = imageUrl(data.path);
+        next.src = imageUrl(nextPath);
         await new Promise((resolve, reject) => {
           next.onload = resolve;
           next.onerror = reject;
         });
-        // Crossfade
+        // Release the old image from the displayed set, claim the new one
+        if (state.currentPath) displayedPaths.delete(state.currentPath);
+        displayedPaths.add(nextPath);
+        state.currentPath = nextPath;
+
         next.className = 'visible';
         current.className = 'hidden';
         state.activeImg = state.activeImg === 'A' ? 'B' : 'A';
       } catch (e) {
-        // Keep current image, skip silently
-        console.warn(`Slot ${slotCfg.id}: failed to load next image`, e);
+        console.warn(`Slot ${slotCfg.id}: failed to load image`, e);
       }
     }
 
     // Group cycling: slots in the same group advance together
     const groupTimers = {};
 
-    function scheduleSlot(slotCfg, layoutSlot) {
+    function scheduleSlot(slotCfg) {
       const group = slotCfg.group;
       const seconds = slotCfg.cycle_seconds || 30;
 
@@ -147,11 +185,11 @@
           // Find all slots in this group
           const groupSlots = config.slots.filter(s => s.group === group);
           groupTimers[group] = setInterval(() => {
-            groupSlots.forEach(s => loadNextImage(s, null));
+            groupSlots.forEach(s => loadNextImage(s));
           }, seconds * 1000);
         }
       } else {
-        setInterval(() => loadNextImage(slotCfg, layoutSlot), seconds * 1000);
+        setInterval(() => loadNextImage(slotCfg), seconds * 1000);
       }
     }
 
@@ -175,12 +213,13 @@
       // Initialize state and load first image for each slot
       for (const slotCfg of activeSlots) {
         slotState[slotCfg.id] = { activeImg: 'A' };
-        await loadNextImage(slotCfg, null);
+        await loadNextImage(slotCfg);
       }
 
       // Start cycling timers
       for (const slotCfg of activeSlots) {
         scheduleSlot(slotCfg);
+
       }
     }
 
