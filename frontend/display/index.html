@@ -224,7 +224,8 @@
     ];
 
     async function updateOverlay(slotCfg, imagePath) {
-      const meta = slotCfg.metadata || {};
+      // Merge: global defaults first, slot-specific fields override
+      const meta = { ...(config.metadata_defaults || {}), ...(slotCfg.metadata || {}) };
       const maxPills = config.max_metadata_pills ?? Infinity;
       const anyEnabled = meta.show_date || METADATA_FIELDS.some(f => meta[f.flag]);
       if (!anyEnabled) return;

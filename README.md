@@ -307,31 +307,46 @@ Top-level settings:
 ```json
 {
   "layout": "classic-4",
-  "max_metadata_pills": 3        // max overlays shown per slot across all enabled fields; omit for no limit
-}
-```
-
-Key per-slot settings:
-
-```json
-{
-  "id": 1,
-  "source_path": "photos",        // relative to project root, or an absolute path
-  "cycle_seconds": 30,            // how often this slot advances
-  "metadata": {
-    "show_date": true,            // photo date from EXIF
-    "show_location": false,       // city/region from GPS data (requires internet for geocoding)
-    "show_camera": false,         // camera make/model from EXIF
-    "show_megapixels": false,     // resolution, e.g. 12.2 MP
-    "show_fstop": false,          // aperture, e.g. f/2.8
-    "show_shutter_speed": false,  // shutter speed, e.g. 1/250s
-    "show_iso": false,            // ISO sensitivity, e.g. ISO 400
-    "show_focal_length": false    // focal length, e.g. 50mm
+  "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
+  "metadata_defaults": {         // applied to every slot; per-slot metadata overrides these
+    "show_date": true,
+    "show_location": false,
+    "show_camera": false,
+    "show_megapixels": false,
+    "show_fstop": false,
+    "show_shutter_speed": false,
+    "show_iso": false,
+    "show_focal_length": false,
+    "show_people": false
   }
 }
 ```
 
-Non-date pills are shown in the order listed above. If `max_metadata_pills` is set, only the first N enabled non-date fields that have data are shown. **Date is always pinned to the bottom** of the overlay and is not counted against the cap.
+Per-slot `metadata` is optional. If omitted entirely, the slot inherits `metadata_defaults` as-is. If present, only the fields listed override the defaults — unmentioned fields still fall back to the global value.
+
+```json
+{
+  "id": 1,
+  "source_path": "photos",
+  "cycle_seconds": 30,
+  "metadata": { "show_camera": true }   // inherits everything else from metadata_defaults
+}
+```
+
+Available metadata fields:
+
+| Field | Shows |
+|---|---|
+| `show_date` | Photo date from EXIF — always pinned to the **bottom** of the overlay, not counted against the cap |
+| `show_location` | City/region from GPS data (requires internet for reverse geocoding) |
+| `show_camera` | Camera make/model from EXIF |
+| `show_megapixels` | Resolution, e.g. `12.2 MP` |
+| `show_fstop` | Aperture, e.g. `f/2.8` |
+| `show_shutter_speed` | Shutter speed, e.g. `1/250s` |
+| `show_iso` | ISO sensitivity, e.g. `ISO 400` |
+| `show_focal_length` | Focal length, e.g. `50mm` |
+
+Non-date pills are shown in the table order above. If `max_metadata_pills` is set, only the first N enabled non-date fields that have data are shown — put your highest-priority fields first in your slot config.
 
 To use a different photo folder (e.g. a folder elsewhere on your PC), set `source_path` to the full path:
 
