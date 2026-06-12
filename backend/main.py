@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from metadata.exif import get_metadata
+
 ROOT = Path(__file__).parent.parent
 CONFIG_PATH = ROOT / "config.json"
 LAYOUTS_PATH = ROOT / "layouts"
@@ -75,6 +77,15 @@ def random_image(folder: str):
     if not images:
         raise HTTPException(status_code=404, detail="No images found in folder")
     return {"path": random.choice(images)}
+
+
+@app.get("/api/metadata")
+def image_metadata(path: str):
+    """Return EXIF date and reverse-geocoded location for an image."""
+    file_path = Path(path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Image not found")
+    return get_metadata(str(file_path))
 
 
 @app.get("/api/images/list")

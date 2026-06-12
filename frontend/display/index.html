@@ -37,6 +37,31 @@
     .slot img.hidden { opacity: 0; }
     .slot img.visible { opacity: 1; }
 
+    .slot-overlay {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .overlay-pill {
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      font-size: 12px;
+      padding: 3px 9px;
+      border-radius: 20px;
+      backdrop-filter: blur(4px);
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+
+    .overlay-pill.visible { opacity: 1; }
+
     #error-banner {
       position: fixed;
       top: 16px; left: 50%; transform: translateX(-50%);
@@ -91,7 +116,19 @@
         const imgB = document.createElement('img');
         imgA.className = 'visible';
         imgB.className = 'hidden';
-        div.append(imgA, imgB);
+
+        // Metadata overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'slot-overlay';
+        const datePill = document.createElement('div');
+        datePill.className = 'overlay-pill';
+        datePill.dataset.role = 'date';
+        const locPill = document.createElement('div');
+        locPill.className = 'overlay-pill';
+        locPill.dataset.role = 'location';
+        overlay.append(datePill, locPill);
+
+        div.append(imgA, imgB, overlay);
         collage.appendChild(div);
       }
     }
@@ -168,8 +205,39 @@
         next.className = 'visible';
         current.className = 'hidden';
         state.activeImg = state.activeImg === 'A' ? 'B' : 'A';
+
+        updateOverlay(slotCfg, nextPath);
       } catch (e) {
         console.warn(`Slot ${slotCfg.id}: failed to load image`, e);
+      }
+    }
+
+    async function updateOverlay(slotCfg, imagePath) {
+      const meta = slotCfg.metadata || {};
+      if (!meta.show_date && !meta.show_location) return;
+
+      const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+      if (!slotEl) return;
+      const datePill = slotEl.querySelector('[data-role="date"]');
+      const locPill  = slotEl.querySelector('[data-role="location"]');
+
+      // Hide pills while we fetch
+      datePill.classList.remove('visible');
+      locPill.classList.remove('visible');
+
+      try {
+        const data = await fetchJSON(`${API}/api/metadata?path=${encodeURIComponent(imagePath)}`);
+
+        if (meta.show_date && data.date) {
+          datePill.textContent = data.date;
+          datePill.classList.add('visible');
+        }
+        if (meta.show_location && data.location) {
+          locPill.textContent = data.location;
+          locPill.classList.add('visible');
+        }
+      } catch (e) {
+        // Metadata is non-critical — fail silently
       }
     }
 
