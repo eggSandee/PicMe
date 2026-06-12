@@ -75,6 +75,26 @@
 
     .overlay-pill.visible { opacity: 1; }
 
+    #editor-btn {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      background: rgba(0, 0, 0, 0.5);
+      color: #fff;
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.15);
+      backdrop-filter: blur(4px);
+      cursor: pointer;
+      text-decoration: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 999;
+    }
+
+    body:hover #editor-btn { opacity: 1; }
+
     #error-banner {
       position: fixed;
       top: 16px; left: 50%; transform: translateX(-50%);
@@ -91,6 +111,7 @@
 <body>
   <div id="collage"></div>
   <div id="error-banner"></div>
+  <a id="editor-btn" href="/editor">⚙ Editor</a>
 
   <script>
     const API = '';  // same origin
