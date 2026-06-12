@@ -86,6 +86,8 @@ PicMe/
 - [ ] Visual layout editor — see slot arrangement, click to configure each slot
 - [ ] Per-slot settings: source folder, cycle timer, group assignment, metadata toggle
 - [ ] Per-slot fill mode toggle: **fill** (crop to fit, no bars) vs **fit** (full photo, letterboxed)
+- [ ] Per-slot and global frame settings: mat color, mat width, frame color, frame width
+- [ ] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
 - [ ] Layout template picker with visual previews
 - [ ] Live preview of changes before applying
 - [ ] Settings saved automatically to config.json
