@@ -84,6 +84,7 @@ PicMe/
 
 - [ ] Visual layout editor — see slot arrangement, click to configure each slot
 - [ ] Per-slot settings: source folder, cycle timer, group assignment, metadata toggle
+- [ ] Per-slot fill mode toggle: **fill** (crop to fit, no bars) vs **fit** (full photo, letterboxed)
 - [ ] Layout template picker with visual previews
 - [ ] Live preview of changes before applying
 - [ ] Settings saved automatically to config.json
