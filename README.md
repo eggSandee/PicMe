@@ -307,9 +307,17 @@ Top-level settings:
 ```json
 {
   "layout": "classic-4",
+  "wall_color": "#1a1a1a",       // background color shown between and around frames (the "wall")
   "show_metadata": true,         // global kill switch — false hides all overlays on all slots instantly
   "date_format": "long",         // "long" (July 4, 2019) | "medium" (Jul 4, 2019) | "short" (7/4/2019) | "iso" (2019-07-04)
   "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
+  "frame_defaults": {            // mat and frame style applied to every slot; per-slot frame: {} overrides
+    "mat_color": "#f5f0e8",      // warm off-white mat (any CSS color)
+    "mat_width": 16,             // mat thickness in pixels
+    "show_frame": true,          // show outer frame border
+    "frame_color": "#2c2318",    // dark wood frame (any CSS color)
+    "frame_width": 8             // frame border thickness in pixels
+  },
   "metadata_defaults": {         // applied to every slot; per-slot metadata overrides these
     "show_date": true,
     "show_location": false,
@@ -324,14 +332,15 @@ Top-level settings:
 }
 ```
 
-Per-slot `metadata` is optional. If omitted entirely, the slot inherits `metadata_defaults` as-is. If present, only the fields listed override the defaults — unmentioned fields still fall back to the global value.
+Per-slot `metadata` and `frame` are both optional. If omitted, the slot inherits the global defaults. If present, only the fields listed override the defaults.
 
 ```json
 {
   "id": 1,
   "source_path": "photos",
   "cycle_seconds": 30,
-  "metadata": { "show_camera": true }   // inherits everything else from metadata_defaults
+  "metadata": { "show_camera": true },       // inherits everything else from metadata_defaults
+  "frame": { "mat_color": "#ffffff" }        // white mat on this slot only; inherits frame_defaults for the rest
 }
 ```
 
