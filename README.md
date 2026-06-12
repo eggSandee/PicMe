@@ -1,4 +1,4 @@
-# PicMe
+﻿# PicMe
 ### A collage-style digital picture frame app for large screens
 
 ---
@@ -309,6 +309,7 @@ Top-level settings:
 ```json
 {
   "layout": "classic-4",
+<<<<<<< HEAD
   "wall_color": "#1a1a1a",       // background color shown between and around frames (the "wall")
   "show_metadata": true,         // global kill switch — false hides all overlays on all slots instantly
   "date_format": "long",         // "long" (July 4, 2019) | "medium" (Jul 4, 2019) | "short" (7/4/2019) | "iso" (2019-07-04)
@@ -320,6 +321,9 @@ Top-level settings:
     "frame_color": "#2c2318",    // dark wood frame (any CSS color)
     "frame_width": 8             // frame border thickness in pixels
   },
+=======
+  "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
+>>>>>>> origin/main
   "metadata_defaults": {         // applied to every slot; per-slot metadata overrides these
     "show_date": true,
     "show_location": false,
@@ -334,15 +338,23 @@ Top-level settings:
 }
 ```
 
+<<<<<<< HEAD
 Per-slot `metadata` and `frame` are both optional. If omitted, the slot inherits the global defaults. If present, only the fields listed override the defaults.
+=======
+Per-slot `metadata` is optional. If omitted entirely, the slot inherits `metadata_defaults` as-is. If present, only the fields listed override the defaults — unmentioned fields still fall back to the global value.
+>>>>>>> origin/main
 
 ```json
 {
   "id": 1,
   "source_path": "photos",
   "cycle_seconds": 30,
+<<<<<<< HEAD
   "metadata": { "show_camera": true },       // inherits everything else from metadata_defaults
   "frame": { "mat_color": "#ffffff" }        // white mat on this slot only; inherits frame_defaults for the rest
+=======
+  "metadata": { "show_camera": true }   // inherits everything else from metadata_defaults
+>>>>>>> origin/main
 }
 ```
 
