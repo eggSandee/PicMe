@@ -126,7 +126,10 @@
         const locPill = document.createElement('div');
         locPill.className = 'overlay-pill';
         locPill.dataset.role = 'location';
-        overlay.append(datePill, locPill);
+        const camPill = document.createElement('div');
+        camPill.className = 'overlay-pill';
+        camPill.dataset.role = 'camera';
+        overlay.append(datePill, locPill, camPill);
 
         div.append(imgA, imgB, overlay);
         collage.appendChild(div);
@@ -220,10 +223,12 @@
       if (!slotEl) return;
       const datePill = slotEl.querySelector('[data-role="date"]');
       const locPill  = slotEl.querySelector('[data-role="location"]');
+      const camPill  = slotEl.querySelector('[data-role="camera"]');
 
       // Hide pills while we fetch
       datePill.classList.remove('visible');
       locPill.classList.remove('visible');
+      camPill.classList.remove('visible');
 
       try {
         const data = await fetchJSON(`${API}/api/metadata?path=${encodeURIComponent(imagePath)}`);
@@ -235,6 +240,10 @@
         if (meta.show_location && data.location) {
           locPill.textContent = data.location;
           locPill.classList.add('visible');
+        }
+        if (meta.show_camera && data.camera) {
+          camPill.textContent = data.camera;
+          camPill.classList.add('visible');
         }
       } catch (e) {
         // Metadata is non-critical — fail silently

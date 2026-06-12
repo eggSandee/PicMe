@@ -97,8 +97,21 @@ def reverse_geocode(lat: float, lon: float) -> str | None:
         return None
 
 
+def extract_camera(image_path: str) -> str | None:
+    exif = _get_exif(image_path)
+    make  = (exif.get("Make")  or "").strip()
+    model = (exif.get("Model") or "").strip()
+    if not make and not model:
+        return None
+    # Avoid redundancy when make is already a prefix of model (e.g. "Apple iPhone 15")
+    if model.lower().startswith(make.lower()):
+        return model
+    return f"{make} {model}".strip() if make else model
+
+
 def get_metadata(image_path: str) -> dict:
     date = extract_date(image_path)
     coords = extract_gps(image_path)
     location = reverse_geocode(*coords) if coords else None
-    return {"date": date, "location": location}
+    camera = extract_camera(image_path)
+    return {"date": date, "location": location, "camera": camera}
