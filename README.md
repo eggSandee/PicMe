@@ -196,20 +196,136 @@ Each slot supports the following settings:
 
 ---
 
-## Running the App
+## Getting Started
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+### What you need
 
-# Start the server
-python backend/main.py
+| Requirement | Notes |
+|---|---|
+| **Python 3.11+** | Download from [python.org](https://python.org/downloads). During install, check **"Add Python to PATH"**. |
+| **A modern browser** | Chrome, Edge, Firefox, or Safari. The display is designed for full-screen use on a TV browser. |
+| **Your photos** | JPEG, PNG, GIF, or WebP files in a folder on your PC. |
 
-# Open display on TV
+---
+
+### First-time setup
+
+**1. Get the code**
+
+Download or clone this repository to your PC. All commands below should be run from the project root folder (`PicMe/`).
+
+**2. Create a virtual environment**
+
+A virtual environment keeps PicMe's dependencies isolated from the rest of your system.
+
+```powershell
+python -m venv .venv
+```
+
+**3. Install dependencies**
+
+```powershell
+# Windows
+.\.venv\Scripts\pip install -r requirements.txt
+
+# macOS / Linux
+.venv/bin/pip install -r requirements.txt
+```
+
+**4. Add your photos**
+
+Copy or move your photos into the `photos/` folder inside the project:
+
+```
+PicMe/
+└── photos/
+    ├── vacation.jpg
+    ├── birthday.png
+    └── ...
+```
+
+You can use any folder on your PC — see the **Configuration** section below if you want to point slots at a different location.
+
+**5. Start the server**
+
+```powershell
+# Windows
+.\.venv\Scripts\python backend\main.py
+
+# macOS / Linux
+.venv/bin/python backend/main.py
+```
+
+You should see output like:
+```
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+```
+
+**6. Open the display**
+
+On the same PC: open your browser and go to:
+```
+http://localhost:8000/display
+```
+
+On a TV or another device on the same Wi-Fi network, first find your PC's local IP address:
+
+```powershell
+# Windows — look for the IPv4 address under your Wi-Fi adapter
+ipconfig
+
+# macOS / Linux
+ifconfig
+```
+
+Then open on the TV:
+```
 http://[your-pc-ip]:8000/display
+```
 
-# Open editor on any device
-http://[your-pc-ip]:8000/editor
+For example: `http://192.168.1.42:8000/display`
+
+---
+
+### Stopping the server
+
+Press **Ctrl+C** in the terminal where the server is running.
+
+---
+
+### Configuration
+
+The file `config.json` in the project root controls which layout is used and how each slot behaves. It is created automatically with defaults on first run. You can edit it directly — changes take effect after restarting the server.
+
+Key per-slot settings:
+
+```json
+{
+  "id": 1,
+  "source_path": "photos",        // relative to project root, or an absolute path
+  "cycle_seconds": 30,            // how often this slot advances
+  "metadata": {
+    "show_date": true,            // show photo date from EXIF
+    "show_location": false,       // show city/region from GPS data
+    "show_camera": false          // show camera make/model from EXIF
+  }
+}
+```
+
+To use a different photo folder (e.g. a folder elsewhere on your PC), set `source_path` to the full path:
+
+```json
+"source_path": "C:/Users/yourname/Pictures/Vacations"
+```
+
+---
+
+### Upgrading
+
+After pulling new code, re-run the dependency install step to pick up any new packages:
+
+```powershell
+.\.venv\Scripts\pip install -r requirements.txt
 ```
 
 ---
