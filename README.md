@@ -56,6 +56,7 @@ PicMe/
 - [ ] Fullscreen browser display with configurable slot grid
 - [ ] Independent per-slot cycling timers
 - [ ] Slot grouping (define groups that cycle together)
+- [ ] No duplicate photos across slots — shuffled per-folder queue ensures each image appears in at most one slot at a time
 - [ ] 3–5 built-in layout templates (e.g., 2x2, 3x2, asymmetric hero)
 - [ ] Basic config file (auto-managed JSON)
 
