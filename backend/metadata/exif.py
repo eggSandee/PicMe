@@ -148,6 +148,15 @@ def extract_focal_length(image_path: str) -> str | None:
     return f"{val:.0f}mm"
 
 
+def extract_megapixels(image_path: str) -> str | None:
+    try:
+        img = Image.open(image_path)
+        mp = (img.width * img.height) / 1_000_000
+        return f"{mp:.1f} MP"
+    except Exception:
+        return None
+
+
 def extract_camera(image_path: str) -> str | None:
     exif = _get_exif(image_path)
     make  = (exif.get("Make")  or "").strip()
@@ -169,10 +178,12 @@ def get_metadata(image_path: str) -> dict:
     shutter = extract_shutter_speed(image_path)
     iso = extract_iso(image_path)
     focal_length = extract_focal_length(image_path)
+    megapixels = extract_megapixels(image_path)
     return {
         "date": date,
         "location": location,
         "camera": camera,
+        "megapixels": megapixels,
         "fstop": fstop,
         "shutter_speed": shutter,
         "iso": iso,

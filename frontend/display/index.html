@@ -120,7 +120,7 @@
         // Metadata overlay
         const overlay = document.createElement('div');
         overlay.className = 'slot-overlay';
-        for (const role of ['date', 'location', 'camera', 'fstop', 'shutter_speed', 'iso', 'focal_length']) {
+        for (const role of ['location', 'camera', 'megapixels', 'fstop', 'shutter_speed', 'iso', 'focal_length', 'date']) {
           const pill = document.createElement('div');
           pill.className = 'overlay-pill';
           pill.dataset.role = role;
@@ -211,33 +211,33 @@
       }
     }
 
-    // Maps config flag -> API response key, in priority order.
-    // Pills are shown in this order and stopped once max_metadata_pills is reached.
+    // Non-date fields in priority order. max_metadata_pills applies to these only.
+    // Date is handled separately — always rendered last (bottom) if enabled.
     const METADATA_FIELDS = [
-      { flag: 'show_date',         key: 'date' },
-      { flag: 'show_location',     key: 'location' },
-      { flag: 'show_camera',       key: 'camera' },
-      { flag: 'show_fstop',        key: 'fstop' },
-      { flag: 'show_shutter_speed',key: 'shutter_speed' },
-      { flag: 'show_iso',          key: 'iso' },
-      { flag: 'show_focal_length', key: 'focal_length' },
+      { flag: 'show_location',      key: 'location' },
+      { flag: 'show_camera',        key: 'camera' },
+      { flag: 'show_megapixels',    key: 'megapixels' },
+      { flag: 'show_fstop',         key: 'fstop' },
+      { flag: 'show_shutter_speed', key: 'shutter_speed' },
+      { flag: 'show_iso',           key: 'iso' },
+      { flag: 'show_focal_length',  key: 'focal_length' },
     ];
 
     async function updateOverlay(slotCfg, imagePath) {
       const meta = slotCfg.metadata || {};
       const maxPills = config.max_metadata_pills ?? Infinity;
-      const anyEnabled = METADATA_FIELDS.some(f => meta[f.flag]);
+      const anyEnabled = meta.show_date || METADATA_FIELDS.some(f => meta[f.flag]);
       if (!anyEnabled) return;
 
       const slotEl = document.getElementById(`slot-${slotCfg.id}`);
       if (!slotEl) return;
 
-      // Hide all pills while we fetch
       slotEl.querySelectorAll('.overlay-pill').forEach(p => p.classList.remove('visible'));
 
       try {
         const data = await fetchJSON(`${API}/api/metadata?path=${encodeURIComponent(imagePath)}`);
 
+        // Show non-date fields up to the cap
         let shown = 0;
         for (const { flag, key } of METADATA_FIELDS) {
           if (shown >= maxPills) break;
@@ -247,6 +247,12 @@
           pill.textContent = data[key];
           pill.classList.add('visible');
           shown++;
+        }
+
+        // Date always appears at the bottom, not counted against the cap
+        if (meta.show_date && data.date) {
+          const pill = slotEl.querySelector('[data-role="date"]');
+          if (pill) { pill.textContent = data.date; pill.classList.add('visible'); }
         }
       } catch (e) {
         // Metadata is non-critical — fail silently

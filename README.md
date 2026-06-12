@@ -174,6 +174,7 @@ Each slot supports the following settings:
     "show_date": true,
     "show_location": true,
     "show_camera": false,
+    "show_megapixels": false,
     "show_fstop": false,
     "show_shutter_speed": false,
     "show_iso": false,
@@ -321,6 +322,7 @@ Key per-slot settings:
     "show_date": true,            // photo date from EXIF
     "show_location": false,       // city/region from GPS data (requires internet for geocoding)
     "show_camera": false,         // camera make/model from EXIF
+    "show_megapixels": false,     // resolution, e.g. 12.2 MP
     "show_fstop": false,          // aperture, e.g. f/2.8
     "show_shutter_speed": false,  // shutter speed, e.g. 1/250s
     "show_iso": false,            // ISO sensitivity, e.g. ISO 400
@@ -329,7 +331,7 @@ Key per-slot settings:
 }
 ```
 
-Pills are shown in the order listed above. If `max_metadata_pills` is set, only the first N enabled fields that have data are shown — so put your highest-priority fields first.
+Non-date pills are shown in the order listed above. If `max_metadata_pills` is set, only the first N enabled non-date fields that have data are shown. **Date is always pinned to the bottom** of the overlay and is not counted against the cap.
 
 To use a different photo folder (e.g. a folder elsewhere on your PC), set `source_path` to the full path:
 
