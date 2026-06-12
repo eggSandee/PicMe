@@ -23,20 +23,16 @@ def _get_exif(image_path: str) -> dict:
 
 
 def extract_date(image_path: str) -> str | None:
+    """Return date as YYYY-MM-DD, or None if no EXIF date found."""
     exif = _get_exif(image_path)
     for field in ("DateTimeOriginal", "DateTime", "DateTimeDigitized"):
         val = exif.get(field)
         if val:
             try:
                 dt = datetime.datetime.strptime(val, "%Y:%m:%d %H:%M:%S")
-                return dt.strftime("%B %-d, %Y")
+                return dt.strftime("%Y-%m-%d")
             except (ValueError, AttributeError):
-                # %-d is Unix-only; fall back to cross-platform form
-                try:
-                    dt = datetime.datetime.strptime(val, "%Y:%m:%d %H:%M:%S")
-                    return dt.strftime("%B {d}, %Y").format(d=dt.day)
-                except Exception:
-                    pass
+                pass
     return None
 
 
@@ -180,7 +176,7 @@ def get_metadata(image_path: str) -> dict:
     focal_length = extract_focal_length(image_path)
     megapixels = extract_megapixels(image_path)
     return {
-        "date": date,
+        "date_iso": date,
         "location": location,
         "camera": camera,
         "megapixels": megapixels,

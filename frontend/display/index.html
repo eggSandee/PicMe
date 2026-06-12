@@ -223,7 +223,24 @@
       { flag: 'show_focal_length',  key: 'focal_length' },
     ];
 
+    const DATE_FORMATS = {
+      long:   { year: 'numeric', month: 'long',    day: 'numeric' }, // July 4, 2019
+      medium: { year: 'numeric', month: 'short',   day: 'numeric' }, // Jul 4, 2019
+      short:  { year: 'numeric', month: 'numeric', day: 'numeric' }, // 7/4/2019
+    };
+
+    function formatDate(isoDate) {
+      const fmt = config.date_format || 'long';
+      if (fmt === 'iso') return isoDate;
+      const opts = DATE_FORMATS[fmt] || DATE_FORMATS.long;
+      // Parse as local date (append T00:00 to avoid UTC shift)
+      return new Intl.DateTimeFormat(undefined, opts).format(new Date(isoDate + 'T00:00'));
+    }
+
     async function updateOverlay(slotCfg, imagePath) {
+      // Global kill switch
+      if (config.show_metadata === false) return;
+
       // Merge: global defaults first, slot-specific fields override
       const meta = { ...(config.metadata_defaults || {}), ...(slotCfg.metadata || {}) };
       const maxPills = config.max_metadata_pills ?? Infinity;
@@ -251,9 +268,9 @@
         }
 
         // Date always appears at the bottom, not counted against the cap
-        if (meta.show_date && data.date) {
+        if (meta.show_date && data.date_iso) {
           const pill = slotEl.querySelector('[data-role="date"]');
-          if (pill) { pill.textContent = data.date; pill.classList.add('visible'); }
+          if (pill) { pill.textContent = formatDate(data.date_iso); pill.classList.add('visible'); }
         }
       } catch (e) {
         // Metadata is non-critical — fail silently
