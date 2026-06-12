@@ -312,7 +312,7 @@ Top-level settings:
   "date_format": "long",         // "long" (July 4, 2019) | "medium" (Jul 4, 2019) | "short" (7/4/2019) | "iso" (2019-07-04)
   "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
   "frame_defaults": {            // mat and frame style applied to every slot; per-slot frame: {} overrides
-    "mat_color": "#000000",      // mat color behind the photo (any CSS color)
+    "mat_color": "#000000",      // mat color behind the photo (any CSS color) — future: sync with time-of-day (e.g. warm white during day, black at night)
     "mat_width": 16,             // mat thickness in pixels
     "show_frame": true,          // show outer frame border
     "frame_color": "#2c2318",    // dark wood frame (any CSS color)
