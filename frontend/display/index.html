@@ -41,7 +41,7 @@
 
     .mat-frame img {
       width: 100%; height: 100%;
-      object-fit: contain;
+      object-fit: contain; /* default; overridden per-slot by applyFrameStyle */
       position: absolute;
       top: 0; left: 0;
       transition: opacity 0.8s ease;
@@ -118,6 +118,7 @@
 
     let config = null;
     let layouts = null;
+    let activeSlots = [];
 
     async function fetchJSON(url) {
       const r = await fetch(url);
@@ -156,15 +157,10 @@
         imgB.className = 'hidden';
         matFrame.append(imgA, imgB);
 
-        // Metadata overlay sits above the mat, anchored to the slot
+        // Metadata overlay sits above the mat, anchored to the slot.
+        // Pills are created dynamically in updateOverlay so hidden fields take no space.
         const overlay = document.createElement('div');
         overlay.className = 'slot-overlay';
-        for (const role of ['location', 'camera', 'megapixels', 'fstop', 'shutter_speed', 'iso', 'focal_length', 'date']) {
-          const pill = document.createElement('div');
-          pill.className = 'overlay-pill';
-          pill.dataset.role = role;
-          overlay.appendChild(pill);
-        }
 
         div.append(matFrame, overlay);
         collage.appendChild(div);
@@ -175,12 +171,46 @@
       return `${API}/api/image?path=${encodeURIComponent(filePath)}`;
     }
 
+    function getTimeOfDayTemplate() {
+      const tod = config?.time_of_day;
+      if (!tod?.enabled) return null;
+      const now = new Date();
+      const cur = now.getHours() * 60 + now.getMinutes();
+      const [dh, dm] = (tod.day_start || '07:00').split(':').map(Number);
+      const [nh, nm] = (tod.night_start || '20:00').split(':').map(Number);
+      const dayMins = dh * 60 + dm, nightMins = nh * 60 + nm;
+      const isDay = dayMins < nightMins
+        ? (cur >= dayMins && cur < nightMins)
+        : (cur >= dayMins || cur < nightMins);
+      return isDay ? (tod.day || null) : (tod.night || null);
+    }
+
+    function getTodPeriodName() {
+      const tod = config?.time_of_day;
+      if (!tod?.enabled) return null;
+      return getTimeOfDayTemplate() === tod.day ? 'day' : 'night';
+    }
+
+    let lastTodPeriod = null;
+
+    function applyTodStyles() {
+      const tod = getTimeOfDayTemplate();
+      document.getElementById('collage').style.background = tod?.wall_color ?? config.wall_color ?? '#1a1a1a';
+      for (const slotCfg of activeSlots) {
+        const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+        if (slotEl) applyFrameStyle(slotEl, slotCfg);
+      }
+      lastTodPeriod = getTodPeriodName();
+    }
+
     function applyFrameStyle(slotEl, slotCfg) {
       const matFrame = slotEl.querySelector('.mat-frame');
       if (!matFrame) return;
 
-      // Merge global frame_defaults with per-slot frame overrides
-      const frameCfg = { ...(config.frame_defaults || {}), ...(slotCfg.frame || {}) };
+      // TOD template sits between global defaults and per-slot overrides in priority
+      const tod = getTimeOfDayTemplate();
+      const todFrame = tod ? { mat_color: tod.mat_color, mat_width: tod.mat_width, show_frame: tod.show_frame, frame_color: tod.frame_color, frame_width: tod.frame_width } : {};
+      const frameCfg = { ...(config.frame_defaults || {}), ...todFrame, ...(slotCfg.frame || {}) };
 
       const matWidth  = frameCfg.mat_width  ?? 16;
       const matColor  = frameCfg.mat_color  ?? '#000000';
@@ -191,6 +221,9 @@
       matFrame.style.padding    = `${matWidth}px`;
       matFrame.style.background = matColor;
       matFrame.style.border     = frameOn ? `${frameWidth}px solid ${frameColor}` : 'none';
+
+      const fit = slotCfg.fill_mode === 'cover' ? 'cover' : 'contain';
+      matFrame.querySelectorAll('img').forEach(img => img.style.objectFit = fit);
     }
 
     // Shuffled queue per folder — ensures no image repeats until all are shown,
@@ -238,7 +271,7 @@
       const slotEl = document.getElementById(`slot-${slotCfg.id}`);
       if (!slotEl) return;
 
-      const folder = slotCfg.source_path;
+      const folder = (slotCfg.use_global?.source !== false) ? (config.source_path || slotCfg.source_path) : slotCfg.source_path;
       await ensureQueue(folder);
       const nextPath = nextFromQueue(folder);
       if (!nextPath) return;
@@ -298,40 +331,88 @@
       // Global kill switch
       if (config.show_metadata === false) return;
 
-      // Merge: global defaults first, slot-specific fields override
-      const meta = { ...(config.metadata_defaults || {}), ...(slotCfg.metadata || {}) };
+      // Respect use_global.metadata: if true, use only global defaults (slot.metadata is empty)
+      const meta = (slotCfg.use_global?.metadata !== false)
+        ? (config.metadata_defaults || {})
+        : { ...(config.metadata_defaults || {}), ...(slotCfg.metadata || {}) };
+
       const maxPills = config.max_metadata_pills ?? Infinity;
       const anyEnabled = meta.show_date || METADATA_FIELDS.some(f => meta[f.flag]);
-      if (!anyEnabled) return;
 
       const slotEl = document.getElementById(`slot-${slotCfg.id}`);
       if (!slotEl) return;
+      const overlay = slotEl.querySelector('.slot-overlay');
+      if (!overlay) return;
 
-      slotEl.querySelectorAll('.overlay-pill').forEach(p => p.classList.remove('visible'));
+      // Clear previous pills completely — hidden elements in a flex column take up space
+      overlay.innerHTML = '';
+      if (!anyEnabled) return;
 
       try {
         const data = await fetchJSON(`${API}/api/metadata?path=${encodeURIComponent(imagePath)}`);
 
-        // Show non-date fields up to the cap
+        const pills = [];
+
+        // Non-date fields up to the cap
         let shown = 0;
         for (const { flag, key } of METADATA_FIELDS) {
           if (shown >= maxPills) break;
           if (!meta[flag] || !data[key]) continue;
-          const pill = slotEl.querySelector(`[data-role="${key}"]`);
-          if (!pill) continue;
+          const pill = document.createElement('div');
+          pill.className = 'overlay-pill';
           pill.textContent = data[key];
-          pill.classList.add('visible');
+          pills.push(pill);
           shown++;
         }
 
-        // Date always appears at the bottom, not counted against the cap
+        // Date always at bottom, not counted against the cap
         if (meta.show_date && data.date_iso) {
-          const pill = slotEl.querySelector('[data-role="date"]');
-          if (pill) { pill.textContent = formatDate(data.date_iso); pill.classList.add('visible'); }
+          const pill = document.createElement('div');
+          pill.className = 'overlay-pill';
+          pill.textContent = formatDate(data.date_iso);
+          pills.push(pill);
         }
+
+        if (pills.length === 0) return;
+        pills.forEach(p => overlay.appendChild(p));
+        // Double rAF so the browser registers the initial opacity:0 before transitioning to 1
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          pills.forEach(p => p.classList.add('visible'));
+        }));
       } catch (e) {
         // Metadata is non-critical — fail silently
       }
+    }
+
+    // Config polling — apply changes live when config.json is updated by the editor
+    let configHash = '';
+    async function checkConfigUpdate() {
+      try {
+        const fresh = await fetchJSON(`${API}/api/config`);
+        const h = JSON.stringify(fresh);
+        if (!configHash || h === configHash) { configHash = h; return; }
+        configHash = h;
+
+        // Layout changes require a DOM rebuild — reload is the simplest correct path
+        if (fresh.layout !== config.layout || fresh.daily_layout_rotation !== config.daily_layout_rotation) {
+          window.location.reload();
+          return;
+        }
+
+        // Everything else (colors, frame, metadata) — patch in place so photos keep cycling
+        const oldSlots = config.slots;
+        Object.assign(config, fresh);
+        config.slots = oldSlots;
+        (fresh.slots || []).forEach((s, i) => { if (oldSlots[i]) Object.assign(oldSlots[i], s); });
+
+        // Re-apply wall color + frame (TOD template re-evaluated after config patch)
+        applyTodStyles();
+
+        for (const slotCfg of activeSlots) {
+          const path = slotState[slotCfg.id]?.currentPath;
+          if (path) updateOverlay(slotCfg, path);
+        }
+      } catch (e) { /* non-critical — try again next interval */ }
     }
 
     // Group cycling: slots in the same group advance together
@@ -365,18 +446,29 @@
         return;
       }
 
-      const layout = layouts.find(l => l.id === config.layout) || layouts[0];
+      // If daily rotation is on, pick a layout by day-of-year so it changes each day
+      // but stays consistent throughout the day. Layout selection (choosing which
+      // layouts are eligible) is planned for M4.
+      let layout;
+      if (config.daily_layout_rotation && layouts.length > 1) {
+        const now = new Date();
+        const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+        layout = layouts[dayOfYear % layouts.length];
+      } else {
+        layout = layouts.find(l => l.id === config.layout) || layouts[0];
+      }
       if (!layout) { showError('No layouts found.'); return; }
 
-      const activeSlots = config.slots.slice(0, layout.slots.length);
+      // Pad config.slots up to the layout's slot count using slot 1's config as a template
+      const slotTemplate = config.slots[0] || { mode: 'photos', source: 'local', source_path: 'photos', cycle_seconds: 30 };
+      while (config.slots.length < layout.slots.length) {
+        config.slots.push({ ...slotTemplate, id: config.slots.length + 1, metadata: {}, frame: {} });
+      }
+      activeSlots = config.slots.slice(0, layout.slots.length);
       applyLayout(layout, activeSlots.length);
 
-      // Apply wall color, frame, and mat styles
-      document.getElementById('collage').style.background = config.wall_color || '#1a1a1a';
-      for (const slotCfg of activeSlots) {
-        const slotEl = document.getElementById(`slot-${slotCfg.id}`);
-        if (slotEl) applyFrameStyle(slotEl, slotCfg);
-      }
+      // Apply wall color and frame styles (respects TOD template if enabled)
+      applyTodStyles();
 
       // Initialize state and load first image for each slot
       for (const slotCfg of activeSlots) {
@@ -387,8 +479,14 @@
       // Start cycling timers
       for (const slotCfg of activeSlots) {
         scheduleSlot(slotCfg);
-
       }
+
+      // Seed the hash and begin polling — display reloads automatically when config changes
+      configHash = JSON.stringify(config);
+      setInterval(checkConfigUpdate, 3000);
+
+      // Re-apply TOD styles at period boundaries (checked every minute)
+      setInterval(() => { if (getTodPeriodName() !== lastTodPeriod) applyTodStyles(); }, 60000);
     }
 
     init();

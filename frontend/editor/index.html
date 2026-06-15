@@ -127,7 +127,9 @@
     .field:last-child { margin-bottom: 0; }
 
     .field label {
-      display: block;
+      display: flex;
+      align-items: center;
+      gap: 3px;
       font-size: 12px;
       color: var(--text-muted);
       margin-bottom: 4px;
@@ -167,7 +169,10 @@
       padding: 4px 0;
     }
 
-    .toggle-row label {
+    .toggle-row > label:first-child {
+      display: flex;
+      align-items: center;
+      gap: 3px;
       font-size: 13px;
       color: var(--text);
     }
@@ -203,6 +208,11 @@
 
     .toggle input:checked + .toggle-track { background: var(--accent); }
     .toggle input:checked + .toggle-track::after { transform: translateX(16px); }
+
+    /* Smaller toggle for adopt controls */
+    .toggle-sm { width: 28px; height: 16px; }
+    .toggle-sm .toggle-track::after { width: 10px; height: 10px; left: 3px; top: 3px; }
+    .toggle-sm input:checked + .toggle-track::after { transform: translateX(12px); }
 
     /* ── Collage preview ── */
     #preview-area {
@@ -281,6 +291,50 @@
       border-bottom: 1px solid var(--border);
     }
 
+    /* Section with "Use global" adopt toggle in header */
+    .section-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-header-row h4 {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+
+    .adopt-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .adopt-row > span {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    /* Grayed-out section content when "Use global" is on */
+    .section-disabled {
+      opacity: 0.4;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    /* Small colored dot next to a field label indicating it overrides the global */
+    .override-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
     .meta-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -310,6 +364,98 @@
     .btn-primary:hover { background: var(--accent-hover); }
     .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
     .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-danger { background: rgba(192,57,43,0.15); color: #e74c3c; border: 1px solid rgba(192,57,43,0.3); }
+    .btn-danger:hover { background: rgba(192,57,43,0.3); }
+    .btn-danger-solid { background: #c0392b; color: white; }
+    .btn-danger-solid:hover { background: #a93226; }
+
+    /* ── Modal ── */
+    .folder-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+    }
+    .folder-item:hover { background: var(--surface2); }
+    .folder-item:last-child { border-bottom: none; }
+
+    .folder-browser-path {
+      font-size: 11px;
+      color: var(--text-muted);
+      word-break: break-all;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .path-row {
+      display: flex;
+      gap: 6px;
+    }
+    .path-row input { flex: 1; }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      max-width: 420px;
+      width: 90%;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .modal h3 { font-size: 15px; font-weight: 600; }
+
+    .modal p { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+
+    .modal-note {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .modal-note strong { color: var(--text); display: block; margin-bottom: 6px; }
+    .modal-note ul { margin-left: 16px; }
+    .modal-note li { margin-bottom: 3px; }
+
+    .modal-cb-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .modal-cb-row input[type="checkbox"] {
+      margin-top: 2px;
+      flex-shrink: 0;
+      accent-color: var(--accent);
+    }
+
+    .modal-btn-row {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
   </style>
 </head>
 <body>
@@ -325,6 +471,14 @@
 
     <div class="sidebar-section">
       <h3>Global Settings</h3>
+
+      <div class="field">
+        <label>Default media folder</label>
+        <div class="path-row">
+          <input type="text" id="g-source-path" placeholder="photos" />
+          <button class="btn btn-secondary" type="button" id="g-source-browse">Browse…</button>
+        </div>
+      </div>
 
       <div class="field">
         <label>Wall color</label>
@@ -353,6 +507,19 @@
           <span class="toggle-track"></span>
         </label>
       </div>
+
+      <!-- TODO M4: add layout selection (choose which layouts rotate) -->
+      <div class="toggle-row" style="margin-top:10px">
+        <label>Rotate layout daily</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-daily-layout" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+
+      <button class="btn btn-danger" style="width:100%;margin-top:14px;padding:7px 12px;" onclick="openResetAllModal()">
+        Reset all slots to global
+      </button>
     </div>
 
     <div class="sidebar-section">
@@ -385,6 +552,19 @@
         <label>Frame width (px)</label>
         <input type="number" id="g-frame-width" min="0" max="40" />
       </div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Time-of-Day</h3>
+      <div class="toggle-row" style="margin-bottom:10px;">
+        <label>Enabled</label>
+        <label class="toggle">
+          <input type="checkbox" id="tod-enabled" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Automatically shift wall and frame colors between day and night.</p>
+      <button class="btn btn-secondary" style="width:100%;" id="tod-configure-btn">Configure templates…</button>
     </div>
 
     <div class="sidebar-section">
@@ -423,14 +603,14 @@
 <script>
   const API = '';
   const META_FIELDS = [
-    { key: 'show_date',         label: 'Date' },
-    { key: 'show_location',     label: 'Location' },
-    { key: 'show_camera',       label: 'Camera' },
-    { key: 'show_megapixels',   label: 'Megapixels' },
-    { key: 'show_fstop',        label: 'F-stop' },
-    { key: 'show_shutter_speed',label: 'Shutter speed' },
-    { key: 'show_iso',          label: 'ISO' },
-    { key: 'show_focal_length', label: 'Focal length' },
+    { key: 'show_date',          label: 'Date' },
+    { key: 'show_location',      label: 'Location' },
+    { key: 'show_camera',        label: 'Camera' },
+    { key: 'show_megapixels',    label: 'Megapixels' },
+    { key: 'show_fstop',         label: 'F-stop' },
+    { key: 'show_shutter_speed', label: 'Shutter speed' },
+    { key: 'show_iso',           label: 'ISO' },
+    { key: 'show_focal_length',  label: 'Focal length' },
   ];
 
   let config = null;
@@ -447,25 +627,54 @@
     const el = document.getElementById('status-msg');
     el.textContent = msg;
     el.className = type;
-    if (type === 'success') setTimeout(() => { el.textContent = 'Unsaved changes will not affect the display until you save.'; el.className = ''; }, 3000);
+    if (type === 'success') setTimeout(() => {
+      el.textContent = 'Unsaved changes will not affect the display until you save.';
+      el.className = '';
+    }, 3000);
   }
 
-  // ── Helpers ──
+  // ── Config helpers ──
 
-  function getGlobalFrame() {
-    return config.frame_defaults || {};
+  function getGlobalFrame() { return config.frame_defaults || {}; }
+  function getGlobalMeta()  { return config.metadata_defaults || {}; }
+
+  function ensureUseGlobal(slotCfg) {
+    if (!slotCfg.use_global) slotCfg.use_global = { frame: true, metadata: true };
+  }
+
+  function migrateUseGlobal(slotCfg) {
+    if (slotCfg.use_global) return;
+    slotCfg.use_global = {
+      frame:    !slotCfg.frame    || Object.keys(slotCfg.frame).length    === 0,
+      metadata: !slotCfg.metadata || Object.keys(slotCfg.metadata).length === 0,
+      source:   !slotCfg.source_path || slotCfg.source_path === config.source_path,
+    };
   }
 
   function getSlotFrame(slotCfg) {
+    if (slotCfg.use_global?.frame !== false) return getGlobalFrame();
     return { ...getGlobalFrame(), ...(slotCfg.frame || {}) };
   }
 
-  function getGlobalMeta() {
-    return config.metadata_defaults || {};
+  function getSlotMeta(slotCfg) {
+    if (slotCfg.use_global?.metadata !== false) return getGlobalMeta();
+    return { ...getGlobalMeta(), ...(slotCfg.metadata || {}) };
   }
 
-  function getSlotMeta(slotCfg) {
-    return { ...getGlobalMeta(), ...(slotCfg.metadata || {}) };
+  function hasCustomSettings(slotCfg) {
+    return slotCfg.use_global?.frame     === false ||
+           slotCfg.use_global?.metadata  === false ||
+           slotCfg.use_global?.source    === false;
+  }
+
+  function isFrameKeyOverridden(slotCfg, key) {
+    return !!(slotCfg.frame && key in slotCfg.frame &&
+              slotCfg.frame[key] !== (config.frame_defaults || {})[key]);
+  }
+
+  function isMetaKeyOverridden(slotCfg, key) {
+    return !!(slotCfg.metadata && key in slotCfg.metadata &&
+              slotCfg.metadata[key] !== (config.metadata_defaults || {})[key]);
   }
 
   // ── Layout picker ──
@@ -514,6 +723,8 @@
     preview.style.gridTemplateColumns = layout.grid_template_columns;
     preview.style.gridTemplateRows = layout.grid_template_rows;
     preview.style.gap = '4px';
+    preview.style.padding = '4px';
+    preview.style.background = config.wall_color || '#1a1a1a';
     preview.innerHTML = '';
 
     const activeSlots = config.slots.slice(0, layout.slots.length);
@@ -524,16 +735,47 @@
 
       const div = document.createElement('div');
       div.className = 'preview-slot' + (slotCfg.id === selectedSlotId ? ' selected' : '');
-      div.style.gridArea = slotDef.grid_area;
-      div.style.padding = `${frameCfg.mat_width ?? 16}px`;
+      div.style.gridArea  = slotDef.grid_area;
+      div.style.padding   = `${frameCfg.mat_width ?? 16}px`;
       div.style.background = frameCfg.mat_color ?? '#000';
+      div.style.position  = 'relative';
       if (frameCfg.show_frame ?? true) {
         div.style.border = `${frameCfg.frame_width ?? 8}px solid ${frameCfg.frame_color ?? '#2c2318'}`;
+      } else {
+        div.style.border = 'none';
+      }
+
+      // Custom-settings badge — blue dot in top-right corner
+      if (activeSlots[i] && hasCustomSettings(slotCfg)) {
+        const badge = document.createElement('div');
+        badge.style.cssText = 'position:absolute;top:5px;right:5px;width:7px;height:7px;background:var(--accent);border-radius:50%;opacity:0.85;z-index:1;pointer-events:none;';
+        badge.title = 'This slot has custom settings (not using global defaults)';
+        div.appendChild(badge);
       }
 
       const inner = document.createElement('div');
-      inner.style.cssText = 'width:100%;height:100%;background:#2e2e2e;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:clamp(10px,2vw,20px);font-weight:600;color:#888';
-      inner.textContent = slotCfg.id ?? slotDef.id;
+      inner.style.cssText = 'width:100%;height:100%;background:#2e2e2e;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:clamp(10px,2vw,20px);font-weight:600;color:#888;position:relative;overflow:hidden;';
+
+      const numSpan = document.createElement('span');
+      numSpan.textContent = slotCfg.id ?? slotDef.id;
+      inner.appendChild(numSpan);
+
+      // Metadata position preview — small pills at bottom-left showing where overlays appear
+      if (config.show_metadata !== false) {
+        const slotMeta = getSlotMeta(slotCfg);
+        let pillCount = META_FIELDS.filter(f => slotMeta[f.key]).length;
+        if (pillCount === 0) pillCount = 1;
+        const maxPills = config.max_metadata_pills > 0 ? config.max_metadata_pills : META_FIELDS.length;
+        pillCount = Math.min(pillCount, maxPills);
+        const pillBar = document.createElement('div');
+        pillBar.style.cssText = 'position:absolute;bottom:4px;left:4px;display:flex;flex-direction:column;gap:2px;pointer-events:none;';
+        for (let p = 0; p < pillCount; p++) {
+          const pill = document.createElement('div');
+          pill.style.cssText = `height:4px;width:14px;background:rgba(255,255,255,0.2);border-radius:2px;`;
+          pillBar.appendChild(pill);
+        }
+        inner.appendChild(pillBar);
+      }
 
       div.appendChild(inner);
       div.addEventListener('click', () => selectSlot(slotCfg.id ?? slotDef.id));
@@ -550,19 +792,21 @@
   // ── Global settings ──
 
   function bindGlobalSettings() {
-    const g = config;
-    const fd = g.frame_defaults || {};
+    const g  = config;
+    const fd = g.frame_defaults    || {};
     const md = g.metadata_defaults || {};
 
-    document.getElementById('g-wall-color').value = g.wall_color || '#1a1a1a';
-    document.getElementById('g-date-format').value = g.date_format || 'long';
-    document.getElementById('g-max-pills').value = g.max_metadata_pills ?? 0;
-    document.getElementById('g-show-metadata').checked = g.show_metadata !== false;
-    document.getElementById('g-mat-color').value = fd.mat_color || '#000000';
-    document.getElementById('g-mat-width').value = fd.mat_width ?? 16;
-    document.getElementById('g-show-frame').checked = fd.show_frame !== false;
-    document.getElementById('g-frame-color').value = fd.frame_color || '#2c2318';
-    document.getElementById('g-frame-width').value = fd.frame_width ?? 8;
+    document.getElementById('g-source-path').value  = g.source_path   || 'photos';
+    document.getElementById('g-wall-color').value   = g.wall_color    || '#1a1a1a';
+    document.getElementById('g-date-format').value  = g.date_format   || 'long';
+    document.getElementById('g-max-pills').value    = g.max_metadata_pills ?? 0;
+    document.getElementById('g-show-metadata').checked  = g.show_metadata !== false;
+    document.getElementById('g-daily-layout').checked   = g.daily_layout_rotation === true;
+    document.getElementById('g-mat-color').value    = fd.mat_color    || '#000000';
+    document.getElementById('g-mat-width').value    = fd.mat_width    ?? 16;
+    document.getElementById('g-show-frame').checked = fd.show_frame   !== false;
+    document.getElementById('g-frame-color').value  = fd.frame_color  || '#2c2318';
+    document.getElementById('g-frame-width').value  = fd.frame_width  ?? 8;
 
     // Global metadata toggles
     const container = document.getElementById('g-meta-toggles');
@@ -571,33 +815,114 @@
       container.appendChild(makeToggleRow(label, md[key] || false, checked => {
         if (!config.metadata_defaults) config.metadata_defaults = {};
         config.metadata_defaults[key] = checked;
+        buildPreview(); // re-render pills
       }));
     }
 
-    // Wire global setting changes back to config
-    document.getElementById('g-wall-color').oninput = e => { config.wall_color = e.target.value; buildPreview(); };
-    document.getElementById('g-date-format').onchange = e => { config.date_format = e.target.value; };
-    document.getElementById('g-max-pills').oninput = e => {
+    // Wire global setting changes
+    document.getElementById('g-source-path').oninput   = e => { config.source_path = e.target.value; scheduleAutoSave(); };
+    document.getElementById('g-source-browse').onclick  = () => {
+      const inp = document.getElementById('g-source-path');
+      openFolderBrowser(inp.value, path => { inp.value = path; config.source_path = path; scheduleAutoSave(); });
+    };
+    document.getElementById('g-wall-color').oninput    = e => { config.wall_color = e.target.value; buildPreview(); scheduleAutoSave(); };
+    document.getElementById('g-date-format').onchange  = e => { config.date_format = e.target.value; scheduleAutoSave(); };
+    document.getElementById('g-max-pills').oninput     = e => {
       const v = parseInt(e.target.value);
       config.max_metadata_pills = v > 0 ? v : null;
+      scheduleAutoSave();
     };
-    document.getElementById('g-show-metadata').onchange = e => { config.show_metadata = e.target.checked; };
-    document.getElementById('g-mat-color').oninput = e => { ensureFrameDefaults(); config.frame_defaults.mat_color = e.target.value; buildPreview(); };
-    document.getElementById('g-mat-width').oninput = e => { ensureFrameDefaults(); config.frame_defaults.mat_width = parseInt(e.target.value); buildPreview(); };
-    document.getElementById('g-show-frame').onchange = e => { ensureFrameDefaults(); config.frame_defaults.show_frame = e.target.checked; buildPreview(); };
-    document.getElementById('g-frame-color').oninput = e => { ensureFrameDefaults(); config.frame_defaults.frame_color = e.target.value; buildPreview(); };
-    document.getElementById('g-frame-width').oninput = e => { ensureFrameDefaults(); config.frame_defaults.frame_width = parseInt(e.target.value); buildPreview(); };
+    document.getElementById('g-show-metadata').onchange  = e => { config.show_metadata = e.target.checked; buildPreview(); scheduleAutoSave(); };
+    document.getElementById('g-daily-layout').onchange   = e => { config.daily_layout_rotation = e.target.checked; scheduleAutoSave(); };
+    document.getElementById('g-mat-color').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_color   = e.target.value; buildPreview(); scheduleAutoSave(); };
+    document.getElementById('g-mat-width').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_width   = parseInt(e.target.value); buildPreview(); scheduleAutoSave(); };
+    document.getElementById('g-show-frame').onchange  = e => { ensureFrameDefaults(); config.frame_defaults.show_frame  = e.target.checked; buildPreview(); scheduleAutoSave(); };
+    document.getElementById('g-frame-color').oninput  = e => { ensureFrameDefaults(); config.frame_defaults.frame_color = e.target.value; buildPreview(); scheduleAutoSave(); };
+    document.getElementById('g-frame-width').oninput  = e => { ensureFrameDefaults(); config.frame_defaults.frame_width = parseInt(e.target.value); buildPreview(); scheduleAutoSave(); };
+
+    const todEl = document.getElementById('tod-enabled');
+    todEl.checked = config.time_of_day?.enabled || false;
+    todEl.onchange = e => { ensureTod(); config.time_of_day.enabled = e.target.checked; scheduleAutoSave(); };
+    document.getElementById('tod-configure-btn').onclick = openTodModal;
   }
 
   function ensureFrameDefaults() {
     if (!config.frame_defaults) config.frame_defaults = {};
   }
 
+  // ── Reset all modal ──
+
+  function openResetAllModal() {
+    if (document.querySelector('.modal-overlay')) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.addEventListener('click', e => e.stopPropagation());
+
+    const title = document.createElement('h3');
+    title.textContent = 'Reset all slots to global settings?';
+
+    const body = document.createElement('p');
+    body.textContent = 'This removes all per-slot frame and metadata overrides. Every slot will inherit from the global defaults.';
+
+    const note = document.createElement('div');
+    note.className = 'modal-note';
+    note.innerHTML = '<strong>Always per-slot — not affected:</strong><ul><li>Cycle timer</li><li>Group assignment</li><li>Photo fit mode (contain / fill)</li></ul>';
+
+    const cbRow = document.createElement('label');
+    cbRow.className = 'modal-cb-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    const cbText = document.createElement('span');
+    cbText.textContent = 'Also reset cycle timers to 30s and clear groupings';
+    cbRow.append(cb, cbText);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'modal-btn-row';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-secondary';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = () => document.body.removeChild(overlay);
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'btn btn-danger-solid';
+    confirmBtn.textContent = 'Reset All Slots';
+    confirmBtn.onclick = () => {
+      for (const slot of config.slots) {
+        if (!slot.use_global) slot.use_global = {};
+        slot.use_global.frame    = true;
+        slot.use_global.metadata = true;
+        slot.use_global.source   = true;
+        slot.frame       = {};
+        slot.metadata    = {};
+        slot.source_path = null;
+        if (cb.checked) {
+          slot.cycle_seconds = 30;
+          slot.group = null;
+        }
+      }
+      document.body.removeChild(overlay);
+      buildPreview();
+      renderSlotPanel();
+      setStatus('All slots reset to global settings.', '');
+    };
+
+    btnRow.append(cancelBtn, confirmBtn);
+    modal.append(title, body, note, cbRow, btnRow);
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', () => document.body.removeChild(overlay));
+    document.body.appendChild(overlay);
+  }
+
   // ── Slot panel ──
 
   function renderSlotPanel() {
     const title = document.getElementById('slot-panel-title');
-    const body = document.getElementById('slot-panel-body');
+    const body  = document.getElementById('slot-panel-body');
 
     if (!selectedSlotId) {
       title.textContent = 'Select a slot to configure it';
@@ -607,6 +932,7 @@
 
     const slotCfg = config.slots.find(s => s.id === selectedSlotId);
     if (!slotCfg) return;
+    ensureUseGlobal(slotCfg);
 
     title.textContent = `Slot ${selectedSlotId} settings`;
     body.innerHTML = '';
@@ -614,65 +940,84 @@
     const grid = document.createElement('div');
     grid.className = 'panel-grid';
 
-    // Left column
+    // ── Left column ──
     const left = document.createElement('div');
 
-    // Source
-    const srcSection = makeSection('Source');
-    srcSection.appendChild(makeField('Photo folder', 'text', slotCfg.source_path || '', v => { slotCfg.source_path = v; }));
-    srcSection.appendChild(makeField('Cycle every (seconds)', 'number', slotCfg.cycle_seconds || 30, v => { slotCfg.cycle_seconds = parseInt(v); }));
-    srcSection.appendChild(makeField('Group (optional letter, e.g. A)', 'text', slotCfg.group || '', v => { slotCfg.group = v || null; }));
-    left.appendChild(srcSection);
+    // Source — adoptable (media folder)
+    const sourceAdopted = slotCfg.use_global.source !== false;
+    const srcSec = makeSectionWithAdopt('Media Source', sourceAdopted, adopted => {
+      slotCfg.use_global.source = adopted;
+      if (adopted) slotCfg.source_path = null;
+      buildPreview();
+      renderSlotPanel();
+      scheduleAutoSave();
+    });
+    const effectiveSrc = sourceAdopted ? (config.source_path || '') : (slotCfg.source_path || '');
+    const srcOverridden = !sourceAdopted && !!slotCfg.source_path && slotCfg.source_path !== config.source_path;
+    srcSec.sectionBody.appendChild(makePathField('Media folder', effectiveSrc, v => { slotCfg.source_path = v; scheduleAutoSave(); }, srcOverridden));
+    left.appendChild(srcSec.el);
 
-    // Fill mode
+    // Schedule — always per-slot (cycle timer and group)
+    const schedSection = makeSection('Schedule');
+    schedSection.appendChild(makeField('Cycle every (seconds)', 'number', slotCfg.cycle_seconds || 30, v => { slotCfg.cycle_seconds = parseInt(v); scheduleAutoSave(); }));
+    schedSection.appendChild(makeField('Group (optional letter, e.g. A)', 'text', slotCfg.group || '', v => { slotCfg.group = v || null; scheduleAutoSave(); }));
+    left.appendChild(schedSection);
+
+    // Photo Fit — always per-slot
     const fillSection = makeSection('Photo Fit');
     const fillMode = slotCfg.fill_mode || 'contain';
     const fillSelect = document.createElement('select');
-    fillSelect.className = 'field';
     fillSelect.style.cssText = 'width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:6px 8px;font-size:13px;outline:none;';
-    [['contain', 'Fit — full photo, letterboxed'], ['cover', 'Fill — crop to fit, no bars']].forEach(([val, label]) => {
+    [['contain', 'Fit — full photo, letterboxed'], ['cover', 'Fill — crop to fit, no bars']].forEach(([val, lbl]) => {
       const opt = document.createElement('option');
-      opt.value = val; opt.textContent = label;
+      opt.value = val; opt.textContent = lbl;
       if (val === fillMode) opt.selected = true;
       fillSelect.appendChild(opt);
     });
-    fillSelect.onchange = e => { slotCfg.fill_mode = e.target.value; };
+    fillSelect.onchange = e => { slotCfg.fill_mode = e.target.value; scheduleAutoSave(); };
     fillSection.appendChild(fillSelect);
     left.appendChild(fillSection);
 
-    // Frame overrides
-    const frameSection = makeSection('Frame (overrides global)');
-    const slotFrame = slotCfg.frame || {};
-    frameSection.appendChild(makeColorField('Mat color', slotFrame.mat_color || config.frame_defaults?.mat_color || '#000000', v => { ensureSlotFrame(slotCfg); slotCfg.frame.mat_color = v; buildPreview(); }));
-    frameSection.appendChild(makeField('Mat width (px)', 'number', slotFrame.mat_width ?? config.frame_defaults?.mat_width ?? 16, v => { ensureSlotFrame(slotCfg); slotCfg.frame.mat_width = parseInt(v); buildPreview(); }));
-    frameSection.appendChild(makeToggleRow('Show frame border', slotFrame.show_frame ?? config.frame_defaults?.show_frame ?? true, v => { ensureSlotFrame(slotCfg); slotCfg.frame.show_frame = v; buildPreview(); }));
-    frameSection.appendChild(makeColorField('Frame color', slotFrame.frame_color || config.frame_defaults?.frame_color || '#2c2318', v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_color = v; buildPreview(); }));
-    frameSection.appendChild(makeField('Frame width (px)', 'number', slotFrame.frame_width ?? config.frame_defaults?.frame_width ?? 8, v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_width = parseInt(v); buildPreview(); }));
-    left.appendChild(frameSection);
+    // Frame — adoptable
+    const frameAdopted = slotCfg.use_global.frame !== false;
+    const frameSec = makeSectionWithAdopt('Frame', frameAdopted, adopted => {
+      slotCfg.use_global.frame = adopted;
+      if (adopted) slotCfg.frame = {};
+      buildPreview();
+      renderSlotPanel();
+      scheduleAutoSave();
+    });
+    const ef = getSlotFrame(slotCfg);
+    frameSec.sectionBody.appendChild(makeColorField('Mat color', ef.mat_color ?? '#000000', v => { ensureSlotFrame(slotCfg); slotCfg.frame.mat_color = v; buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'mat_color')));
+    frameSec.sectionBody.appendChild(makeField('Mat width (px)', 'number', ef.mat_width ?? 16, v => { ensureSlotFrame(slotCfg); slotCfg.frame.mat_width = parseInt(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'mat_width')));
+    frameSec.sectionBody.appendChild(makeToggleRow('Show frame border', ef.show_frame ?? true, v => { ensureSlotFrame(slotCfg); slotCfg.frame.show_frame = v; buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'show_frame')));
+    frameSec.sectionBody.appendChild(makeColorField('Frame color', ef.frame_color ?? '#2c2318', v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_color = v; buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_color')));
+    frameSec.sectionBody.appendChild(makeField('Frame width (px)', 'number', ef.frame_width ?? 8, v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_width = parseInt(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_width')));
+    left.appendChild(frameSec.el);
 
-    // Right column — metadata
+    // ── Right column — Metadata (adoptable) ──
     const right = document.createElement('div');
-    const metaSection = makeSection('Metadata overlays');
-    metaSection.appendChild(document.createTextNode('These override the global defaults for this slot only.'));
-    metaSection.querySelector('span, p')?.remove();
-    const note = document.createElement('p');
-    note.style.cssText = 'font-size:11px;color:var(--text-muted);margin-bottom:10px;';
-    note.textContent = 'Overrides global defaults for this slot only.';
-    metaSection.appendChild(note);
+    const metaAdopted = slotCfg.use_global.metadata !== false;
+    const metaSec = makeSectionWithAdopt('Metadata Overlays', metaAdopted, adopted => {
+      slotCfg.use_global.metadata = adopted;
+      if (adopted) slotCfg.metadata = {};
+      renderSlotPanel();
+      scheduleAutoSave();
+    });
 
     const metaGrid = document.createElement('div');
     metaGrid.className = 'meta-grid';
-    const slotMeta = slotCfg.metadata || {};
-    const globalMeta = getGlobalMeta();
+    const em = getSlotMeta(slotCfg);
     for (const { key, label } of META_FIELDS) {
-      const effective = key in slotMeta ? slotMeta[key] : globalMeta[key] || false;
-      metaGrid.appendChild(makeToggleRow(label, effective, checked => {
+      metaGrid.appendChild(makeToggleRow(label, em[key] || false, checked => {
         if (!slotCfg.metadata) slotCfg.metadata = {};
         slotCfg.metadata[key] = checked;
-      }));
+        buildPreview();
+        scheduleAutoSave();
+      }, !metaAdopted && isMetaKeyOverridden(slotCfg, key)));
     }
-    metaSection.appendChild(metaGrid);
-    right.appendChild(metaSection);
+    metaSec.sectionBody.appendChild(metaGrid);
+    right.appendChild(metaSec.el);
 
     grid.append(left, right);
     body.appendChild(grid);
@@ -684,6 +1029,255 @@
 
   // ── DOM helpers ──
 
+  const TOD_DEFAULTS = {
+    day:   { wall_color: '#f5f0e8', mat_color: '#a8c8e8', mat_width: 20, show_frame: true, frame_color: '#6b4226', frame_width: 8 },
+    night: { wall_color: '#000000', mat_color: '#3a3a3a', mat_width: 20, show_frame: true, frame_color: '#1c1c1c', frame_width: 8 },
+  };
+
+  function ensureTod() {
+    if (!config.time_of_day) {
+      config.time_of_day = {
+        enabled: false,
+        day_start: '07:00',
+        night_start: '20:00',
+        day:   { ...TOD_DEFAULTS.day },
+        night: { ...TOD_DEFAULTS.night },
+      };
+    }
+    if (!config.time_of_day.day)   config.time_of_day.day   = { ...TOD_DEFAULTS.day };
+    if (!config.time_of_day.night) config.time_of_day.night = { ...TOD_DEFAULTS.night };
+  }
+
+  function openTodModal() {
+    document.querySelector('.tod-modal-overlay')?.remove();
+    ensureTod();
+    const tod = config.time_of_day;
+
+    function makeTodColor(label, val, onChange) {
+      const wrap = document.createElement('div');
+      wrap.className = 'field';
+      const lbl = document.createElement('label');
+      lbl.textContent = label;
+      const inp = document.createElement('input');
+      inp.type = 'color';
+      inp.value = val || '#000000';
+      inp.oninput = () => { onChange(inp.value); scheduleAutoSave(); };
+      wrap.append(lbl, inp);
+      return wrap;
+    }
+
+    function makeTodNumber(label, val, onChange) {
+      const wrap = document.createElement('div');
+      wrap.className = 'field';
+      const lbl = document.createElement('label');
+      lbl.textContent = label;
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.min = '0'; inp.max = '80';
+      inp.value = val ?? 0;
+      inp.style.width = '70px';
+      inp.oninput = () => { onChange(parseInt(inp.value) || 0); scheduleAutoSave(); };
+      wrap.append(lbl, inp);
+      return wrap;
+    }
+
+    function makeTodToggle(label, val, onChange) {
+      const row = document.createElement('div');
+      row.className = 'toggle-row';
+      const lbl = document.createElement('label');
+      lbl.textContent = label;
+      const tl = document.createElement('label');
+      tl.className = 'toggle toggle-sm';
+      const inp = document.createElement('input');
+      inp.type = 'checkbox';
+      inp.checked = val ?? true;
+      inp.onchange = () => { onChange(inp.checked); scheduleAutoSave(); };
+      const track = document.createElement('span');
+      track.className = 'toggle-track';
+      tl.append(inp, track);
+      row.append(lbl, tl);
+      return row;
+    }
+
+    function buildPeriodCol(emoji, title, tmpl) {
+      const col = document.createElement('div');
+      col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;';
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:13px;font-weight:600;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--border);';
+      hdr.textContent = `${emoji} ${title}`;
+      col.appendChild(hdr);
+      col.appendChild(makeTodColor('Wall color',   tmpl.wall_color,  v => tmpl.wall_color  = v));
+      col.appendChild(makeTodColor('Mat color',    tmpl.mat_color,   v => tmpl.mat_color   = v));
+      col.appendChild(makeTodNumber('Mat width',   tmpl.mat_width,   v => tmpl.mat_width   = v));
+      col.appendChild(makeTodToggle('Show frame',  tmpl.show_frame,  v => tmpl.show_frame  = v));
+      col.appendChild(makeTodColor('Frame color',  tmpl.frame_color, v => tmpl.frame_color = v));
+      col.appendChild(makeTodNumber('Frame width', tmpl.frame_width, v => tmpl.frame_width = v));
+      return col;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay tod-modal-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.cssText = 'width:560px;max-width:95vw;max-height:90vh;overflow-y:auto;gap:14px;';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Time-of-Day Templates';
+
+    const desc = document.createElement('p');
+    desc.textContent = 'Wall and frame colors shift automatically at the configured times. Per-slot frame overrides still take priority.';
+
+    // Time pickers
+    const timeRow = document.createElement('div');
+    timeRow.style.cssText = 'display:flex;gap:16px;';
+    function makeTimePick(label, key) {
+      const wrap = document.createElement('div');
+      wrap.className = 'field';
+      wrap.style.flex = '1';
+      const lbl = document.createElement('label');
+      lbl.textContent = label;
+      const inp = document.createElement('input');
+      inp.type = 'time';
+      inp.value = tod[key] || (key === 'day_start' ? '07:00' : '20:00');
+      inp.oninput = () => { tod[key] = inp.value; scheduleAutoSave(); };
+      wrap.append(lbl, inp);
+      return wrap;
+    }
+    timeRow.append(makeTimePick('Day starts', 'day_start'), makeTimePick('Night starts', 'night_start'));
+
+    // Day / Night columns
+    const cols = document.createElement('div');
+    cols.style.cssText = 'display:flex;gap:20px;';
+    cols.append(buildPeriodCol('☀️', 'Day', tod.day), buildPeriodCol('🌙', 'Night', tod.night));
+
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;justify-content:flex-end;padding-top:8px;border-top:1px solid var(--border);';
+    const doneBtn = document.createElement('button');
+    doneBtn.className = 'btn btn-primary';
+    doneBtn.textContent = 'Done';
+    doneBtn.onclick = () => overlay.remove();
+    footer.appendChild(doneBtn);
+
+    modal.append(title, desc, timeRow, cols, footer);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+    const esc = e => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', esc); } };
+    document.addEventListener('keydown', esc);
+  }
+
+  function makePathField(label, value, onChange, overridden = false) {
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    if (overridden) {
+      const dot = document.createElement('span');
+      dot.className = 'override-dot';
+      dot.title = 'Overrides global default';
+      lbl.appendChild(dot);
+    }
+    const row = document.createElement('div');
+    row.className = 'path-row';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = value;
+    input.oninput = () => onChange(input.value);
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-secondary';
+    btn.type = 'button';
+    btn.textContent = 'Browse…';
+    btn.onclick = () => openFolderBrowser(input.value, path => {
+      input.value = path;
+      onChange(path);
+    });
+    row.append(input, btn);
+    wrap.append(lbl, row);
+    return wrap;
+  }
+
+  async function openFolderBrowser(startPath, onSelect) {
+    document.querySelector('.folder-browser-overlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay folder-browser-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.cssText = 'width:500px;max-height:75vh;display:flex;flex-direction:column;gap:10px;';
+
+    const titleRow = document.createElement('div');
+    titleRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;';
+    const title = document.createElement('h3');
+    title.textContent = 'Select Folder';
+    title.style.margin = '0';
+    titleRow.appendChild(title);
+
+    const pathEl = document.createElement('div');
+    pathEl.className = 'folder-browser-path';
+
+    const list = document.createElement('div');
+    list.style.cssText = 'overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);min-height:200px;max-height:360px;';
+
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;padding-top:4px;border-top:1px solid var(--border);';
+
+    const selectBtn = document.createElement('button');
+    selectBtn.className = 'btn btn-primary';
+    selectBtn.textContent = 'Select this folder';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-secondary';
+    cancelBtn.textContent = 'Cancel';
+
+    footer.append(cancelBtn, selectBtn);
+
+    async function navigate(path) {
+      list.innerHTML = '<div style="padding:12px;color:var(--text-muted);">Loading…</div>';
+      try {
+        const data = await fetchJSON(`${API}/api/browse?path=${encodeURIComponent(path)}`);
+        pathEl.textContent = data.path;
+        selectBtn.onclick = () => { onSelect(data.path); overlay.remove(); };
+
+        list.innerHTML = '';
+        if (data.parent != null) {
+          const up = document.createElement('div');
+          up.className = 'folder-item';
+          up.innerHTML = '<span style="opacity:0.5;font-size:11px;">▲</span><span>..</span>';
+          up.onclick = () => navigate(data.parent);
+          list.appendChild(up);
+        }
+        if (data.entries.length === 0) {
+          const empty = document.createElement('div');
+          empty.style.cssText = 'padding:12px;color:var(--text-muted);font-size:13px;';
+          empty.textContent = 'No subfolders here.';
+          list.appendChild(empty);
+        }
+        for (const entry of data.entries) {
+          const item = document.createElement('div');
+          item.className = 'folder-item';
+          item.innerHTML = `<span style="opacity:0.55;">📁</span><span>${entry.name}</span>`;
+          item.onclick = () => navigate(entry.path);
+          list.appendChild(item);
+        }
+      } catch (e) {
+        list.innerHTML = '<div style="padding:12px;color:#e55;">Could not load directory.</div>';
+      }
+    }
+
+    cancelBtn.onclick = () => overlay.remove();
+    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+    const escHandler = e => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
+    document.addEventListener('keydown', escHandler);
+
+    modal.append(titleRow, pathEl, list, footer);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    navigate(startPath || '');
+  }
+
   function makeSection(title) {
     const sec = document.createElement('div');
     sec.className = 'panel-section';
@@ -693,11 +1287,58 @@
     return sec;
   }
 
-  function makeField(label, type, value, onChange) {
+  function makeSectionWithAdopt(title, adopted, onAdoptChange) {
+    const sec = document.createElement('div');
+    sec.className = 'panel-section';
+
+    // Header row: title + "Use global" toggle
+    const header = document.createElement('div');
+    header.className = 'section-header-row';
+
+    const h = document.createElement('h4');
+    h.textContent = title;
+
+    const adoptRow = document.createElement('div');
+    adoptRow.className = 'adopt-row';
+    const adoptSpan = document.createElement('span');
+    adoptSpan.textContent = 'Use global';
+    const toggleLbl = document.createElement('label');
+    toggleLbl.className = 'toggle toggle-sm';
+    const inp = document.createElement('input');
+    inp.type = 'checkbox';
+    inp.checked = adopted;
+    const track = document.createElement('span');
+    track.className = 'toggle-track';
+    toggleLbl.append(inp, track);
+    adoptRow.append(adoptSpan, toggleLbl);
+    header.append(h, adoptRow);
+    sec.appendChild(header);
+
+    // Body — gets .section-disabled when adopted
+    const bodyDiv = document.createElement('div');
+    if (adopted) bodyDiv.classList.add('section-disabled');
+    sec.appendChild(bodyDiv);
+
+    inp.onchange = e => {
+      const nowAdopted = e.target.checked;
+      bodyDiv.classList.toggle('section-disabled', nowAdopted);
+      onAdoptChange(nowAdopted);
+    };
+
+    return { el: sec, sectionBody: bodyDiv };
+  }
+
+  function makeField(label, type, value, onChange, overridden = false) {
     const wrap = document.createElement('div');
     wrap.className = 'field';
     const lbl = document.createElement('label');
-    lbl.textContent = label;
+    lbl.appendChild(document.createTextNode(label));
+    if (overridden) {
+      const dot = document.createElement('span');
+      dot.className = 'override-dot';
+      dot.title = 'Overrides global default';
+      lbl.appendChild(dot);
+    }
     const inp = document.createElement('input');
     inp.type = type;
     inp.value = value;
@@ -707,11 +1348,17 @@
     return wrap;
   }
 
-  function makeColorField(label, value, onChange) {
+  function makeColorField(label, value, onChange, overridden = false) {
     const wrap = document.createElement('div');
     wrap.className = 'field';
     const lbl = document.createElement('label');
-    lbl.textContent = label;
+    lbl.appendChild(document.createTextNode(label));
+    if (overridden) {
+      const dot = document.createElement('span');
+      dot.className = 'override-dot';
+      dot.title = 'Overrides global default';
+      lbl.appendChild(dot);
+    }
     const inp = document.createElement('input');
     inp.type = 'color';
     inp.value = value;
@@ -720,11 +1367,17 @@
     return wrap;
   }
 
-  function makeToggleRow(label, checked, onChange) {
+  function makeToggleRow(label, checked, onChange, overridden = false) {
     const row = document.createElement('div');
     row.className = 'toggle-row';
     const lbl = document.createElement('label');
-    lbl.textContent = label;
+    lbl.appendChild(document.createTextNode(label));
+    if (overridden) {
+      const dot = document.createElement('span');
+      dot.className = 'override-dot';
+      dot.title = 'Overrides global default';
+      lbl.appendChild(dot);
+    }
     const toggleLabel = document.createElement('label');
     toggleLabel.className = 'toggle';
     const inp = document.createElement('input');
@@ -748,15 +1401,25 @@
         body: JSON.stringify(config),
       });
       if (!r.ok) throw new Error('Server error');
-      setStatus('Saved! Reload the display to see changes.', 'success');
+      setStatus('Saved.', 'success');
     } catch (e) {
       setStatus('Save failed — is the backend running?', 'error');
     }
   }
 
+  let _saveTimer = null;
+  function scheduleAutoSave() {
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(saveConfig, 500);
+  }
+
   async function reloadConfig() {
     try {
       config = await fetchJSON(`${API}/api/config`);
+      config.slots = config.slots || [];
+      if (!config.source_path) config.source_path = config.slots[0]?.source_path || 'photos';
+      config.slots.forEach(migrateUseGlobal);
+      ensureTod();
       selectedSlotId = null;
       bindGlobalSettings();
       buildLayoutPicker();
@@ -780,6 +1443,10 @@
       document.getElementById('main').innerHTML = '<p style="color:#c0392b;padding:24px">Could not load config — is the backend running?</p>';
       return;
     }
+    config.slots = config.slots || [];
+    if (!config.source_path) config.source_path = config.slots[0]?.source_path || 'photos';
+    config.slots.forEach(migrateUseGlobal);
+    ensureTod();
     bindGlobalSettings();
     buildLayoutPicker();
     buildPreview();
