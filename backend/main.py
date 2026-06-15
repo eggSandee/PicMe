@@ -14,6 +14,7 @@ ROOT = Path(__file__).parent.parent
 CONFIG_PATH = ROOT / "config.json"
 LAYOUTS_PATH = ROOT / "layouts"
 FRONTEND_DISPLAY = ROOT / "frontend" / "display"
+FRONTEND_EDITOR  = ROOT / "frontend" / "editor"
 
 app = FastAPI(title="PicMe")
 
@@ -62,6 +63,22 @@ def set_config(config: dict):
     return {"ok": True}
 
 
+@app.get("/api/browse")
+def browse_directory(path: str = ""):
+    start = Path(path).resolve() if path else Path.home()
+    if not start.is_dir():
+        start = start.parent
+    entries = []
+    try:
+        for item in sorted(start.iterdir()):
+            if item.is_dir() and not item.name.startswith('.'):
+                entries.append({"name": item.name, "path": str(item)})
+    except PermissionError:
+        pass
+    parent = str(start.parent) if start.parent != start else None
+    return {"path": str(start), "parent": parent, "entries": entries}
+
+
 @app.get("/api/layouts")
 def get_layouts():
     layouts = []
@@ -105,8 +122,9 @@ def serve_image(path: str):
     return FileResponse(str(file_path))
 
 
-# Serve the display frontend
+# Serve the display and editor frontends
 app.mount("/display", StaticFiles(directory=str(FRONTEND_DISPLAY), html=True), name="display")
+app.mount("/editor",  StaticFiles(directory=str(FRONTEND_EDITOR),  html=True), name="editor")
 
 # Serve a simple root redirect
 @app.get("/")

@@ -83,28 +83,33 @@ PicMe/
 ### ✅ Milestone 3 — Web Editor UI
 *Goal: Configure everything without touching a config file.*
 
-- [ ] Visual layout editor — see slot arrangement, click to configure each slot
-- [ ] Per-slot settings: source folder, cycle timer, group assignment, metadata toggle
-- [ ] Per-slot fill mode toggle: **fill** (crop to fit, no bars) vs **fit** (full photo, letterboxed)
-- [ ] Per-slot and global frame settings: mat color, mat width, frame color, frame width
-- [ ] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
-- [ ] Layout template picker with visual previews
-- [ ] Live preview of changes before applying
-- [ ] Settings saved automatically to config.json
+- [x] Visual layout editor — see slot arrangement, click to configure each slot
+- [x] Per-slot settings: source folder, cycle timer, group assignment, metadata toggle
+- [x] Per-slot fill mode toggle: **fill** (crop to fit, no bars) vs **fit** (full photo, letterboxed)
+- [x] Per-slot and global frame settings: mat color, mat width, frame color, frame width
+- [x] Layout template picker with visual previews
+- [x] Live preview of changes before applying
+- [x] Settings saved automatically to config.json
 
 ---
 
-### ✅ Milestone 4 — Video Slot Support
+### Milestone 4 — Video Slot Support
 *Goal: Any slot can play a video on loop instead of cycling photos.*
 
 - [ ] Per-slot mode toggle: photo cycling vs. video loop
 - [ ] Video plays muted by default (optional audio toggle)
 - [ ] Video loops for a configurable number of times before the slot advances
 - [ ] Supported formats: MP4, MOV (browser-native playback)
+- [ ] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
+- [ ] Daily layout rotation: layout selection (choose which layouts are eligible to rotate)
+- [ ] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
+- [ ] Per-slot drag-to-reorder in the editor
+- [ ] Configurable metadata pill size and text size
+- [ ] Basic / Advanced editor mode — Basic hides less-common settings so the editor stays approachable for users who don't need full configurability (exact parameter split TBD)
 
 ---
 
-### ✅ Milestone 5 — Google Photos Integration
+### Milestone 5 — Google Photos Integration
 *Goal: Pull photos directly from a user's Google Photos library.*
 
 - [ ] Google OAuth 2.0 login flow (user authorizes once, token stored locally)
@@ -119,7 +124,7 @@ PicMe/
 
 ---
 
-### ✅ Milestone 6 — Additional Photo Sources
+### Milestone 6 — Additional Photo Sources
 *Goal: Expand to other cloud providers.*
 
 - [ ] Amazon Photos (note: API access is limited; may require workarounds)
@@ -129,7 +134,7 @@ PicMe/
 
 ---
 
-### ✅ Milestone 7 — Face Recognition & People Tags
+### Milestone 7 — Face Recognition & People Tags
 *Goal: Optionally show who is in each photo as part of the metadata overlay.*
 
 - [ ] Google Photos face/people tags pulled via API (if user has People & Pets enabled)
@@ -193,9 +198,9 @@ Each slot supports the following settings:
 
 | Layer | Technology | Reason |
 |---|---|---|
-| Backend | Python 3.11 + FastAPI | Simple, fast, great for file serving and APIs |
+| Backend | Python 3.13 + FastAPI | Simple, fast, great for file serving and APIs |
 | Frontend display | Vanilla HTML/CSS/JS | No build step, runs on any browser including TVs |
-| Frontend editor | React (lightweight) | Component model suits the slot editor UI |
+| Frontend editor | Vanilla HTML/CSS/JS | No build step, same as display — simpler to host and iterate |
 | Photo metadata | `Pillow` + `piexif` | EXIF extraction from local files |
 | Geocoding | OpenStreetMap Nominatim | Free, no API key required |
 | Config storage | JSON file | Human-readable, no database needed for v1 |
@@ -209,9 +214,9 @@ Each slot supports the following settings:
 
 | Requirement | Notes |
 |---|---|
-| **Python 3.11+** | Download from [python.org](https://python.org/downloads). During install, check **"Add Python to PATH"**. |
+| **Python 3.13** | Download from [python.org](https://python.org/downloads) (Windows) or `brew install python@3.13` (macOS). |
 | **A modern browser** | Chrome, Edge, Firefox, or Safari. The display is designed for full-screen use on a TV browser. |
-| **Your photos** | JPEG, PNG, GIF, or WebP files in a folder on your PC. |
+| **Your photos** | JPEG, PNG, GIF, or WebP files in a folder on your machine. |
 
 ---
 
@@ -219,27 +224,25 @@ Each slot supports the following settings:
 
 **1. Get the code**
 
-Download or clone this repository to your PC. All commands below should be run from the project root folder (`PicMe/`).
+Download or clone this repository. All commands below should be run from the project root folder (`PicMe/`).
 
-**2. Create a virtual environment**
+**2. Create a virtual environment and install dependencies**
 
-A virtual environment keeps PicMe's dependencies isolated from the rest of your system.
-
+**Windows:**
 ```powershell
 python -m venv .venv
-```
-
-**3. Install dependencies**
-
-```powershell
-# Windows
 .\.venv\Scripts\pip install -r requirements.txt
-
-# macOS / Linux
-.venv/bin/pip install -r requirements.txt
 ```
 
-**4. Add your photos**
+**macOS** (macOS 15+ / Tahoe): macOS 16 ships with a system `libexpat` that conflicts with Homebrew Python's pip bootstrapper. Use [`uv`](https://github.com/astral-sh/uv) (a fast Rust-based package manager) instead — install it once with `brew install uv`, then:
+```bash
+export DYLD_LIBRARY_PATH="/opt/homebrew/opt/expat/lib"
+uv venv --python /opt/homebrew/bin/python3.13 .venv
+uv pip install -r requirements.txt
+```
+This is a one-time setup step. The `DYLD_LIBRARY_PATH` workaround is only needed during package installation; starting the server works normally after that.
+
+**3. Add your photos**
 
 Copy or move your photos into the `photos/` folder inside the project:
 
@@ -251,52 +254,63 @@ PicMe/
     └── ...
 ```
 
-You can use any folder on your PC — see the **Configuration** section below if you want to point slots at a different location.
-
-**5. Start the server**
-
-```powershell
-# Windows
-.\.venv\Scripts\python backend\main.py
-
-# macOS / Linux
-.venv/bin/python backend/main.py
-```
-
-You should see output like:
-```
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-```
-
-**6. Open the display**
-
-On the same PC: open your browser and go to:
-```
-http://localhost:8000/display
-```
-
-On a TV or another device on the same Wi-Fi network, first find your PC's local IP address:
-
-```powershell
-# Windows — look for the IPv4 address under your Wi-Fi adapter
-ipconfig
-
-# macOS / Linux
-ifconfig
-```
-
-Then open on the TV:
-```
-http://[your-pc-ip]:8000/display
-```
-
-For example: `http://192.168.1.42:8000/display`
+You can use any folder on your machine — see the **Configuration** section below to point slots at a different location.
 
 ---
 
-### Stopping the server
+### Starting, stopping, and restarting
 
-Press **Ctrl+C** in the terminal where the server is running.
+The server runs on **port 8000** and hot-reloads on file changes (no restart needed for code edits).
+
+**Using the launch helpers (recommended):**
+```bash
+# macOS / Linux
+./run.sh
+
+# Windows
+run.bat
+```
+
+**Or manually:**
+```bash
+# macOS / Linux
+.venv/bin/python backend/main.py
+
+# Windows
+.\.venv\Scripts\python backend\main.py
+```
+
+**Stop:** Press `Ctrl+C` in the terminal. If running in the background:
+```bash
+# macOS / Linux — kill whatever is on port 8000
+lsof -ti:8000 | xargs kill
+```
+
+**Restart:** Stop (above), then start again. Hot-reload (`reload=True`) handles most code changes automatically.
+
+**Background (macOS / Linux, logs to `picme.log`):**
+```bash
+nohup .venv/bin/python backend/main.py > picme.log 2>&1 &
+```
+
+---
+
+### Accessing from other devices on your network
+
+| Device | URL |
+|--------|-----|
+| Same machine (browser) | `http://localhost:8000/display` |
+| TV or any LAN device | `http://[mac-mini-ip]:8000/display` |
+| Editor (any device) | `http://[mac-mini-ip]:8000/editor` |
+
+Find the Mac Mini's LAN IP:
+```bash
+ipconfig getifaddr en0
+```
+
+Example: if that returns `192.168.68.50`, open `http://192.168.68.50:8000/display` on your Windows PC or TV.
+
+> **Note:** The macOS firewall must allow incoming connections on port 8000. The built-in app firewall can be checked in **System Settings → Network → Firewall**. If it is off (default), no action needed.
 
 ---
 
@@ -309,21 +323,17 @@ Top-level settings:
 ```json
 {
   "layout": "classic-4",
-<<<<<<< HEAD
   "wall_color": "#1a1a1a",       // background color shown between and around frames (the "wall")
   "show_metadata": true,         // global kill switch — false hides all overlays on all slots instantly
   "date_format": "long",         // "long" (July 4, 2019) | "medium" (Jul 4, 2019) | "short" (7/4/2019) | "iso" (2019-07-04)
   "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
   "frame_defaults": {            // mat and frame style applied to every slot; per-slot frame: {} overrides
-    "mat_color": "#000000",      // mat color behind the photo (any CSS color) — future: sync with time-of-day (e.g. warm white during day, black at night)
+    "mat_color": "#000000",      // mat color behind the photo (any CSS color)
     "mat_width": 16,             // mat thickness in pixels
     "show_frame": true,          // show outer frame border
     "frame_color": "#2c2318",    // dark wood frame (any CSS color)
     "frame_width": 8             // frame border thickness in pixels
   },
-=======
-  "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
->>>>>>> origin/main
   "metadata_defaults": {         // applied to every slot; per-slot metadata overrides these
     "show_date": true,
     "show_location": false,
@@ -338,23 +348,15 @@ Top-level settings:
 }
 ```
 
-<<<<<<< HEAD
 Per-slot `metadata` and `frame` are both optional. If omitted, the slot inherits the global defaults. If present, only the fields listed override the defaults.
-=======
-Per-slot `metadata` is optional. If omitted entirely, the slot inherits `metadata_defaults` as-is. If present, only the fields listed override the defaults — unmentioned fields still fall back to the global value.
->>>>>>> origin/main
 
 ```json
 {
   "id": 1,
   "source_path": "photos",
   "cycle_seconds": 30,
-<<<<<<< HEAD
   "metadata": { "show_camera": true },       // inherits everything else from metadata_defaults
   "frame": { "mat_color": "#ffffff" }        // white mat on this slot only; inherits frame_defaults for the rest
-=======
-  "metadata": { "show_camera": true }   // inherits everything else from metadata_defaults
->>>>>>> origin/main
 }
 ```
 
@@ -385,8 +387,13 @@ To use a different photo folder (e.g. a folder elsewhere on your PC), set `sourc
 
 After pulling new code, re-run the dependency install step to pick up any new packages:
 
-```powershell
+```bash
+# Windows
 .\.venv\Scripts\pip install -r requirements.txt
+
+# macOS (use uv — see First-time setup)
+export DYLD_LIBRARY_PATH="/opt/homebrew/opt/expat/lib"
+uv pip install -r requirements.txt
 ```
 
 ---
