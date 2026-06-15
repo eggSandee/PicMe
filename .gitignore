@@ -37,3 +37,6 @@ desktop.ini
 
 # Claude Code
 .claude/
+
+# Logs
+*.log
