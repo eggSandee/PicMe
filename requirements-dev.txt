@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# QA / browser testing (not needed to run PicMe)
+playwright==1.63.0
