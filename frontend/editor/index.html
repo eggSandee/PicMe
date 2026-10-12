@@ -616,6 +616,7 @@
   let config = null;
   let layouts = null;
   let selectedSlotId = null;
+  let _refreshGlobalVideoWarn = null; // set by renderSlotPanel for video slots on the global folder
 
   async function fetchJSON(url) {
     const r = await fetch(url);
@@ -831,10 +832,10 @@
     }
 
     // Wire global setting changes
-    document.getElementById('g-source-path').oninput   = e => { config.source_path = e.target.value; scheduleAutoSave(); };
+    document.getElementById('g-source-path').oninput   = e => { config.source_path = e.target.value; _refreshGlobalVideoWarn?.(); scheduleAutoSave(); };
     document.getElementById('g-source-browse').onclick  = () => {
       const inp = document.getElementById('g-source-path');
-      openFolderBrowser(inp.value, path => { inp.value = path; config.source_path = path; scheduleAutoSave(); });
+      openFolderBrowser(inp.value, path => { inp.value = path; config.source_path = path; _refreshGlobalVideoWarn?.(); scheduleAutoSave(); });
     };
     document.getElementById('g-wall-color').oninput    = e => { config.wall_color = e.target.value; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-date-format').onchange  = e => { config.date_format = e.target.value; scheduleAutoSave(); };
@@ -972,6 +973,10 @@
     noVideosWarn.style.color = '#e0a030';
     noVideosWarn.style.display = 'none';
     if (isVideo) checkFolderHasVideos(effectiveSrc, noVideosWarn);
+    // Adopted source: re-check when the global folder changes
+    _refreshGlobalVideoWarn = (isVideo && sourceAdopted)
+      ? () => checkFolderHasVideos(config.source_path || '', noVideosWarn)
+      : null;
 
     srcSec.sectionBody.appendChild(makePathField('Media folder', effectiveSrc, v => {
       slotCfg.source_path = v;
