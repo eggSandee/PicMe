@@ -73,7 +73,9 @@ def extract_video_date(video_path: str) -> str | None:
         return None
     if dt < _MIN_PLAUSIBLE or dt > datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1):
         return None
-    return dt.strftime("%Y-%m-%d")
+    # creation_time is UTC; photo EXIF dates are local wall-clock time, so report the
+    # server's local date to match (a clip shot at 23:00 local mustn't show the next day)
+    return dt.astimezone().strftime("%Y-%m-%d")
 
 
 def get_video_metadata(video_path: str) -> dict:
