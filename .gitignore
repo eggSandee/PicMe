@@ -22,6 +22,10 @@ photos/
 *.jpeg
 *.png
 *.gif
+*.heic
+*.heif
+*.HEIC
+*.HEIF
 *.mp4
 *.mov
 

@@ -100,6 +100,7 @@ PicMe/
 - [x] Video plays muted by default (optional audio toggle)
 - [x] Video loops for a configurable number of times before the slot advances
 - [x] Supported formats: MP4, MOV (browser-native playback)
+- [x] iPhone photos (HEIC/HEIF) — converted on the fly to JPEG so every browser can show them, with full metadata overlays
 - [ ] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
 - [ ] Daily layout rotation: layout selection (choose which layouts are eligible to rotate)
 - [ ] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
@@ -211,6 +212,7 @@ Each slot supports the following settings:
 | Frontend display | Vanilla HTML/CSS/JS | No build step, runs on any browser including TVs |
 | Frontend editor | Vanilla HTML/CSS/JS | No build step, same as display — simpler to host and iterate |
 | Photo metadata | `Pillow` + `piexif` | EXIF extraction from local files |
+| iPhone photos | `pillow-heif` | Decodes HEIC/HEIF (prebuilt wheels bundle libheif) |
 | Geocoding | OpenStreetMap Nominatim | Free, no API key required |
 | Config storage | JSON file | Human-readable, no database needed for v1 |
 | Auth (Google) | OAuth 2.0 via `google-auth` | Standard library, well documented |
@@ -225,7 +227,7 @@ Each slot supports the following settings:
 |---|---|
 | **Python 3.13** | Download from [python.org](https://python.org/downloads) (Windows) or `brew install python@3.13` (macOS). |
 | **A modern browser** | Chrome, Edge, Firefox, or Safari. The display is designed for full-screen use on a TV browser. |
-| **Your photos** | JPEG, PNG, GIF, or WebP files in a folder on your machine. |
+| **Your photos** | JPEG, PNG, GIF, WebP, or HEIC/HEIF (iPhone) files in a folder on your machine. Extensions are matched case-insensitively (`IMG_1234.HEIC` works). |
 | **Videos (optional)** | MP4 or MOV files for video slots. H.264 is recommended — HEVC/ProRes `.mov` (common from iPhones) may not play in Chrome or on TVs and will be skipped. |
 
 ---
@@ -406,9 +408,33 @@ To use a different photo folder (e.g. a folder elsewhere on your PC), set `sourc
 
 ---
 
+### iPhone photos (HEIC/HEIF)
+
+iPhones save photos as HEIC, which only Safari can display. PicMe lists `.heic`/`.heif` files like any other photo and, when a slot shows one, converts it on the server to a JPEG:
+
+- Orientation is applied (portrait shots aren't sideways).
+- Display P3 / wide-gamut colors are converted to sRGB so they don't look washed out. HDR photos show their standard (SDR) image.
+- Large photos (e.g. 48MP) are scaled down to at most 3840px on the long edge so TVs stay fast. Metadata overlays (including megapixels) are read from the original.
+
+The first time a large HEIC is shown it takes about a second to convert. The converted JPEGs are cached, keyed by the file's path, modified time, and size, so an edited photo is converted again. The cache lives here:
+
+| OS | Cache folder |
+|---|---|
+| macOS | `~/Library/Caches/PicMe/heic` |
+| Windows | `%LOCALAPPDATA%\PicMe\Cache\heic` |
+| Linux | `~/.cache/picme/heic` (or `$XDG_CACHE_HOME/picme/heic`) |
+
+Set the `PICME_CACHE_DIR` environment variable to use a different folder. Your original photos are only ever read, never modified, and nothing is written into your photo folders. The cache is safe to delete at any time. A HEIC that can't be decoded is skipped like any other broken image.
+
+Live Photos export as a pair: `IMG_1234.HEIC` plus a short `IMG_1234.MOV`. The HEIC shows up in photo slots. The `.MOV` is currently treated like any other video (iPhone clips are usually HEVC, see *What you need*).
+
+---
+
 ### Upgrading
 
 After pulling new code, re-run the dependency install step to pick up any new packages:
+
+> **HEIC support adds a new dependency, `pillow-heif`.** If you're upgrading from an earlier version, re-run the install below (on macOS, the `uv` command with the `DYLD_LIBRARY_PATH` export). It installs from a prebuilt wheel, so you don't need Homebrew's `libheif`. Until you do, the server won't start (`ModuleNotFoundError: No module named 'pillow_heif'`).
 
 ```bash
 # Windows

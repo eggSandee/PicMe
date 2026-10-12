@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from heic import HEIC_EXTENSIONS, HeicConversionError, get_converted, is_heic
 from metadata.exif import get_metadata
 from metadata.video import get_video_metadata
 
@@ -37,7 +38,7 @@ def save_config(config: dict) -> None:
     CONFIG_PATH.write_text(json.dumps(config, indent=2))
 
 
-SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"} | HEIC_EXTENSIONS
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v"}
 MEDIA_KINDS = {"photos": SUPPORTED_EXTENSIONS, "video": VIDEO_EXTENSIONS}
 
@@ -136,6 +137,12 @@ def list_images_api(folder: str, kind: str = "photos"):
 def serve_image(path: str):
     """Serve an image file by absolute path."""
     file_path = resolve_media_file(path, SUPPORTED_EXTENSIONS, "Image")
+    if is_heic(file_path):
+        # Only Safari renders HEIC, so serve a cached JPEG conversion instead
+        try:
+            return FileResponse(str(get_converted(file_path)), media_type="image/jpeg")
+        except HeicConversionError:
+            raise HTTPException(status_code=415, detail="Could not decode HEIC image")
     return FileResponse(str(file_path))
 
 

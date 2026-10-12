@@ -7,19 +7,21 @@ are never touched, and no test reaches the network.
 from __future__ import annotations
 
 import json
+import struct
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import piexif
 import pytest
-from PIL import Image
+from PIL import Image, ImageCms
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_DIR = REPO_ROOT / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+import heic  # noqa: E402  (registers the HEIF opener, so Image.save(format="HEIF") works)
 import main  # noqa: E402  (needs backend/ on sys.path)
 from metadata import exif as exif_module  # noqa: E402
 
@@ -78,6 +80,55 @@ def _make_image(path: Path, size=LANDSCAPE, fmt: str | None = None, color=(200, 
     return path
 
 
+def display_p3_icc() -> bytes:
+    """A minimal ICC v2 matrix/TRC profile with Display P3 primaries (what iPhones tag photos
+    with). Pillow can only create sRGB/LAB/XYZ profiles, and the OS P3 file isn't portable."""
+    def s15(v):
+        return struct.pack(">i", round(v * 65536))
+
+    def xyz(x, y, z):
+        return b"XYZ \0\0\0\0" + s15(x) + s15(y) + s15(z)
+
+    desc_txt = b"Display P3 (PicMe tests)\0"
+    desc = b"desc\0\0\0\0" + struct.pack(">I", len(desc_txt)) + desc_txt + b"\0" * (8 + 3 + 67)
+    curv = b"curv\0\0\0\0" + struct.pack(">IH", 1, int(2.2 * 256)) + b"\0\0"
+    tags = [
+        (b"desc", desc), (b"cprt", b"text\0\0\0\0PicMe tests\0"),
+        (b"wtpt", xyz(0.9642, 1.0, 0.8249)),
+        (b"rXYZ", xyz(0.5151, 0.2412, -0.0011)),
+        (b"gXYZ", xyz(0.2920, 0.6922, 0.0419)),
+        (b"bXYZ", xyz(0.1571, 0.0666, 0.7841)),
+        (b"rTRC", curv), (b"gTRC", curv), (b"bTRC", curv),
+    ]
+    offset = 128 + 4 + 12 * len(tags)
+    table, data = b"", b""
+    for sig, body in tags:
+        body += b"\0" * (-len(body) % 4)
+        table += sig + struct.pack(">II", offset + len(data), len(body))
+        data += body
+    header = (struct.pack(">I", offset + len(data)) + b"\0" * 4 + struct.pack(">I", 0x02100000)
+              + b"mntrRGB XYZ " + b"\0" * 12 + b"acsp" + b"\0" * 28 + s15(0.9642) + s15(1.0) + s15(0.8249))
+    header += b"\0" * (128 - len(header))
+    return header + struct.pack(">I", len(tags)) + table + data
+
+
+# A P3 orange: the same numbers mean a more saturated color in P3 than in sRGB
+P3_ORANGE = (200, 100, 50)
+
+
+def _make_heic(path: Path, size=LANDSCAPE, color=(200, 80, 40), exif: bytes | None = None,
+               icc_profile: bytes | None = None) -> Path:
+    """Save a real HEIC (HEVC via pillow-heif). With EXIF Orientation 6, pillow-heif stores the
+    rotation as an irot box like an iPhone does, so ``size`` is the sensor (pre-rotation) size."""
+    kwargs: dict = {"quality": -1}  # lossless, so color assertions aren't at the mercy of HEVC
+    if exif:
+        kwargs["exif"] = exif
+    if icc_profile:
+        kwargs["icc_profile"] = icc_profile
+    Image.new("RGB", size, color).save(path, format="HEIF", **kwargs)
+    return path
+
+
 def build_photo_library(root: Path) -> SimpleNamespace:
     """Generate a photo library covering every format/EXIF edge case.
 
@@ -110,6 +161,18 @@ def build_photo_library(root: Path) -> SimpleNamespace:
         "gif": _make_image(photos / "plain.gif", fmt="GIF", color=(40, 200, 80)),
         "webp": _make_image(photos / "dated.webp", fmt="WEBP", exif=_exif_bytes(date=True)),
     }
+    # iPhone-style HEIC/HEIF (upper-case extension like iPhone exports)
+    files["heic_full"] = _make_heic(photos / "IMG_0001.HEIC",
+                                    exif=_exif_bytes(date=True, gps=True, camera=True))
+    # Portrait shot: landscape sensor data + Orientation 6 (rotate 90° CW)
+    portrait_exif = piexif.dump({"0th": {piexif.ImageIFD.Orientation: 6}, "Exif": {}, "GPS": {},
+                                 "1st": {}, "thumbnail": None})
+    files["heic_portrait"] = _make_heic(photos / "IMG_0002.HEIC", size=LANDSCAPE, exif=portrait_exif)
+    files["heic_p3"] = _make_heic(photos / "IMG_0003.heic", color=P3_ORANGE, icc_profile=display_p3_icc())
+    files["heif"] = _make_heic(photos / "plain.heif", color=P3_ORANGE)
+    corrupt_heic = photos / "corrupt.heic"
+    corrupt_heic.write_bytes(b"\0\0\0\x18ftypheic not really a heic")
+    files["heic_corrupt"] = corrupt_heic
     # Corrupt file with a supported extension
     corrupt = photos / "corrupt.jpg"
     corrupt.write_bytes(b"this is not really a jpeg\x00\xff\xd8")
@@ -127,7 +190,7 @@ def build_photo_library(root: Path) -> SimpleNamespace:
 
     odd_image = _make_image(odd / "café photo ü.jpg", fmt="JPEG", exif=_exif_bytes(date=True))
 
-    supported = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+    supported = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif"}
     listed = sorted(str(p) for p in photos.iterdir() if p.is_file() and p.suffix.lower() in supported)
     return SimpleNamespace(
         root=root,
@@ -144,6 +207,23 @@ def build_photo_library(root: Path) -> SimpleNamespace:
 def photo_library(tmp_path_factory) -> SimpleNamespace:
     """Session-wide generated photo library (read-only — don't mutate)."""
     return build_photo_library(tmp_path_factory.mktemp("library"))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def heic_cache_session(tmp_path_factory):
+    """Keep converted-HEIC files out of the real OS cache, including for e2e server subprocesses."""
+    mp = pytest.MonkeyPatch()
+    mp.setenv("PICME_CACHE_DIR", str(tmp_path_factory.mktemp("heic-cache")))
+    yield
+    mp.undo()
+
+
+@pytest.fixture(autouse=True)
+def heic_cache_dir(tmp_path, monkeypatch) -> Path:
+    """A fresh HEIC cache per test, so cache hits/misses are deterministic."""
+    path = tmp_path / "picme-cache"
+    monkeypatch.setenv("PICME_CACHE_DIR", str(path))
+    return path / "heic"
 
 
 @pytest.fixture(autouse=True)
