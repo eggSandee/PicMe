@@ -1,4 +1,8 @@
 -r requirements.txt
 
+# Automated test suite (pytest + FastAPI TestClient)
+pytest==9.1.1
+httpx==0.28.1
+
 # QA / browser testing (not needed to run PicMe)
 playwright==1.63.0
