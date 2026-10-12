@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from metadata.exif import get_metadata
+from metadata.video import get_video_metadata
 
 ROOT = Path(__file__).parent.parent
 CONFIG_PATH = ROOT / "config.json"
@@ -37,17 +38,35 @@ def save_config(config: dict) -> None:
 
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v"}
+MEDIA_KINDS = {"photos": SUPPORTED_EXTENSIONS, "video": VIDEO_EXTENSIONS}
 
 
-def list_images(folder: str) -> list[str]:
+def list_media(folder: str, kind: str = "photos") -> list[str]:
+    extensions = MEDIA_KINDS.get(kind)
+    if extensions is None:
+        raise HTTPException(status_code=400, detail=f"Unknown kind: {kind}")
     path = Path(folder)
     if not path.exists() or not path.is_dir():
         return []
     return [
         str(f)
         for f in path.iterdir()
-        if f.suffix.lower() in SUPPORTED_EXTENSIONS
+        # Skip dotfiles — macOS AppleDouble files (._clip.mov) match the extension but aren't playable
+        if f.suffix.lower() in extensions and not f.name.startswith(".") and f.is_file()
     ]
+
+
+def resolve_media_file(path: str, extensions: set[str], label: str) -> Path:
+    """Resolve symlinks and check both the requested name and the real target have an allowed
+    extension — otherwise a link named clip.mp4 could expose any file it points to."""
+    requested = Path(path)
+    target = requested.resolve()
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail=f"{label} not found")
+    if requested.suffix.lower() not in extensions or target.suffix.lower() not in extensions:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+    return target
 
 
 # --- API routes ---
@@ -88,9 +107,9 @@ def get_layouts():
 
 
 @app.get("/api/images/random")
-def random_image(folder: str):
-    """Return a random image file path from the given folder."""
-    images = list_images(folder)
+def random_image(folder: str, kind: str = "photos"):
+    """Return a random image (or video, with kind=video) file path from the given folder."""
+    images = list_media(folder, kind)
     if not images:
         raise HTTPException(status_code=404, detail="No images found in folder")
     return {"path": random.choice(images)}
@@ -98,28 +117,36 @@ def random_image(folder: str):
 
 @app.get("/api/metadata")
 def image_metadata(path: str):
-    """Return EXIF date and reverse-geocoded location for an image."""
+    """Return EXIF date and reverse-geocoded location for an image, or the container date for a video."""
     file_path = Path(path)
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
+    if file_path.suffix.lower() in VIDEO_EXTENSIONS:
+        return get_video_metadata(str(file_path))
     return get_metadata(str(file_path))
 
 
 @app.get("/api/images/list")
-def list_images_api(folder: str):
-    images = list_images(folder)
+def list_images_api(folder: str, kind: str = "photos"):
+    images = list_media(folder, kind)
     return {"images": images, "count": len(images)}
 
 
 @app.get("/api/image")
 def serve_image(path: str):
     """Serve an image file by absolute path."""
-    file_path = Path(path)
-    if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=404, detail="Image not found")
-    if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Unsupported file type")
+    file_path = resolve_media_file(path, SUPPORTED_EXTENSIONS, "Image")
     return FileResponse(str(file_path))
+
+
+@app.get("/api/video")
+def serve_video(path: str):
+    """Serve a video file by absolute path. FileResponse handles Range/If-Range (206/416)
+    natively, which TV browsers need to stream and seek."""
+    file_path = resolve_media_file(path, VIDEO_EXTENSIONS, "Video")
+    # .mov is served as video/mp4 too: some Chromium-based TV browsers reject media labelled
+    # video/quicktime, while their MP4 demuxer reads H.264 QuickTime containers fine.
+    return FileResponse(str(file_path), media_type="video/mp4")
 
 
 # Serve the display and editor frontends

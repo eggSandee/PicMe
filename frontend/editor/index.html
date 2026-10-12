@@ -616,6 +616,7 @@
   let config = null;
   let layouts = null;
   let selectedSlotId = null;
+  let _refreshGlobalVideoWarn = null; // set by renderSlotPanel for video slots on the global folder
 
   async function fetchJSON(url) {
     const r = await fetch(url);
@@ -730,7 +731,8 @@
     const activeSlots = config.slots.slice(0, layout.slots.length);
     for (let i = 0; i < layout.slots.length; i++) {
       const slotDef = layout.slots[i];
-      const slotCfg = activeSlots[i] || { id: slotDef.id };
+      // Unconfigured slots are padded on the display from slot 1's config — mirror its mode here
+      const slotCfg = activeSlots[i] || { id: slotDef.id, mode: config.slots[0]?.mode };
       const frameCfg = getSlotFrame(slotCfg);
 
       const div = document.createElement('div');
@@ -760,10 +762,20 @@
       numSpan.textContent = slotCfg.id ?? slotDef.id;
       inner.appendChild(numSpan);
 
+      const isVideo = slotCfg.mode === 'video';
+      if (isVideo) {
+        const playBadge = document.createElement('span');
+        playBadge.textContent = '▶';
+        playBadge.title = activeSlots[i] ? 'Video slot' : 'Video slot (copies slot 1 until configured)';
+        playBadge.style.cssText = 'position:absolute;top:4px;left:5px;font-size:10px;color:#aaa;pointer-events:none;';
+        inner.appendChild(playBadge);
+      }
+
       // Metadata position preview — small pills at bottom-left showing where overlays appear
       if (config.show_metadata !== false) {
         const slotMeta = getSlotMeta(slotCfg);
-        let pillCount = META_FIELDS.filter(f => slotMeta[f.key]).length;
+        // Video slots only show the date pill
+        let pillCount = isVideo ? 1 : META_FIELDS.filter(f => slotMeta[f.key]).length;
         if (pillCount === 0) pillCount = 1;
         const maxPills = config.max_metadata_pills > 0 ? config.max_metadata_pills : META_FIELDS.length;
         pillCount = Math.min(pillCount, maxPills);
@@ -820,10 +832,10 @@
     }
 
     // Wire global setting changes
-    document.getElementById('g-source-path').oninput   = e => { config.source_path = e.target.value; scheduleAutoSave(); };
+    document.getElementById('g-source-path').oninput   = e => { config.source_path = e.target.value; _refreshGlobalVideoWarn?.(); scheduleAutoSave(); };
     document.getElementById('g-source-browse').onclick  = () => {
       const inp = document.getElementById('g-source-path');
-      openFolderBrowser(inp.value, path => { inp.value = path; config.source_path = path; scheduleAutoSave(); });
+      openFolderBrowser(inp.value, path => { inp.value = path; config.source_path = path; _refreshGlobalVideoWarn?.(); scheduleAutoSave(); });
     };
     document.getElementById('g-wall-color').oninput    = e => { config.wall_color = e.target.value; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-date-format').onchange  = e => { config.date_format = e.target.value; scheduleAutoSave(); };
@@ -870,7 +882,7 @@
 
     const note = document.createElement('div');
     note.className = 'modal-note';
-    note.innerHTML = '<strong>Always per-slot — not affected:</strong><ul><li>Cycle timer</li><li>Group assignment</li><li>Photo fit mode (contain / fill)</li></ul>';
+    note.innerHTML = '<strong>Always per-slot — not affected:</strong><ul><li>Slot mode (photos / video), video loops and audio</li><li>Cycle timer</li><li>Group assignment</li><li>Fit mode (contain / fill)</li></ul>';
 
     const cbRow = document.createElement('label');
     cbRow.className = 'modal-cb-row';
@@ -954,26 +966,71 @@
     });
     const effectiveSrc = sourceAdopted ? (config.source_path || '') : (slotCfg.source_path || '');
     const srcOverridden = !sourceAdopted && !!slotCfg.source_path && slotCfg.source_path !== config.source_path;
-    srcSec.sectionBody.appendChild(makePathField('Media folder', effectiveSrc, v => { slotCfg.source_path = v; scheduleAutoSave(); }, srcOverridden));
+    // Mode — always per-slot (photo cycling vs. video playback)
+    const isVideo = slotCfg.mode === 'video';
+    // Video slots: warn when the folder has nothing to play (outside the body so it stays readable when adopted)
+    const noVideosWarn = makeHint('This folder has no videos (.mp4 / .mov / .m4v).');
+    noVideosWarn.style.color = '#e0a030';
+    noVideosWarn.style.display = 'none';
+    if (isVideo) checkFolderHasVideos(effectiveSrc, noVideosWarn);
+    // Adopted source: re-check when the global folder changes
+    _refreshGlobalVideoWarn = (isVideo && sourceAdopted)
+      ? () => checkFolderHasVideos(config.source_path || '', noVideosWarn)
+      : null;
+
+    srcSec.sectionBody.appendChild(makePathField('Media folder', effectiveSrc, v => {
+      slotCfg.source_path = v;
+      if (slotCfg.mode === 'video') checkFolderHasVideos(v, noVideosWarn);
+      scheduleAutoSave();
+    }, srcOverridden));
+    srcSec.el.appendChild(noVideosWarn);
     left.appendChild(srcSec.el);
 
-    // Schedule — always per-slot (cycle timer and group)
+    const modeSection = makeSection('Mode');
+    const modeSelect = makeSelect([['photos', 'Photos — cycle through images'], ['video', 'Video — play MP4 / MOV clips']], slotCfg.mode || 'photos');
+    modeSelect.onchange = e => {
+      slotCfg.mode = e.target.value;
+      buildPreview();
+      renderSlotPanel();
+      scheduleAutoSave();
+    };
+    modeSection.appendChild(modeSelect);
+    if (isVideo) {
+      // Validated on commit (blur / Enter), not per keystroke — saving as you type would keep
+      // the '1' of '1e3' or the '2' of '2.5'. Whole numbers ≥ 1 only; anything else reverts.
+      const loopsField = makeField('Play each video (times)', 'number', slotCfg.video_loops ?? 2, () => {});
+      const loopsInput = loopsField.querySelector('input');
+      loopsInput.min = 1;
+      loopsInput.step = 1;
+      loopsInput.onchange = () => {
+        const v = loopsInput.value.trim();
+        if (/^\d+$/.test(v) && parseInt(v) >= 1) {
+          slotCfg.video_loops = parseInt(v);
+          scheduleAutoSave();
+        } else {
+          loopsInput.value = slotCfg.video_loops ?? 2;
+        }
+      };
+      loopsField.style.marginTop = '8px';
+      modeSection.appendChild(loopsField);
+      modeSection.appendChild(makeToggleRow('Play audio', !!slotCfg.video_audio, v => { slotCfg.video_audio = v; scheduleAutoSave(); }));
+      modeSection.appendChild(makeHint('Muted by default. TV browsers may block sound until someone interacts with the display page. Folder should contain .mp4 / .mov files (H.264 recommended).'));
+    }
+    left.appendChild(modeSection);
+
+    // Schedule — always per-slot (cycle timer and group); not used by video slots
     const schedSection = makeSection('Schedule');
-    schedSection.appendChild(makeField('Cycle every (seconds)', 'number', slotCfg.cycle_seconds || 30, v => { slotCfg.cycle_seconds = parseInt(v); scheduleAutoSave(); }));
-    schedSection.appendChild(makeField('Group (optional letter, e.g. A)', 'text', slotCfg.group || '', v => { slotCfg.group = v || null; scheduleAutoSave(); }));
+    const schedBody = document.createElement('div');
+    if (isVideo) schedBody.classList.add('section-disabled');
+    schedBody.appendChild(makeField('Cycle every (seconds)', 'number', slotCfg.cycle_seconds || 30, v => { slotCfg.cycle_seconds = parseInt(v); scheduleAutoSave(); }));
+    schedBody.appendChild(makeField('Group (optional letter, e.g. A)', 'text', slotCfg.group || '', v => { slotCfg.group = v || null; scheduleAutoSave(); }));
+    schedSection.appendChild(schedBody);
+    if (isVideo) schedSection.appendChild(makeHint('Video slots advance after their loops finish.'));
     left.appendChild(schedSection);
 
-    // Photo Fit — always per-slot
-    const fillSection = makeSection('Photo Fit');
-    const fillMode = slotCfg.fill_mode || 'contain';
-    const fillSelect = document.createElement('select');
-    fillSelect.style.cssText = 'width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:6px 8px;font-size:13px;outline:none;';
-    [['contain', 'Fit — full photo, letterboxed'], ['cover', 'Fill — crop to fit, no bars']].forEach(([val, lbl]) => {
-      const opt = document.createElement('option');
-      opt.value = val; opt.textContent = lbl;
-      if (val === fillMode) opt.selected = true;
-      fillSelect.appendChild(opt);
-    });
+    // Fit — always per-slot (applies to photos and videos)
+    const fillSection = makeSection('Fit');
+    const fillSelect = makeSelect([['contain', `Fit — full ${isVideo ? 'video' : 'photo'}, letterboxed`], ['cover', 'Fill — crop to fit, no bars']], slotCfg.fill_mode || 'contain');
     fillSelect.onchange = e => { slotCfg.fill_mode = e.target.value; scheduleAutoSave(); };
     fillSection.appendChild(fillSelect);
     left.appendChild(fillSection);
@@ -1017,10 +1074,24 @@
       }, !metaAdopted && isMetaKeyOverridden(slotCfg, key)));
     }
     metaSec.sectionBody.appendChild(metaGrid);
+    if (isVideo) metaSec.el.appendChild(makeHint('Video slots show the date only (from the clip\'s recording date, when available).'));
     right.appendChild(metaSec.el);
 
     grid.append(left, right);
     body.appendChild(grid);
+  }
+
+  // Debounced so typing a path doesn't fire a request per keystroke
+  let _videoCheckTimer = null;
+  function checkFolderHasVideos(folder, warnEl) {
+    clearTimeout(_videoCheckTimer);
+    _videoCheckTimer = setTimeout(async () => {
+      let count = null;
+      try {
+        count = (await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder || '')}&kind=video`)).count;
+      } catch (e) { /* unknown — don't warn */ }
+      warnEl.style.display = count === 0 ? '' : 'none';
+    }, 300);
   }
 
   function ensureSlotFrame(slotCfg) {
@@ -1276,6 +1347,25 @@
     document.body.appendChild(overlay);
 
     navigate(startPath || '');
+  }
+
+  function makeSelect(options, value) {
+    const sel = document.createElement('select');
+    sel.style.cssText = 'width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:6px 8px;font-size:13px;outline:none;';
+    for (const [val, lbl] of options) {
+      const opt = document.createElement('option');
+      opt.value = val; opt.textContent = lbl;
+      if (val === value) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    return sel;
+  }
+
+  function makeHint(text) {
+    const p = document.createElement('p');
+    p.style.cssText = 'font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;';
+    p.textContent = text;
+    return p;
   }
 
   function makeSection(title) {

@@ -39,7 +39,7 @@
       box-sizing: border-box;
     }
 
-    .mat-frame img {
+    .mat-frame img, .mat-frame video {
       width: 100%; height: 100%;
       object-fit: contain; /* default; overridden per-slot by applyFrameStyle */
       position: absolute;
@@ -47,8 +47,13 @@
       transition: opacity 0.8s ease;
     }
 
-    .mat-frame img.hidden { opacity: 0; }
-    .mat-frame img.visible { opacity: 1; }
+    .mat-frame img.hidden, .mat-frame video.hidden { opacity: 0; }
+    .mat-frame img.visible, .mat-frame video.visible { opacity: 1; }
+
+    /* A slot shows either its img pair or its video pair, never both */
+    .mat-frame video { display: none; }
+    .slot.video-mode .mat-frame video { display: block; }
+    .slot.video-mode .mat-frame img { display: none; }
 
     .slot-overlay {
       position: absolute;
@@ -157,6 +162,20 @@
         imgB.className = 'hidden';
         matFrame.append(imgA, imgB);
 
+        // Two video elements for video-mode slots, crossfaded the same way.
+        // No `loop` attribute — loops are counted manually in the `ended` handler.
+        const vidA = document.createElement('video');
+        const vidB = document.createElement('video');
+        for (const v of [vidA, vidB]) {
+          v.muted = true;
+          v.playsInline = true;
+          v.setAttribute('playsinline', '');
+          v.preload = 'auto';
+        }
+        vidA.className = 'visible';
+        vidB.className = 'hidden';
+        matFrame.append(vidA, vidB);
+
         // Metadata overlay sits above the mat, anchored to the slot.
         // Pills are created dynamically in updateOverlay so hidden fields take no space.
         const overlay = document.createElement('div');
@@ -169,6 +188,10 @@
 
     function imageUrl(filePath) {
       return `${API}/api/image?path=${encodeURIComponent(filePath)}`;
+    }
+
+    function videoUrl(filePath) {
+      return `${API}/api/video?path=${encodeURIComponent(filePath)}`;
     }
 
     function getTimeOfDayTemplate() {
@@ -223,13 +246,27 @@
       matFrame.style.border     = frameOn ? `${frameWidth}px solid ${frameColor}` : 'none';
 
       const fit = slotCfg.fill_mode === 'cover' ? 'cover' : 'contain';
-      matFrame.querySelectorAll('img').forEach(img => img.style.objectFit = fit);
+      matFrame.querySelectorAll('img, video').forEach(el => el.style.objectFit = fit);
     }
 
-    // Shuffled queue per folder — ensures no image repeats until all are shown,
-    // and no two slots show the same image at the same time.
-    const folderQueues = {};     // folder -> { images, index }
-    const displayedPaths = new Set();  // paths currently visible in any slot
+    // Shuffled queue per folder and media kind — ensures no file repeats until all are shown,
+    // and no two slots show the same photo or video at the same time.
+    const folderQueues = {};     // `${kind}:${folder}` -> { images, index }
+    const queueLoads = {};       // `${kind}:${folder}` -> in-flight list request, shared by concurrent slots
+    // Paths claimed by a slot (on screen or loading), with a claim count — a small library can
+    // force a repeat, so one slot releasing a path must not free it while another still shows it
+    const displayedPaths = new Map();
+    const unplayablePaths = new Set(); // videos that failed to load/decode (e.g. HEVC in Chrome)
+
+    function claimPath(path) {
+      displayedPaths.set(path, (displayedPaths.get(path) || 0) + 1);
+    }
+
+    function releasePath(path) {
+      const n = displayedPaths.get(path) || 0;
+      if (n <= 1) displayedPaths.delete(path);
+      else displayedPaths.set(path, n - 1);
+    }
 
     function shuffle(arr) {
       for (let i = arr.length - 1; i > 0; i--) {
@@ -239,14 +276,21 @@
       return arr;
     }
 
-    async function ensureQueue(folder) {
-      if (folderQueues[folder]) return;
-      const data = await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder)}`);
-      folderQueues[folder] = { images: shuffle(data.images), index: 0 };
+    async function ensureQueue(folder, kind = 'photos') {
+      const key = `${kind}:${folder}`;
+      if (folderQueues[key]) return folderQueues[key];
+      // Slots start concurrently — share one request so they all draw from the same shuffled queue
+      if (!queueLoads[key]) {
+        queueLoads[key] = fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder)}&kind=${kind}`)
+          .then(data => folderQueues[key] = { images: shuffle(data.images), index: 0 })
+          .finally(() => delete queueLoads[key]);
+      }
+      return queueLoads[key];
     }
 
-    function nextFromQueue(folder) {
-      const q = folderQueues[folder];
+    // `fallback` is returned instead of q.images[0] when every file is on screen or unplayable
+    function nextFromQueue(folder, kind = 'photos', fallback = null) {
+      const q = folderQueues[`${kind}:${folder}`];
       if (!q || q.images.length === 0) return null;
       // Walk through the queue to find an image not currently displayed
       for (let attempts = 0; attempts < q.images.length; attempts++) {
@@ -257,26 +301,31 @@
           shuffle(q.images);
           q.index = 0;
         }
-        if (!displayedPaths.has(candidate)) return candidate;
+        if (!displayedPaths.has(candidate) && !unplayablePaths.has(candidate)) return candidate;
       }
       // All images currently displayed (very small library) — allow a repeat
-      return q.images[0];
+      return fallback ?? q.images[0];
     }
 
     // Per-slot state
     const slotState = {};
+
+    function slotFolder(slotCfg) {
+      return (slotCfg.use_global?.source !== false) ? (config.source_path || slotCfg.source_path) : slotCfg.source_path;
+    }
 
     async function loadNextImage(slotCfg) {
       const state = slotState[slotCfg.id];
       const slotEl = document.getElementById(`slot-${slotCfg.id}`);
       if (!slotEl) return;
 
-      const folder = (slotCfg.use_global?.source !== false) ? (config.source_path || slotCfg.source_path) : slotCfg.source_path;
+      const folder = slotFolder(slotCfg);
       await ensureQueue(folder);
       const nextPath = nextFromQueue(folder);
       if (!nextPath) return;
+      claimPath(nextPath);  // claim before loading so a concurrent slot can't pick it too
 
-      const [imgA, imgB] = slotEl.querySelectorAll('img');
+      const [imgA, imgB] = slotEl.querySelectorAll('.mat-frame img');
       const current = state.activeImg === 'A' ? imgA : imgB;
       const next    = state.activeImg === 'A' ? imgB : imgA;
 
@@ -286,9 +335,8 @@
           next.onload = resolve;
           next.onerror = reject;
         });
-        // Release the old image from the displayed set, claim the new one
-        if (state.currentPath) displayedPaths.delete(state.currentPath);
-        displayedPaths.add(nextPath);
+        // Release this slot's old image
+        if (state.currentPath) releasePath(state.currentPath);
         state.currentPath = nextPath;
 
         next.className = 'visible';
@@ -297,8 +345,230 @@
 
         updateOverlay(slotCfg, nextPath);
       } catch (e) {
+        releasePath(nextPath);
         console.warn(`Slot ${slotCfg.id}: failed to load image`, e);
       }
+    }
+
+    // ── Video playback ──
+    // Video slots advance on playback events, not timers: each video plays video_loops
+    // times, then the slot crossfades to the next video from its folder's video queue.
+
+    const VIDEO_RETRY_MS = 60000;       // empty folder / every file failed — try again later
+    const VIDEO_LOAD_TIMEOUT_MS = 30000; // give up on a file that never becomes playable
+    const VIDEO_STALL_MS = 20000;        // buffering longer than this skips to the next video
+
+    function videoLoops(slotCfg) {
+      return Math.max(1, parseInt(slotCfg.video_loops ?? 2) || 1);
+    }
+
+    function videoEls(slotCfg) {
+      const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+      if (!slotEl) return null;
+      const [vidA, vidB] = slotEl.querySelectorAll('.mat-frame video');
+      const state = slotState[slotCfg.id];
+      return state.activeVid === 'A' ? { current: vidA, next: vidB } : { current: vidB, next: vidA };
+    }
+
+    // Drop the source so TVs free the hardware decoder (many SoCs only have 1–4)
+    function releaseVideo(v) {
+      v.pause();
+      v.removeAttribute('src');
+      v.load();
+    }
+
+    // Browsers often block autoplay with sound — fall back to muted rather than stall the slot
+    async function playVideo(v, slotCfg) {
+      try {
+        await v.play();
+      } catch (e) {
+        if (v.muted) throw e;
+        console.warn(`Slot ${slotCfg.id}: autoplay with sound blocked — playing muted`, e);
+        v.muted = true;
+        await v.play();
+      }
+    }
+
+    function clearVideoTimers(state) {
+      clearTimeout(state.watchdog);
+      clearTimeout(state.stallTimer);
+      clearTimeout(state.retryTimer);
+    }
+
+    // Per-loop watchdog: if `ended` never arrives (hung decoder, broken stream), move on
+    function armWatchdog(slotCfg, v) {
+      const state = slotState[slotCfg.id];
+      clearTimeout(state.watchdog);
+      const seconds = (isFinite(v.duration) ? v.duration : 300) + 30;
+      state.watchdog = setTimeout(() => {
+        console.warn(`Slot ${slotCfg.id}: playback watchdog fired — advancing`);
+        loadNextVideo(slotCfg);
+      }, seconds * 1000);
+    }
+
+    function retryVideoLater(slotCfg, folder) {
+      const state = slotState[slotCfg.id];
+      clearVideoTimers(state);
+      // Re-list and retry this folder's files so newly added or replaced ones are picked up
+      const key = `video:${folder}`;
+      for (const p of folderQueues[key]?.images || []) unplayablePaths.delete(p);
+      delete folderQueues[key];
+      state.retryTimer = setTimeout(() => loadNextVideo(slotCfg), VIDEO_RETRY_MS);
+    }
+
+    function waitForPlayable(v) {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => done(new Error('timed out waiting for canplay')), VIDEO_LOAD_TIMEOUT_MS);
+        function done(err) {
+          clearTimeout(timer);
+          v.removeEventListener('canplay', onReady);
+          v.removeEventListener('error', onError);
+          err ? reject(err) : resolve();
+        }
+        const onReady = () => done();
+        const onError = () => done(v.error || new Error('video error'));
+        v.addEventListener('canplay', onReady);
+        v.addEventListener('error', onError);
+      });
+    }
+
+    async function loadNextVideo(slotCfg) {
+      const state = slotState[slotCfg.id];
+      if (!state || state.videoLoading) return;
+      const els = videoEls(slotCfg);
+      if (!els) return;
+      const { current, next } = els;
+
+      state.videoLoading = true;
+      clearVideoTimers(state);
+      const folder = slotFolder(slotCfg);
+      let advanceAgain = false;
+
+      try {
+        let queue;
+        try {
+          queue = await ensureQueue(folder, 'video');
+        } catch (e) {
+          console.warn(`Slot ${slotCfg.id}: could not list videos`, e);
+          retryVideoLater(slotCfg, folder);
+          return;
+        }
+        // Nothing else available → keep playing this slot's own video
+        const ownPath = current.getAttribute('src') ? state.currentPath : null;
+        const nextPath = nextFromQueue(folder, 'video', ownPath);
+        if (!nextPath) {
+          // Empty folder — leave the mat showing and look again later
+          retryVideoLater(slotCfg, folder);
+          return;
+        }
+
+        // Same file again (e.g. single-video folder): restart in place — reassigning
+        // the same src may never fire canplay again.
+        if (nextPath === state.currentPath && current.getAttribute('src')) {
+          state.playCount = 0;
+          current.currentTime = 0;
+          await playVideo(current, slotCfg);
+          armWatchdog(slotCfg, current);
+          return;
+        }
+
+        // Claim before loading — other slots pick while this one waits for canplay
+        claimPath(nextPath);
+        try {
+          next.muted = !slotCfg.video_audio;
+          next.src = videoUrl(nextPath);
+          await waitForPlayable(next);
+          await playVideo(next, slotCfg);
+        } catch (e) {
+          // Typically an undecodable codec (HEVC / ProRes .mov in Chrome) — skip it
+          console.warn(`Slot ${slotCfg.id}: failed to play ${nextPath}`, e);
+          releaseVideo(next);
+          releasePath(nextPath);
+          unplayablePaths.add(nextPath);
+          state.videoFailures = (state.videoFailures || 0) + 1;
+          if (state.videoFailures >= queue.images.length) {
+            console.warn(`Slot ${slotCfg.id}: no playable videos — retrying in ${VIDEO_RETRY_MS / 1000}s`);
+            state.videoFailures = 0;
+            retryVideoLater(slotCfg, folder);
+          } else {
+            advanceAgain = true;
+          }
+          return;
+        }
+
+        state.videoFailures = 0;
+        if (state.currentPath) releasePath(state.currentPath);  // only ever this slot's own claim
+        state.currentPath = nextPath;
+        state.playCount = 0;
+
+        next.className = 'visible';
+        current.className = 'hidden';
+        state.activeVid = state.activeVid === 'A' ? 'B' : 'A';
+
+        // Freeze the outgoing video, then free its decoder once the 0.8s crossfade is done
+        current.pause();
+        const oldSrc = current.getAttribute('src');
+        setTimeout(() => {
+          if (current.classList.contains('hidden') && current.getAttribute('src') === oldSrc) releaseVideo(current);
+        }, 900);
+
+        armWatchdog(slotCfg, next);
+        updateOverlay(slotCfg, nextPath);
+      } catch (e) {
+        console.warn(`Slot ${slotCfg.id}: video playback error`, e);
+        advanceAgain = true;
+      } finally {
+        state.videoLoading = false;
+        if (advanceAgain) setTimeout(() => loadNextVideo(slotCfg), 0);
+      }
+    }
+
+    // Wire playback events once per video element of a video-mode slot
+    function initVideoSlot(slotCfg) {
+      const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+      if (!slotEl) return;
+      slotEl.classList.add('video-mode');
+      const state = slotState[slotCfg.id];
+      const isActive = v => videoEls(slotCfg)?.current === v && !!v.getAttribute('src') && !state.videoLoading;
+
+      slotEl.querySelectorAll('.mat-frame video').forEach(v => {
+        v.addEventListener('ended', () => {
+          if (!isActive(v)) return;
+          // video_loops is read live so editor changes apply to the current video
+          if (++state.playCount < videoLoops(slotCfg)) {
+            v.currentTime = 0;
+            playVideo(v, slotCfg).then(() => armWatchdog(slotCfg, v), () => loadNextVideo(slotCfg));
+          } else {
+            loadNextVideo(slotCfg);
+          }
+        });
+        // Mid-playback decode/network error on the visible video
+        v.addEventListener('error', () => {
+          if (!isActive(v)) return;
+          console.warn(`Slot ${slotCfg.id}: playback error — advancing`, v.error);
+          loadNextVideo(slotCfg);
+        });
+        v.addEventListener('waiting', () => {
+          if (!isActive(v)) return;
+          clearTimeout(state.stallTimer);
+          state.stallTimer = setTimeout(() => {
+            console.warn(`Slot ${slotCfg.id}: playback stalled — advancing`);
+            loadNextVideo(slotCfg);
+          }, VIDEO_STALL_MS);
+        });
+        v.addEventListener('playing', () => clearTimeout(state.stallTimer));
+      });
+    }
+
+    // Apply a live video_audio change to the playing video
+    function applyVideoAudio(slotCfg) {
+      const v = videoEls(slotCfg)?.current;
+      if (!v || !v.getAttribute('src')) return;
+      const muted = !slotCfg.video_audio;
+      if (v.muted === muted) return;
+      v.muted = muted;
+      // Unmuting without a user gesture may pause the video — re-mute and keep playing
+      if (!muted) playVideo(v, slotCfg).catch(() => {});
     }
 
     // Non-date fields in priority order. max_metadata_pills applies to these only.
@@ -332,9 +602,11 @@
       if (config.show_metadata === false) return;
 
       // Respect use_global.metadata: if true, use only global defaults (slot.metadata is empty)
-      const meta = (slotCfg.use_global?.metadata !== false)
+      let meta = (slotCfg.use_global?.metadata !== false)
         ? (config.metadata_defaults || {})
         : { ...(config.metadata_defaults || {}), ...(slotCfg.metadata || {}) };
+      // Video slots only ever show the date pill (from the MP4/MOV container)
+      if (slotCfg.mode === 'video') meta = { show_date: meta.show_date };
 
       const maxPills = config.max_metadata_pills ?? Infinity;
       const anyEnabled = meta.show_date || METADATA_FIELDS.some(f => meta[f.flag]);
@@ -399,7 +671,19 @@
           return;
         }
 
-        // Everything else (colors, frame, metadata) — patch in place so photos keep cycling
+        // Slot mode, timer and group changes affect element setup and timers — reload too
+        const slotNeedsReload = (fresh.slots || []).some((s, i) => {
+          const old = config.slots[i];
+          return old && ((s.mode || 'photos') !== (old.mode || 'photos')
+            || s.cycle_seconds !== old.cycle_seconds
+            || (s.group || null) !== (old.group || null));
+        });
+        if (slotNeedsReload) {
+          window.location.reload();
+          return;
+        }
+
+        // Everything else (colors, frame, metadata, audio) — patch in place so photos keep cycling
         const oldSlots = config.slots;
         Object.assign(config, fresh);
         config.slots = oldSlots;
@@ -409,6 +693,7 @@
         applyTodStyles();
 
         for (const slotCfg of activeSlots) {
+          if (slotCfg.mode === 'video') applyVideoAudio(slotCfg);
           const path = slotState[slotCfg.id]?.currentPath;
           if (path) updateOverlay(slotCfg, path);
         }
@@ -419,13 +704,15 @@
     const groupTimers = {};
 
     function scheduleSlot(slotCfg) {
+      // Video slots advance when their loops finish — a timer would cut videos off mid-play
+      if (slotCfg.mode === 'video') return;
       const group = slotCfg.group;
       const seconds = slotCfg.cycle_seconds || 30;
 
       if (group) {
         if (!groupTimers[group]) {
-          // Find all slots in this group
-          const groupSlots = config.slots.filter(s => s.group === group);
+          // Find all on-screen photo slots in this group
+          const groupSlots = activeSlots.filter(s => s.group === group && s.mode !== 'video');
           groupTimers[group] = setInterval(() => {
             groupSlots.forEach(s => loadNextImage(s));
           }, seconds * 1000);
@@ -470,10 +757,15 @@
       // Apply wall color and frame styles (respects TOD template if enabled)
       applyTodStyles();
 
-      // Initialize state and load first image for each slot
+      // Initialize state and load first image/video for each slot
       for (const slotCfg of activeSlots) {
-        slotState[slotCfg.id] = { activeImg: 'A' };
-        await loadNextImage(slotCfg);
+        slotState[slotCfg.id] = { activeImg: 'A', activeVid: 'A', playCount: 0 };
+        if (slotCfg.mode === 'video') {
+          initVideoSlot(slotCfg);
+          loadNextVideo(slotCfg);  // not awaited — a slow video must not hold up the other slots
+        } else {
+          await loadNextImage(slotCfg);
+        }
       }
 
       // Start cycling timers
