@@ -66,7 +66,7 @@ def set_config(config: dict):
 @app.get("/api/browse")
 def browse_directory(path: str = ""):
     start = Path(path).resolve() if path else Path.home()
-    if not start.is_dir():
+    while not start.is_dir() and start.parent != start:
         start = start.parent
     entries = []
     try:

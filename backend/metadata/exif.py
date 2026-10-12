@@ -119,7 +119,7 @@ def extract_shutter_speed(image_path: str) -> str | None:
     if val is None:
         return None
     if val >= 1:
-        return f"{val:.1f}s".rstrip("0").rstrip(".")
+        return f"{val:.1f}".rstrip("0").rstrip(".") + "s"
     # Express as a fraction e.g. 1/250s
     denom = round(1 / val)
     return f"1/{denom}s"
