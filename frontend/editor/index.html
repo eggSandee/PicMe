@@ -991,11 +991,21 @@
     };
     modeSection.appendChild(modeSelect);
     if (isVideo) {
-      const loopsField = makeField('Play each video (times)', 'number', slotCfg.video_loops ?? 2, v => {
-        const n = parseInt(v);
-        if (n >= 1) { slotCfg.video_loops = n; scheduleAutoSave(); }
-      });
-      loopsField.querySelector('input').min = 1;
+      // Validated on commit (blur / Enter), not per keystroke — saving as you type would keep
+      // the '1' of '1e3' or the '2' of '2.5'. Whole numbers ≥ 1 only; anything else reverts.
+      const loopsField = makeField('Play each video (times)', 'number', slotCfg.video_loops ?? 2, () => {});
+      const loopsInput = loopsField.querySelector('input');
+      loopsInput.min = 1;
+      loopsInput.step = 1;
+      loopsInput.onchange = () => {
+        const v = loopsInput.value.trim();
+        if (/^\d+$/.test(v) && parseInt(v) >= 1) {
+          slotCfg.video_loops = parseInt(v);
+          scheduleAutoSave();
+        } else {
+          loopsInput.value = slotCfg.video_loops ?? 2;
+        }
+      };
       loopsField.style.marginTop = '8px';
       modeSection.appendChild(loopsField);
       modeSection.appendChild(makeToggleRow('Play audio', !!slotCfg.video_audio, v => { slotCfg.video_audio = v; scheduleAutoSave(); }));
