@@ -57,6 +57,18 @@ def list_media(folder: str, kind: str = "photos") -> list[str]:
     ]
 
 
+def resolve_media_file(path: str, extensions: set[str], label: str) -> Path:
+    """Resolve symlinks and check both the requested name and the real target have an allowed
+    extension — otherwise a link named clip.mp4 could expose any file it points to."""
+    requested = Path(path)
+    target = requested.resolve()
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail=f"{label} not found")
+    if requested.suffix.lower() not in extensions or target.suffix.lower() not in extensions:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+    return target
+
+
 # --- API routes ---
 
 @app.get("/api/config")
@@ -123,11 +135,7 @@ def list_images_api(folder: str, kind: str = "photos"):
 @app.get("/api/image")
 def serve_image(path: str):
     """Serve an image file by absolute path."""
-    file_path = Path(path)
-    if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=404, detail="Image not found")
-    if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Unsupported file type")
+    file_path = resolve_media_file(path, SUPPORTED_EXTENSIONS, "Image")
     return FileResponse(str(file_path))
 
 
@@ -135,11 +143,7 @@ def serve_image(path: str):
 def serve_video(path: str):
     """Serve a video file by absolute path. FileResponse handles Range/If-Range (206/416)
     natively, which TV browsers need to stream and seek."""
-    file_path = Path(path)
-    if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=404, detail="Video not found")
-    if file_path.suffix.lower() not in VIDEO_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Unsupported file type")
+    file_path = resolve_media_file(path, VIDEO_EXTENSIONS, "Video")
     # .mov is served as video/mp4 too: some Chromium-based TV browsers reject media labelled
     # video/quicktime, while their MP4 demuxer reads H.264 QuickTime containers fine.
     return FileResponse(str(file_path), media_type="video/mp4")
