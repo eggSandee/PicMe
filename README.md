@@ -421,6 +421,19 @@ uv pip install -r requirements.txt
 
 ---
 
+## Running tests
+
+Install the dev dependencies (`uv pip install -r requirements-dev.txt`), then from the project root:
+
+```bash
+.venv/bin/python -m pytest              # full suite, including browser tests
+.venv/bin/python -m pytest -m "not e2e" # fast subset (skips Playwright browser tests)
+```
+
+The browser tests (`tests/e2e/`) drive a locally installed Chrome via Playwright and are skipped automatically if Chrome can't launch.
+
+---
+
 ## Development Notes
 
 - **Branch strategy:** Each milestone gets a feature branch (`milestone-1-core`, `milestone-2-metadata`, etc.). Merge to `main` when the milestone is complete and working.
