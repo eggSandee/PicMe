@@ -760,10 +760,20 @@
       numSpan.textContent = slotCfg.id ?? slotDef.id;
       inner.appendChild(numSpan);
 
+      const isVideo = slotCfg.mode === 'video';
+      if (isVideo) {
+        const playBadge = document.createElement('span');
+        playBadge.textContent = '▶';
+        playBadge.title = 'Video slot';
+        playBadge.style.cssText = 'position:absolute;top:4px;left:5px;font-size:10px;color:#aaa;pointer-events:none;';
+        inner.appendChild(playBadge);
+      }
+
       // Metadata position preview — small pills at bottom-left showing where overlays appear
       if (config.show_metadata !== false) {
         const slotMeta = getSlotMeta(slotCfg);
-        let pillCount = META_FIELDS.filter(f => slotMeta[f.key]).length;
+        // Video slots only show the date pill
+        let pillCount = isVideo ? 1 : META_FIELDS.filter(f => slotMeta[f.key]).length;
         if (pillCount === 0) pillCount = 1;
         const maxPills = config.max_metadata_pills > 0 ? config.max_metadata_pills : META_FIELDS.length;
         pillCount = Math.min(pillCount, maxPills);
@@ -870,7 +880,7 @@
 
     const note = document.createElement('div');
     note.className = 'modal-note';
-    note.innerHTML = '<strong>Always per-slot — not affected:</strong><ul><li>Cycle timer</li><li>Group assignment</li><li>Photo fit mode (contain / fill)</li></ul>';
+    note.innerHTML = '<strong>Always per-slot — not affected:</strong><ul><li>Slot mode (photos / video), video loops and audio</li><li>Cycle timer</li><li>Group assignment</li><li>Fit mode (contain / fill)</li></ul>';
 
     const cbRow = document.createElement('label');
     cbRow.className = 'modal-cb-row';
@@ -957,23 +967,43 @@
     srcSec.sectionBody.appendChild(makePathField('Media folder', effectiveSrc, v => { slotCfg.source_path = v; scheduleAutoSave(); }, srcOverridden));
     left.appendChild(srcSec.el);
 
-    // Schedule — always per-slot (cycle timer and group)
+    // Mode — always per-slot (photo cycling vs. video playback)
+    const isVideo = slotCfg.mode === 'video';
+    const modeSection = makeSection('Mode');
+    const modeSelect = makeSelect([['photos', 'Photos — cycle through images'], ['video', 'Video — play MP4 / MOV clips']], slotCfg.mode || 'photos');
+    modeSelect.onchange = e => {
+      slotCfg.mode = e.target.value;
+      buildPreview();
+      renderSlotPanel();
+      scheduleAutoSave();
+    };
+    modeSection.appendChild(modeSelect);
+    if (isVideo) {
+      const loopsField = makeField('Play each video (times)', 'number', slotCfg.video_loops ?? 2, v => {
+        const n = parseInt(v);
+        if (n >= 1) { slotCfg.video_loops = n; scheduleAutoSave(); }
+      });
+      loopsField.querySelector('input').min = 1;
+      loopsField.style.marginTop = '8px';
+      modeSection.appendChild(loopsField);
+      modeSection.appendChild(makeToggleRow('Play audio', !!slotCfg.video_audio, v => { slotCfg.video_audio = v; scheduleAutoSave(); }));
+      modeSection.appendChild(makeHint('Muted by default. TV browsers may block sound until someone interacts with the display page. Folder should contain .mp4 / .mov files (H.264 recommended).'));
+    }
+    left.appendChild(modeSection);
+
+    // Schedule — always per-slot (cycle timer and group); not used by video slots
     const schedSection = makeSection('Schedule');
-    schedSection.appendChild(makeField('Cycle every (seconds)', 'number', slotCfg.cycle_seconds || 30, v => { slotCfg.cycle_seconds = parseInt(v); scheduleAutoSave(); }));
-    schedSection.appendChild(makeField('Group (optional letter, e.g. A)', 'text', slotCfg.group || '', v => { slotCfg.group = v || null; scheduleAutoSave(); }));
+    const schedBody = document.createElement('div');
+    if (isVideo) schedBody.classList.add('section-disabled');
+    schedBody.appendChild(makeField('Cycle every (seconds)', 'number', slotCfg.cycle_seconds || 30, v => { slotCfg.cycle_seconds = parseInt(v); scheduleAutoSave(); }));
+    schedBody.appendChild(makeField('Group (optional letter, e.g. A)', 'text', slotCfg.group || '', v => { slotCfg.group = v || null; scheduleAutoSave(); }));
+    schedSection.appendChild(schedBody);
+    if (isVideo) schedSection.appendChild(makeHint('Video slots advance after their loops finish.'));
     left.appendChild(schedSection);
 
-    // Photo Fit — always per-slot
-    const fillSection = makeSection('Photo Fit');
-    const fillMode = slotCfg.fill_mode || 'contain';
-    const fillSelect = document.createElement('select');
-    fillSelect.style.cssText = 'width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:6px 8px;font-size:13px;outline:none;';
-    [['contain', 'Fit — full photo, letterboxed'], ['cover', 'Fill — crop to fit, no bars']].forEach(([val, lbl]) => {
-      const opt = document.createElement('option');
-      opt.value = val; opt.textContent = lbl;
-      if (val === fillMode) opt.selected = true;
-      fillSelect.appendChild(opt);
-    });
+    // Fit — always per-slot (applies to photos and videos)
+    const fillSection = makeSection('Fit');
+    const fillSelect = makeSelect([['contain', `Fit — full ${isVideo ? 'video' : 'photo'}, letterboxed`], ['cover', 'Fill — crop to fit, no bars']], slotCfg.fill_mode || 'contain');
     fillSelect.onchange = e => { slotCfg.fill_mode = e.target.value; scheduleAutoSave(); };
     fillSection.appendChild(fillSelect);
     left.appendChild(fillSection);
@@ -1017,6 +1047,7 @@
       }, !metaAdopted && isMetaKeyOverridden(slotCfg, key)));
     }
     metaSec.sectionBody.appendChild(metaGrid);
+    if (isVideo) metaSec.el.appendChild(makeHint('Video slots show the date only (from the clip\'s recording date, when available).'));
     right.appendChild(metaSec.el);
 
     grid.append(left, right);
@@ -1276,6 +1307,25 @@
     document.body.appendChild(overlay);
 
     navigate(startPath || '');
+  }
+
+  function makeSelect(options, value) {
+    const sel = document.createElement('select');
+    sel.style.cssText = 'width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:6px 8px;font-size:13px;outline:none;';
+    for (const [val, lbl] of options) {
+      const opt = document.createElement('option');
+      opt.value = val; opt.textContent = lbl;
+      if (val === value) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    return sel;
+  }
+
+  function makeHint(text) {
+    const p = document.createElement('p');
+    p.style.cssText = 'font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;';
+    p.textContent = text;
+    return p;
   }
 
   function makeSection(title) {

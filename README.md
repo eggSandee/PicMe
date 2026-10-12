@@ -96,10 +96,10 @@ PicMe/
 ### Milestone 4 — Video Slot Support
 *Goal: Any slot can play a video on loop instead of cycling photos.*
 
-- [ ] Per-slot mode toggle: photo cycling vs. video loop
-- [ ] Video plays muted by default (optional audio toggle)
-- [ ] Video loops for a configurable number of times before the slot advances
-- [ ] Supported formats: MP4, MOV (browser-native playback)
+- [x] Per-slot mode toggle: photo cycling vs. video loop
+- [x] Video plays muted by default (optional audio toggle)
+- [x] Video loops for a configurable number of times before the slot advances
+- [x] Supported formats: MP4, MOV (browser-native playback)
 - [ ] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
 - [ ] Daily layout rotation: layout selection (choose which layouts are eligible to rotate)
 - [ ] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
@@ -188,9 +188,18 @@ Each slot supports the following settings:
     "show_focal_length": false,
     "show_people": false
   },
-  "video_loops": 2             // For video mode: how many loops before advancing
+  "video_loops": 2,            // For video mode: how many times each video plays before advancing
+  "video_audio": false         // For video mode: play sound (muted by default)
 }
 ```
+
+**Video slots** (`"mode": "video"`) play `.mp4`, `.mov` and `.m4v` files from the slot's media folder. Each video plays `video_loops` times, then the slot crossfades to the next video — using the same shuffled, no-duplicate queue as photos, so the same clip never plays in two slots at once. Notes:
+
+- Video slots ignore `cycle_seconds` and `group` — they advance when their loops finish, and group timers never cut a video off.
+- Only the date pill is shown, read from the clip's recording date (MP4/MOV `mvhd` creation time). Clips without a plausible date show no pill.
+- Browsers usually block autoplay with sound until someone interacts with the page. If sound is blocked, the video keeps playing muted.
+- Files the browser can't decode (e.g. iPhone HEVC or ProRes `.mov` in Chrome / many TV browsers) are skipped automatically. Use H.264 for best compatibility.
+- Each playing video uses a hardware decoder; on TVs keep the number of video slots small and prefer modest resolutions (1080p or lower).
 
 ---
 
@@ -217,6 +226,7 @@ Each slot supports the following settings:
 | **Python 3.13** | Download from [python.org](https://python.org/downloads) (Windows) or `brew install python@3.13` (macOS). |
 | **A modern browser** | Chrome, Edge, Firefox, or Safari. The display is designed for full-screen use on a TV browser. |
 | **Your photos** | JPEG, PNG, GIF, or WebP files in a folder on your machine. |
+| **Videos (optional)** | MP4 or MOV files for video slots. H.264 is recommended — HEVC/ProRes `.mov` (common from iPhones) may not play in Chrome or on TVs and will be skipped. |
 
 ---
 
@@ -357,6 +367,19 @@ Per-slot `metadata` and `frame` are both optional. If omitted, the slot inherits
   "cycle_seconds": 30,
   "metadata": { "show_camera": true },       // inherits everything else from metadata_defaults
   "frame": { "mat_color": "#ffffff" }        // white mat on this slot only; inherits frame_defaults for the rest
+}
+```
+
+A video slot sets `mode` to `"video"` and points at a folder of MP4/MOV clips (see **Video slots** in the Slot Configuration Reference above):
+
+```json
+{
+  "id": 2,
+  "mode": "video",
+  "source_path": "/Videos/Clips",
+  "use_global": { "source": false },
+  "video_loops": 3,                          // play each clip 3 times, then advance
+  "video_audio": false                       // muted (default)
 }
 ```
 
