@@ -730,7 +730,8 @@
     const activeSlots = config.slots.slice(0, layout.slots.length);
     for (let i = 0; i < layout.slots.length; i++) {
       const slotDef = layout.slots[i];
-      const slotCfg = activeSlots[i] || { id: slotDef.id };
+      // Unconfigured slots are padded on the display from slot 1's config — mirror its mode here
+      const slotCfg = activeSlots[i] || { id: slotDef.id, mode: config.slots[0]?.mode };
       const frameCfg = getSlotFrame(slotCfg);
 
       const div = document.createElement('div');
@@ -764,7 +765,7 @@
       if (isVideo) {
         const playBadge = document.createElement('span');
         playBadge.textContent = '▶';
-        playBadge.title = 'Video slot';
+        playBadge.title = activeSlots[i] ? 'Video slot' : 'Video slot (copies slot 1 until configured)';
         playBadge.style.cssText = 'position:absolute;top:4px;left:5px;font-size:10px;color:#aaa;pointer-events:none;';
         inner.appendChild(playBadge);
       }
