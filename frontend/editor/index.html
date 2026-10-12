@@ -964,11 +964,22 @@
     });
     const effectiveSrc = sourceAdopted ? (config.source_path || '') : (slotCfg.source_path || '');
     const srcOverridden = !sourceAdopted && !!slotCfg.source_path && slotCfg.source_path !== config.source_path;
-    srcSec.sectionBody.appendChild(makePathField('Media folder', effectiveSrc, v => { slotCfg.source_path = v; scheduleAutoSave(); }, srcOverridden));
-    left.appendChild(srcSec.el);
-
     // Mode — always per-slot (photo cycling vs. video playback)
     const isVideo = slotCfg.mode === 'video';
+    // Video slots: warn when the folder has nothing to play (outside the body so it stays readable when adopted)
+    const noVideosWarn = makeHint('This folder has no videos (.mp4 / .mov / .m4v).');
+    noVideosWarn.style.color = '#e0a030';
+    noVideosWarn.style.display = 'none';
+    if (isVideo) checkFolderHasVideos(effectiveSrc, noVideosWarn);
+
+    srcSec.sectionBody.appendChild(makePathField('Media folder', effectiveSrc, v => {
+      slotCfg.source_path = v;
+      if (slotCfg.mode === 'video') checkFolderHasVideos(v, noVideosWarn);
+      scheduleAutoSave();
+    }, srcOverridden));
+    srcSec.el.appendChild(noVideosWarn);
+    left.appendChild(srcSec.el);
+
     const modeSection = makeSection('Mode');
     const modeSelect = makeSelect([['photos', 'Photos — cycle through images'], ['video', 'Video — play MP4 / MOV clips']], slotCfg.mode || 'photos');
     modeSelect.onchange = e => {
@@ -1052,6 +1063,19 @@
 
     grid.append(left, right);
     body.appendChild(grid);
+  }
+
+  // Debounced so typing a path doesn't fire a request per keystroke
+  let _videoCheckTimer = null;
+  function checkFolderHasVideos(folder, warnEl) {
+    clearTimeout(_videoCheckTimer);
+    _videoCheckTimer = setTimeout(async () => {
+      let count = null;
+      try {
+        count = (await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder || '')}&kind=video`)).count;
+      } catch (e) { /* unknown — don't warn */ }
+      warnEl.style.display = count === 0 ? '' : 'none';
+    }, 300);
   }
 
   function ensureSlotFrame(slotCfg) {
