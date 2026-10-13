@@ -13,7 +13,7 @@ import time
 import pytest
 
 from conftest import _exif_bytes, _make_image, make_config
-from video_fixtures import FFMPEG, make_clip
+from video_fixtures import FFMPEG, HAS_LIBX265, make_clip
 
 pytestmark = pytest.mark.e2e
 
@@ -63,7 +63,7 @@ SLOTS_JS = """() => [...document.querySelectorAll('.slot')].map(s => {
 @pytest.fixture(scope="module")
 def video_lib(tmp_path_factory):
     root = tmp_path_factory.mktemp("e2e-video")
-    lib = {name: root / name for name in ("photos", "videos", "four", "mixed")}
+    lib = {name: root / name for name in ("photos", "videos", "four", "mixed", "iphone")}
     for d in lib.values():
         d.mkdir()
     # GPS-free photos so photo slots never try reverse geocoding
@@ -77,6 +77,12 @@ def video_lib(tmp_path_factory):
         make_clip(lib["four"] / f"four_{i}.mp4", color=color, faststart=True)
     make_clip(lib["mixed"] / "good.mp4", color="green", faststart=True)
     make_clip(lib["mixed"] / "hevc.mov", codec="hevc", color="blue", faststart=True)
+    if HAS_LIBX265:
+        # iPhone-style: 10-bit HLG HEVC portrait clip, plus a Live Photo pair that must stay hidden
+        make_clip(lib["iphone"] / "IMG_0001.MOV", hdr="hlg", size=(320, 180), rotation=90, quadrants=True,
+                  duration=2)
+        make_clip(lib["iphone"] / "IMG_0002.MOV", codec="hevc", color="red", duration=2)
+        _make_image(lib["iphone"] / "IMG_0002.JPG", fmt="JPEG", exif=_exif_bytes(date=True))
     (lib["mixed"] / "corrupt.mp4").write_bytes(b"\x00\x00\x00\x18ftypisom" + b"\xde\xad\xbe\xef" * 512)
     return lib
 
@@ -272,4 +278,36 @@ def test_editor_video_mode_controls(h264_browser, server, open_page, e2e_config_
     page.locator("#slot-panel-body select:has(option[value='video'])").select_option("photos")
     assert saved_slot1("mode", "photos")
     assert page.locator(LOOPS_INPUT).count() == 0
+    assert w.errors == []
+
+
+VIDEO_STATUS = "#slot-panel-body >> text=/videos? ready/"
+
+
+def test_iphone_hevc_clip_is_converted_and_plays_upright(h264_browser, server, open_page, e2e_config_path, video_lib):
+    if not HAS_LIBX265:
+        pytest.skip("ffmpeg without libx265")
+    folder = video_lib["iphone"]
+    write_config(e2e_config_path, video_lib["photos"], folder, video_slots={1}, loops=1)
+
+    # Editor: conversion status for the slot's folder (the Live Photo clip stays hidden)
+    w = open_page(f"{server}/editor/")
+    w.page.locator("#collage-preview .preview-slot").first.click()
+    status = w.page.locator(VIDEO_STATUS)
+    status.wait_for(state="visible", timeout=10_000)
+    w.page.wait_for_function(
+        "() => /1 of 1 videos? ready/.test(document.querySelector('#slot-panel-body').innerText)", timeout=60_000)
+    assert "1 Live Photo clip hidden" in status.inner_text()
+    assert w.errors == []
+
+    # Display: the converted copy plays, in portrait, through /api/video?path=<original>
+    w = open_display(open_page, server)
+    wait_video_slots_playing(w.page, 1, timeout=30_000)
+    info = w.page.evaluate("""() => {
+      const v = document.querySelector('.slot.video-mode video.visible');
+      return { src: v.getAttribute('src'), w: v.videoWidth, h: v.videoHeight, ready: v.readyState };
+    }""")
+    assert "IMG_0001.MOV" in info["src"], info
+    assert info["h"] > info["w"] and info["ready"] >= 3, info
+    assert not any("IMG_0002" in s for s in w.page.evaluate("window.__shown"))
     assert w.errors == []

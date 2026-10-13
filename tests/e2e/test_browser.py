@@ -8,6 +8,7 @@ skipped if Playwright or a Chromium-family browser can't launch.
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -80,6 +81,8 @@ def server(e2e_config_path):
     proc = subprocess.Popen(
         [sys.executable, "-c", SERVER_SCRIPT, str(e2e_config_path), str(port)],
         cwd=BACKEND_DIR,
+        # The live server converts iPhone (HEVC) clips in the background like a real install
+        env={**os.environ, "PICME_TRANSCODE_AUTOSTART": "1"},
     )
     base = f"http://127.0.0.1:{port}"
     try:

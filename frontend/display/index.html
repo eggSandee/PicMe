@@ -256,7 +256,7 @@
     // Paths claimed by a slot (on screen or loading), with a claim count — a small library can
     // force a repeat, so one slot releasing a path must not free it while another still shows it
     const displayedPaths = new Map();
-    const unplayablePaths = new Set(); // videos that failed to load/decode (e.g. HEVC in Chrome)
+    const unplayablePaths = new Set(); // videos that failed to load/decode (safety net — the server only lists playable clips)
 
     function claimPath(path) {
       displayedPaths.set(path, (displayedPaths.get(path) || 0) + 1);
@@ -276,13 +276,27 @@
       return arr;
     }
 
+    // Video lists only include clips the browser can play now — iPhone (HEVC) clips appear once
+    // the server has converted them, so video queues are re-listed every pass and every 5 min.
+    const VIDEO_RELIST_MS = 5 * 60 * 1000;
+
     async function ensureQueue(folder, kind = 'photos') {
       const key = `${kind}:${folder}`;
-      if (folderQueues[key]) return folderQueues[key];
+      const q = folderQueues[key];
+      const stale = q && kind === 'video' && (q.stale || Date.now() - q.loadedAt > VIDEO_RELIST_MS);
+      if (q && !stale) return q;
       // Slots start concurrently — share one request so they all draw from the same shuffled queue
       if (!queueLoads[key]) {
         queueLoads[key] = fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder)}&kind=${kind}`)
-          .then(data => folderQueues[key] = { images: shuffle(data.images), index: 0 })
+          .then(data => {
+            if (kind === 'video') {
+              // Forget failures for files that are gone (claims in displayedPaths are left alone)
+              const listed = new Set(data.images);
+              for (const p of unplayablePaths) if (!listed.has(p)) unplayablePaths.delete(p);
+            }
+            return folderQueues[key] = { images: shuffle(data.images), index: 0, loadedAt: Date.now() };
+          })
+          .catch(e => { if (q) return q; throw e; })  // a failed re-list keeps the old queue
           .finally(() => delete queueLoads[key]);
       }
       return queueLoads[key];
@@ -300,6 +314,7 @@
           // Reshuffle on wrap-around so we don't get the same sequence again
           shuffle(q.images);
           q.index = 0;
+          if (kind === 'video') q.stale = true;  // re-list next time to pick up newly converted clips
         }
         if (!displayedPaths.has(candidate) && !unplayablePaths.has(candidate)) return candidate;
       }
@@ -480,7 +495,7 @@
           await waitForPlayable(next);
           await playVideo(next, slotCfg);
         } catch (e) {
-          // Typically an undecodable codec (HEVC / ProRes .mov in Chrome) — skip it
+          // E.g. a profile this TV can't decode, or a clip deleted since listing — skip it
           console.warn(`Slot ${slotCfg.id}: failed to play ${nextPath}`, e);
           releaseVideo(next);
           releasePath(nextPath);
