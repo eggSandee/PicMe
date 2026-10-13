@@ -12,11 +12,13 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 
+import piexif
 import pytest
 
-from conftest import BACKEND_DIR, LANDSCAPE, PORTRAIT, _exif_bytes, _make_image, make_config
+from conftest import BACKEND_DIR, LANDSCAPE, PORTRAIT, _exif_bytes, _make_heic, _make_image, make_config
 
 pytestmark = pytest.mark.e2e
 
@@ -214,3 +216,21 @@ def test_editor_change_reaches_open_display(server, open_page, e2e_config_path):
         assert editor.errors == []
     finally:
         e2e_config_path.write_text(original)
+
+
+def test_chrome_shows_iphone_heic(server, open_page, tmp_path):
+    """Chrome can't decode HEIC itself; /api/image must hand it a JPEG it can render upright."""
+    orientation_6 = piexif.dump({"0th": {piexif.ImageIFD.Orientation: 6}, "Exif": {}, "GPS": {},
+                                 "1st": {}, "thumbnail": None})
+    heic = _make_heic(tmp_path / "IMG_0001.HEIC", size=LANDSCAPE, exif=orientation_6)
+    w = open_page(f"{server}/display/")
+    dims = w.page.evaluate(
+        """src => new Promise((resolve, reject) => {
+               const img = new Image();
+               img.onload = () => resolve([img.naturalWidth, img.naturalHeight]);
+               img.onerror = () => reject(new Error('HEIC did not render'));
+               img.src = src;
+           })""",
+        f"{server}/api/image?path={urllib.parse.quote(str(heic))}",
+    )
+    assert tuple(dims) == PORTRAIT
