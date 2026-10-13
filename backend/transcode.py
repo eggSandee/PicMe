@@ -509,9 +509,12 @@ class Transcoder:
         duration = (sniff.duration_s or 0.0) if sniff else 0.0
         if not self.settings.include_live_photos and is_live_photo_companion(f, still_stems, sniff):
             return Clip(f, LIVE_PHOTO, duration=duration)
-        # Not a container we can read (corrupt, or not really MP4/MOV): pass it through as
-        # before and let the browser try — the display skips files it can't play
-        if sniff is None or not needs_transcode(sniff, self.settings.max_edge):
+        if sniff is not None and not needs_transcode(sniff, self.settings.max_edge):
+            return Clip(f, READY, f, duration)
+        # Not a container we can read (truncated, or not really MP4/MOV). With ffmpeg the
+        # worker's ffprobe decides: convertible → converted, unreadable → FAILED. Without it,
+        # pass it through as before and let the browser try (the display skips failures).
+        if sniff is None and not self.available:
             return Clip(f, READY, f, duration)
         try:
             src = f.resolve()
@@ -525,7 +528,7 @@ class Transcoder:
             return Clip(f, READY, mp4, duration)
         failed = (out_dir / f"{key}.bad").exists()
         if failed or not self.available:
-            if browser_playable(sniff):   # only converting for the size cap or the audio
+            if sniff is not None and browser_playable(sniff):   # only converting for the size cap or the audio
                 return Clip(f, READY, f, duration)
             return Clip(f, FAILED if failed else NO_FFMPEG, duration=duration)
         if enqueue:

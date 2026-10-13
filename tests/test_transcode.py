@@ -674,6 +674,32 @@ def test_api_failed_clip_is_415(client, lib, video_transcoder):
     assert client.get("/api/videos/status", params={"folder": str(lib)}).json()["failed"] == 1
 
 
+@requires_ffmpeg
+def test_api_truncated_clip_without_moov_is_probed_and_failed(client, lib, video_transcoder, video_cache):
+    data = make_clip(lib / "tmp.mov").read_bytes()   # moov after mdat (no faststart)
+    (lib / "tmp.mov").unlink()
+    broken = lib / "IMG_0600.MOV"
+    broken.write_bytes(data[:data.index(b"moov") - 4])   # cut before the moov box
+    assert sniff_video(broken) is None
+    r = client.get("/api/images/list", params={"folder": str(lib), "kind": "video"}).json()
+    assert (r["count"], r["pending"]) == (0, 1)   # not served raw while unknown
+    video_transcoder.run_until_idle()
+    assert client.get("/api/video", params={"path": str(broken)}).status_code == 415
+    status = client.get("/api/videos/status", params={"folder": str(lib)}).json()
+    assert (status["ready"], status["failed"]) == (0, 1)
+    assert len(list(video_cache.glob("*.bad"))) == 1
+    assert client.get("/api/images/list", params={"folder": str(lib), "kind": "video"}).json()["count"] == 0
+
+
+@requires_ffmpeg
+def test_unreadable_container_passes_through_without_ffmpeg(client, lib, monkeypatch):
+    monkeypatch.setattr(transcode, "find_tool", lambda name: None)
+    odd = lib / "odd.mp4"
+    odd.write_bytes(b"\x00" * 64)
+    r = client.get("/api/images/list", params={"folder": str(lib), "kind": "video"}).json()
+    assert r["images"] == [str(odd)]   # milestone-4 behaviour: the browser tries, the display skips
+
+
 @requires_libx265
 def test_api_without_ffmpeg(client, lib, monkeypatch):
     monkeypatch.setattr(transcode, "find_tool", lambda name: None)
