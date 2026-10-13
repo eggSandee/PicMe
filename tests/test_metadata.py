@@ -219,8 +219,8 @@ def test_shutter_fraction(photo_library):
 
 
 @pytest.mark.parametrize("exposure, expected", [
-    pytest.param((2, 1), "2s", marks=pytest.mark.xfail(
-        strict=True, reason="BUG: whole-second exposures render as '2.0s' (rstrip runs after the 's' suffix)")),
+    ((2, 1), "2s"),
+    ((3, 2), "1.5s"),
     ((5, 2), "2.5s"),
     ((1, 3), "1/3s"),
     ((1, 8000), "1/8000s"),
