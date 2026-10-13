@@ -523,6 +523,29 @@
     </div>
 
     <div class="sidebar-section">
+      <h3>Videos</h3>
+
+      <div class="field">
+        <label>Max video size</label>
+        <select id="g-video-max-edge">
+          <option value="1280">720p</option>
+          <option value="1920">1080p (recommended)</option>
+          <option value="3840">4K</option>
+          <option value="0">Original</option>
+        </select>
+      </div>
+
+      <div class="toggle-row">
+        <label>Include Live Photo clips</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-include-live-photos" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;">iPhone (HEVC) videos are converted to H.264 in the background so every browser can play them. Larger clips are scaled down to the max size. Live Photo clips are the 2–3 second videos saved alongside Live Photos.</p>
+    </div>
+
+    <div class="sidebar-section">
       <h3>Default Frame</h3>
 
       <div class="field">
@@ -819,6 +842,8 @@
     document.getElementById('g-show-frame').checked = fd.show_frame   !== false;
     document.getElementById('g-frame-color').value  = fd.frame_color  || '#2c2318';
     document.getElementById('g-frame-width').value  = fd.frame_width  ?? 8;
+    document.getElementById('g-video-max-edge').value = String(g.video_max_edge ?? 1920);
+    document.getElementById('g-include-live-photos').checked = g.include_live_photos === true;
 
     // Global metadata toggles
     const container = document.getElementById('g-meta-toggles');
@@ -846,6 +871,8 @@
     };
     document.getElementById('g-show-metadata').onchange  = e => { config.show_metadata = e.target.checked; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-daily-layout').onchange   = e => { config.daily_layout_rotation = e.target.checked; scheduleAutoSave(); };
+    document.getElementById('g-video-max-edge').onchange = e => { config.video_max_edge = parseInt(e.target.value); scheduleAutoSave(); };
+    document.getElementById('g-include-live-photos').onchange = e => { config.include_live_photos = e.target.checked; scheduleAutoSave(); };
     document.getElementById('g-mat-color').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_color   = e.target.value; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-mat-width').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_width   = parseInt(e.target.value); buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-show-frame').onchange  = e => { ensureFrameDefaults(); config.frame_defaults.show_frame  = e.target.checked; buildPreview(); scheduleAutoSave(); };
@@ -972,18 +999,22 @@
     const noVideosWarn = makeHint('This folder has no videos (.mp4 / .mov / .m4v).');
     noVideosWarn.style.color = '#e0a030';
     noVideosWarn.style.display = 'none';
-    if (isVideo) checkFolderHasVideos(effectiveSrc, noVideosWarn);
+    // Conversion progress for iPhone (HEVC) clips, or how to install ffmpeg
+    const videoStatusHint = makeHint('');
+    videoStatusHint.style.display = 'none';
+    if (isVideo) checkFolderHasVideos(effectiveSrc, noVideosWarn, videoStatusHint);
     // Adopted source: re-check when the global folder changes
     _refreshGlobalVideoWarn = (isVideo && sourceAdopted)
-      ? () => checkFolderHasVideos(config.source_path || '', noVideosWarn)
+      ? () => checkFolderHasVideos(config.source_path || '', noVideosWarn, videoStatusHint)
       : null;
 
     srcSec.sectionBody.appendChild(makePathField('Media folder', effectiveSrc, v => {
       slotCfg.source_path = v;
-      if (slotCfg.mode === 'video') checkFolderHasVideos(v, noVideosWarn);
+      if (slotCfg.mode === 'video') checkFolderHasVideos(v, noVideosWarn, videoStatusHint);
       scheduleAutoSave();
     }, srcOverridden));
     srcSec.el.appendChild(noVideosWarn);
+    srcSec.el.appendChild(videoStatusHint);
     left.appendChild(srcSec.el);
 
     const modeSection = makeSection('Mode');
@@ -1014,7 +1045,7 @@
       loopsField.style.marginTop = '8px';
       modeSection.appendChild(loopsField);
       modeSection.appendChild(makeToggleRow('Play audio', !!slotCfg.video_audio, v => { slotCfg.video_audio = v; scheduleAutoSave(); }));
-      modeSection.appendChild(makeHint('Muted by default. TV browsers may block sound until someone interacts with the display page. Folder should contain .mp4 / .mov files (H.264 recommended).'));
+      modeSection.appendChild(makeHint('Muted by default. TV browsers may block sound until someone interacts with the display page. Folder should contain .mp4 / .mov files. iPhone (HEVC) clips are converted automatically in the background and join the rotation when ready.'));
     }
     left.appendChild(modeSection);
 
@@ -1083,15 +1114,53 @@
 
   // Debounced so typing a path doesn't fire a request per keystroke
   let _videoCheckTimer = null;
-  function checkFolderHasVideos(folder, warnEl) {
+  function checkFolderHasVideos(folder, warnEl, statusEl) {
     clearTimeout(_videoCheckTimer);
     _videoCheckTimer = setTimeout(async () => {
-      let count = null;
+      let list = null;
       try {
-        count = (await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder || '')}&kind=video`)).count;
+        list = await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder || '')}&kind=video`);
       } catch (e) { /* unknown — don't warn */ }
-      warnEl.style.display = count === 0 ? '' : 'none';
+      // Clips still converting aren't listed yet, so they don't count as "no videos"
+      warnEl.style.display = list && list.count === 0 && !list.pending ? '' : 'none';
+      if (statusEl) watchVideoStatus(folder, statusEl);
     }, 300);
+  }
+
+  // Polls conversion progress every 5 s while clips are converting and the hint is on screen
+  let _videoStatusTimer = null;
+  function watchVideoStatus(folder, el) {
+    clearTimeout(_videoStatusTimer);
+    const poll = async () => {
+      if (!el.isConnected) return;  // slot panel re-rendered or closed
+      let s;
+      try {
+        s = await fetchJSON(`${API}/api/videos/status?folder=${encodeURIComponent(folder || '')}`);
+      } catch (e) { el.style.display = 'none'; return; }
+      if (!el.isConnected) return;
+      const text = videoStatusText(s);
+      el.textContent = text;
+      el.style.display = text ? '' : 'none';
+      el.style.color = !s.ffmpeg && s.skipped_no_ffmpeg ? '#e0a030' : '';
+      if (s.pending > 0) _videoStatusTimer = setTimeout(poll, 5000);
+    };
+    poll();
+  }
+
+  function videoStatusText(s) {
+    const parts = [];
+    if (s.total) {
+      let ready = `${s.ready} of ${s.total} videos ready`;
+      if (s.converting) ready += ` — converting ${s.converting.name} (${s.converting.percent}%)`;
+      else if (s.pending) ready += ` — ${s.pending} waiting to convert`;
+      parts.push(ready);
+    }
+    if (s.failed) parts.push(`${s.failed} couldn't be converted`);
+    if (s.live_photos_hidden) parts.push(`${s.live_photos_hidden} Live Photo clip${s.live_photos_hidden === 1 ? '' : 's'} hidden`);
+    if (!s.ffmpeg && s.skipped_no_ffmpeg) parts.push(s.hint);
+    // Nothing to report for a folder of plain H.264 clips
+    if (!s.pending && !s.failed && !s.live_photos_hidden && !s.skipped_no_ffmpeg) return '';
+    return parts.map(p => p.replace(/\.$/, '')).join('. ') + '.';
   }
 
   function ensureSlotFrame(slotCfg) {

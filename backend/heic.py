@@ -14,13 +14,14 @@ import hashlib
 import io
 import logging
 import os
-import sys
 import tempfile
 import threading
 from pathlib import Path
 
 import pillow_heif
 from PIL import Image, ImageCms, ImageOps
+
+from cache import cache_subdir
 
 # Defaults decode 10-bit HDR to 8-bit. iPhone "HDR" HEICs are an SDR base image
 # plus a gain map; the base image is what we show, the gain map is ignored.
@@ -52,18 +53,7 @@ def is_heic(path: str | Path) -> bool:
 
 def cache_dir() -> Path:
     """Per-user cache dir for converted files, outside the repo and photo folders."""
-    override = os.environ.get("PICME_CACHE_DIR")
-    if override:
-        base = Path(override)
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Caches" / "PicMe"
-    elif sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "PicMe" / "Cache"
-    else:
-        base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "picme"
-    path = base / "heic"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return cache_subdir("heic")
 
 
 def _cache_key(src: Path) -> str:

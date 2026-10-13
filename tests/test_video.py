@@ -11,6 +11,7 @@ from metadata import video as video_module
 from metadata.video import extract_video_date
 from video_fixtures import (
     FTYP,
+    h264_stub,
     box,
     large_box,
     mac_seconds,
@@ -26,7 +27,7 @@ STAMP = datetime.datetime(2021, 6, 15, 3, 30, tzinfo=UTC)
 STAMP_SECONDS = mac_seconds(STAMP)
 
 # Arbitrary non-video payload served by /api/video — the route streams bytes, it doesn't decode
-VIDEO_BYTES = bytes(range(256)) * 4  # 1024 bytes
+VIDEO_BYTES = h264_stub(1024)  # sniffs as plain H.264, so it is served untouched
 
 
 @pytest.fixture
@@ -96,12 +97,12 @@ def test_list_unknown_kind_is_400(client, media_dir, kind):
 
 def test_list_video_kind_on_photo_only_folder_is_empty(client, photo_library):
     r = client.get("/api/images/list", params={"folder": str(photo_library.dir), "kind": "video"})
-    assert r.json() == {"images": [], "count": 0}
+    assert r.json() == {"images": [], "count": 0, "pending": 0}
 
 
 def test_list_video_kind_missing_folder_is_empty(client, tmp_path):
     r = client.get("/api/images/list", params={"folder": str(tmp_path / "nope"), "kind": "video"})
-    assert r.json() == {"images": [], "count": 0}
+    assert r.json() == {"images": [], "count": 0, "pending": 0}
 
 
 # --- /api/images/random?kind=video ---
