@@ -211,7 +211,9 @@ def serve_image(path: str):
 def serve_video(path: str):
     """Serve a video file by absolute path. FileResponse handles Range/If-Range (206/416)
     natively, which TV browsers need to stream and seek."""
-    # The original is validated first, so the cache is only reachable through a real video
+    # The requested path is validated first (a video extension, also after resolving symlinks).
+    # The cache dir itself is never addressable: at most the converted copy of the file that
+    # was asked for is served.
     file_path = resolve_media_file(path, VIDEO_EXTENSIONS, "Video")
     clip = transcode.transcoder.clip(file_path)
     if clip.state == transcode.PENDING:
