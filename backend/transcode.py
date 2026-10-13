@@ -570,8 +570,9 @@ class Transcoder:
 
     # -- classification --
 
-    def scan(self, folder: str | Path, enqueue: bool = True) -> list[Clip]:
-        """Every video in ``folder`` with its state; queues the ones that need converting."""
+    def scan(self, folder: str | Path, enqueue: bool | list = True) -> list[Clip]:
+        """Every video in ``folder`` with its state; queues the ones that need converting
+        (or, given a list, appends ``(source, duration)`` to it for ``enqueue_many``)."""
         try:
             files = [f for f in Path(folder).iterdir() if not f.name.startswith(".") and f.is_file()]
         except OSError:
@@ -595,7 +596,7 @@ class Transcoder:
                 pass
         return self._classify(f, still_stems, True)
 
-    def _classify(self, f: Path, still_stems: set[str], enqueue: bool) -> Clip:
+    def _classify(self, f: Path, still_stems: set[str], enqueue: bool | list) -> Clip:
         sniff = sniff_video(f)
         duration = (sniff.duration_s or 0.0) if sniff else 0.0
         if not self.settings.include_live_photos and is_live_photo_companion(f, still_stems, sniff):
@@ -629,7 +630,9 @@ class Transcoder:
             if sniff is not None and browser_playable(sniff):   # only converting for the size cap or the audio
                 return Clip(f, READY, f, duration)
             return Clip(f, FAILED if failed else NO_FFMPEG, duration=duration)
-        if enqueue:
+        if isinstance(enqueue, list):
+            enqueue.append((src, duration))
+        elif enqueue:
             self.enqueue(src, duration)
         if previous is not None:
             return Clip(f, READY, previous, duration)
@@ -638,18 +641,32 @@ class Transcoder:
     # -- queue --
 
     def enqueue(self, src: Path, duration: float = 0.0) -> None:
+        self.enqueue_many([(src, duration)])
+
+    def enqueue_many(self, items) -> None:
+        """Queue ``(source, duration)`` pairs at once, so the worker picks the shortest of
+        them all rather than whichever was found first."""
         with self._cond:
             current = self._current and self._current.get("src")
-            if src not in self._pending and src != current:
-                self._pending[src] = duration
-                self._cond.notify()
+            for src, duration in items:
+                if src not in self._pending and src != current:
+                    self._pending[src] = duration
+            self._cond.notify()
 
     def enqueue_folders(self, folders) -> None:
-        """Scan folders in the background (listing many files shouldn't block a request)."""
+        """Scan folders in the background (listing many files shouldn't block a request),
+        queueing what they need converted in one batch once the scan is done."""
         folders = [f for f in dict.fromkeys(folders) if f]
-        if folders:
-            threading.Thread(target=lambda: [self.scan(f) for f in folders],
-                             name="picme-video-scan", daemon=True).start()
+        if not folders:
+            return
+
+        def scan_all() -> None:
+            batch: list[tuple[Path, float]] = []
+            for f in folders:
+                self.scan(f, enqueue=batch)
+            self.enqueue_many(batch)
+
+        threading.Thread(target=scan_all, name="picme-video-scan", daemon=True).start()
 
     def _next(self) -> Path | None:
         with self._cond:

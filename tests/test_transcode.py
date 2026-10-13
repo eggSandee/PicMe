@@ -609,6 +609,29 @@ def test_prune_removes_outputs_of_changed_or_deleted_sources(tmp_path, video_cac
     assert sorted(f.name for f in video_cache.iterdir()) == ["k.json", "k.mp4"]
 
 
+@requires_ffmpeg
+def test_initial_scan_is_batched_so_shortest_converts_first(lib, video_transcoder, monkeypatch):
+    # Whatever order the folder lists in, the first clip found is the longest
+    calls = []
+
+    def sniff(path):
+        calls.append(path)
+        time.sleep(0.05)   # a slow disk: the worker is idle and waiting while the scan runs
+        return VideoSniff("hvc1", 160, 120, float(100 - len(calls)))
+
+    monkeypatch.setattr(transcode, "sniff_video", sniff)
+    order = []
+    monkeypatch.setattr(video_transcoder, "_convert", lambda src: order.append(src.name))
+    for i in range(4):
+        (lib / f"clip{i}.mov").write_bytes(b"x")
+    video_transcoder.start()
+    video_transcoder.enqueue_folders([str(lib)])
+    deadline = time.monotonic() + 10
+    while len(order) < 4 and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert order == [p.name for p in reversed(calls)]   # shortest first
+
+
 _HARD_KILL_CHILD = """
 import sys, time
 sys.path.insert(0, sys.argv[1])
