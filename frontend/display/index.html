@@ -290,9 +290,10 @@
         queueLoads[key] = fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder)}&kind=${kind}`)
           .then(data => {
             if (kind === 'video') {
-              // Forget failures for files that are gone (claims in displayedPaths are left alone)
+              // Forget failures for this folder's files that are gone — other folders' entries
+              // are left alone, as are claims in displayedPaths
               const listed = new Set(data.images);
-              for (const p of unplayablePaths) if (!listed.has(p)) unplayablePaths.delete(p);
+              for (const p of q?.images || []) if (!listed.has(p)) unplayablePaths.delete(p);
             }
             return folderQueues[key] = { images: shuffle(data.images), index: 0, loadedAt: Date.now() };
           })

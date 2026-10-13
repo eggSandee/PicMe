@@ -230,6 +230,24 @@ LOOPS_INPUT = "#slot-panel-body .field:has(label:text-is('Play each video (times
 NO_VIDEOS = "#slot-panel-body >> text=This folder has no videos"
 
 
+def test_relisting_another_folder_keeps_this_folders_failures(h264_browser, server, open_page, e2e_config_path,
+                                                              video_lib):
+    write_config(e2e_config_path, video_lib["photos"], video_lib["mixed"], video_slots={1}, loops=1)
+    w = open_display(open_page, server)
+    page = w.page
+    wait_video_slots_playing(page, 1)
+    page.wait_for_function("() => [...unplayablePaths].some(p => p.endsWith('corrupt.mp4'))", timeout=15_000)
+    # Another folder's queue is re-listed (a second video slot, or the 5-minute refresh)
+    still_marked = page.evaluate("""async folder => {
+        await ensureQueue(folder, 'video');
+        folderQueues[`video:${folder}`].stale = true;
+        await ensureQueue(folder, 'video');
+        return [...unplayablePaths].some(p => p.endsWith('corrupt.mp4'));
+    }""", str(video_lib["videos"]))
+    assert still_marked
+    assert w.errors == []
+
+
 def test_editor_video_mode_controls(h264_browser, server, open_page, e2e_config_path, video_lib):
     photos, videos = str(video_lib["photos"]), str(video_lib["videos"])
     cfg = make_config(photos)
