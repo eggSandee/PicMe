@@ -32,12 +32,14 @@ HEIC_EXTENSIONS = {".heic", ".heif"}
 
 MAX_EDGE = 3840          # long-edge cap for converted copies (4K TVs)
 JPEG_QUALITY = 88
-CONVERTER_VERSION = 1    # bump when the pipeline changes so stale cache entries are ignored
+CONVERTER_VERSION = 2    # bump when the pipeline changes so stale cache entries are ignored
+MAX_CONCURRENT_CONVERSIONS = 2  # a cold 48MP conversion peaks around 650MB; a 6-slot first start would otherwise run 6 at once
 
 _SRGB = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB"))
 
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
+_convert_slots = threading.BoundedSemaphore(MAX_CONCURRENT_CONVERSIONS)
 
 
 class HeicConversionError(Exception):
@@ -89,10 +91,13 @@ def _to_srgb(img: Image.Image) -> Image.Image:
 
 
 def _convert(src: Path, dst: Path) -> None:
+    # Downscale first so the full-size decode is the only full-size buffer: thumbnail() and
+    # exif_transpose(in_place=True) replace the pixels in place, and the color transform
+    # then runs on the small copy.
     with Image.open(src) as img:
-        img = ImageOps.exif_transpose(img)  # pillow-heif already applies irot/imir; this is a safety net
+        img.thumbnail((MAX_EDGE, MAX_EDGE), Image.LANCZOS)
+        ImageOps.exif_transpose(img, in_place=True)  # pillow-heif already applies irot/imir; this is a safety net
         img = _to_srgb(img)
-    img.thumbnail((MAX_EDGE, MAX_EDGE), Image.LANCZOS)
     fd, tmp = tempfile.mkstemp(dir=dst.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as f:
@@ -130,7 +135,8 @@ def get_converted(path: str | Path) -> Path:
         if bad.exists():
             raise HeicConversionError(f"{src} previously failed to decode")
         try:
-            _convert(src, dst)
+            with _convert_slots:
+                _convert(src, dst)
         except Exception as e:
             log.warning("Could not convert HEIC %s: %s", src, e)
             try:

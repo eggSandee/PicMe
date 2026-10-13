@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import io
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from PIL import Image
@@ -195,6 +197,54 @@ def test_unwritable_cache_is_415_not_500(client, photo_library, monkeypatch, tmp
     assert r.status_code == 415
     # Other formats keep working
     assert client.get("/api/image", params={"path": str(photo_library.files["png"])}).status_code == 200
+
+
+def test_cold_conversions_limited_to_two_at_a_time(client, tmp_path, monkeypatch):
+    """A 6-slot layout on first start requests 6 uncached HEICs at once; only 2 may decode
+    concurrently (each 48MP decode is several hundred MB)."""
+    paths = [_make_heic(tmp_path / f"IMG_{i:04d}.HEIC", size=(64, 48)) for i in range(6)]
+    real = heic._convert
+    cond = threading.Condition()
+    state = {"active": 0, "max": 0}
+
+    def _spy(src, dst):
+        with cond:
+            state["active"] += 1
+            state["max"] = max(state["max"], state["active"])
+            cond.notify_all()
+            # Linger so overlapping calls are observed; stop early once the limit is clearly broken.
+            cond.wait_for(lambda: state["active"] > 2, timeout=0.3)
+        try:
+            return real(src, dst)
+        finally:
+            with cond:
+                state["active"] -= 1
+
+    monkeypatch.setattr(heic, "_convert", _spy)
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        responses = list(pool.map(lambda p: client.get("/api/image", params={"path": str(p)}), paths))
+    assert [r.status_code for r in responses] == [200] * 6
+    assert state["max"] == 2  # bounded, but still converting in parallel
+
+
+def test_cache_hits_and_known_bad_dont_wait_for_busy_converters(client, photo_library, convert_calls):
+    good = photo_library.files["heic_full"]
+    bad = photo_library.files["heic_corrupt"]
+    assert client.get("/api/image", params={"path": str(good)}).status_code == 200
+    assert client.get("/api/image", params={"path": str(bad)}).status_code == 415
+    # Occupy every conversion slot, as two long cold decodes would.
+    for _ in range(heic.MAX_CONCURRENT_CONVERSIONS):
+        assert heic._convert_slots.acquire(timeout=1)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        try:
+            hit = pool.submit(client.get, "/api/image", params={"path": str(good)})
+            known_bad = pool.submit(client.get, "/api/image", params={"path": str(bad)})
+            assert hit.result(timeout=5).status_code == 200
+            assert known_bad.result(timeout=5).status_code == 415
+        finally:  # release before the pool joins, so a failing run doesn't hang
+            for _ in range(heic.MAX_CONCURRENT_CONVERSIONS):
+                heic._convert_slots.release()
+    assert len(convert_calls) == 2
 
 
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks unavailable")
