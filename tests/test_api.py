@@ -25,6 +25,7 @@ def test_config_get_without_file_creates_defaults(client, config_path):
     assert cfg["show_metadata"] is True
     assert cfg["metadata_defaults"]["show_date"] is True
     assert cfg["frame_defaults"]["show_frame"] is True
+    assert cfg["frame_defaults"]["frame_style"] == "solid"  # decorative frames are opt-in
     # Persisted on first run, so the editor and a restart see the same thing
     assert json.loads(config_path.read_text()) == cfg
     assert client.get("/api/config").json() == cfg
