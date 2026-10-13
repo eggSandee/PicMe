@@ -116,6 +116,46 @@ def make_clip(
     return path
 
 
+def make_hdr_card(path: Path, curve: str, patches: list[tuple[float, float, float]],
+                  size: tuple[int, int] = (320, 180)) -> Path:
+    """A 10-bit BT.2020 HLG/PQ HEVC clip of flat patches with exact R'G'B' code values
+    (0–1), laid out 4 per row left to right, top to bottom (see ``patch_centers``)."""
+    if FFMPEG is None or not HAS_LIBX265:
+        pytest.skip("ffmpeg with libx265 needed")
+    w, h = size
+    cols, rows = 4, -(-len(patches) // 4)
+    planes = [bytearray(), bytearray(), bytearray()]
+    for y in range(h):
+        for x in range(w):
+            r, g, b = patches[min(len(patches) - 1, (y * rows // h) * cols + x * cols // w)]
+            luma = 0.2627 * r + 0.6780 * g + 0.0593 * b   # BT.2020 non-constant luminance
+            codes = (64 + 876 * luma, 512 + 896 * (b - luma) / 1.8814, 512 + 896 * (r - luma) / 1.4746)
+            for plane, v in zip(planes, codes):
+                plane += struct.pack("<H", max(0, min(1023, round(v))))
+    trc = _HDR_TRANSFER[curve]
+    subprocess.run([FFMPEG, "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "yuv444p10le", "-s", f"{w}x{h}",
+                    "-r", "10", "-i", "-", "-vf", "loop=4:1:0", "-c:v", "libx265", "-pix_fmt", "yuv420p10le",
+                    "-tag:v", "hvc1", "-x265-params",
+                    f"log-level=error:crf=4:colorprim=bt2020:transfer={trc}:colormatrix=bt2020nc",
+                    "-color_primaries", "bt2020", "-color_trc", trc, "-colorspace", "bt2020nc", str(path)],
+                   input=b"".join(planes), check=True, capture_output=True)
+    return path
+
+
+def patch_centers(n: int, size: tuple[int, int]) -> list[tuple[int, int]]:
+    w, h = size
+    rows = -(-n // 4)
+    return [((i % 4 * 2 + 1) * w // 8, (i // 4 * 2 + 1) * h // (2 * rows)) for i in range(n)]
+
+
+def pixel_at(path: Path, x: int, y: int) -> tuple[int, int, int]:
+    """Average RGB of the 8x8 block centred on (x, y) in the first decoded frame."""
+    raw = subprocess.run([FFMPEG, "-v", "error", "-i", str(path), "-vf", f"crop=8:8:{x - 4}:{y - 4},scale=1:1",
+                          "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                         check=True, capture_output=True).stdout
+    return tuple(raw[:3])
+
+
 def ffprobe_streams(path: Path) -> list[dict]:
     out = subprocess.run([FFPROBE, "-v", "error", "-print_format", "json", "-show_streams", str(path)],
                          check=True, capture_output=True, text=True).stdout

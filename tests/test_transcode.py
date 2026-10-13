@@ -37,6 +37,9 @@ from video_fixtures import (
     corner_pixel,
     ffprobe_streams,
     make_clip,
+    make_hdr_card,
+    patch_centers,
+    pixel_at,
     requires_ffmpeg,
     requires_libx265,
 )
@@ -47,6 +50,8 @@ ALL_CAPS = Capabilities("test", frozenset({"libx264", "h264_videotoolbox"}),
                         frozenset({"scale_vt", "transpose_vt", "colorspace", "scale"}))
 SW_CAPS = Capabilities("test", frozenset({"libx264", "h264_videotoolbox"}), frozenset({"colorspace"}))
 X264_CAPS = Capabilities("test", frozenset({"libx264"}), frozenset({"colorspace"}))
+LUT_CAPS = Capabilities("test", frozenset({"libx264", "h264_videotoolbox"}),
+                        frozenset({"scale_vt", "transpose_vt", "lut3d", "zscale"}))
 ZSCALE_CAPS = Capabilities("test", frozenset({"libx264"}), frozenset({"zscale", "tonemap"}))
 
 
@@ -186,6 +191,10 @@ def _probe(**kw) -> Probe:
     return Probe(**{**base, **kw})
 
 
+def _sdr(**kw) -> Probe:
+    return _probe(**{"pix_fmt": "yuv420p", "transfer": "bt709", "primaries": "bt709", **kw})
+
+
 def _cmd(p: Probe, caps=ALL_CAPS, tier=TIER_HW, max_edge=1920) -> list[str]:
     return build_command("ffmpeg", Path("/in.mov"), Path("/out.tmp.mp4"), p, caps, max_edge, tier)
 
@@ -196,7 +205,7 @@ def _vf(cmd: list[str]) -> str:
 
 @pytest.mark.parametrize("rotation, direction", [(90, "cclock"), (-90, "clock"), (270, "clock")])
 def test_hw_command_rotates_explicitly(rotation, direction):
-    cmd = _cmd(_probe(rotation=rotation))
+    cmd = _cmd(_sdr(rotation=rotation))
     assert "videotoolbox" in cmd[cmd.index("-hwaccel") + 1]
     vf = _vf(cmd)
     assert vf.startswith(f"transpose_vt=dir={direction},")
@@ -206,23 +215,45 @@ def test_hw_command_rotates_explicitly(rotation, direction):
 
 
 def test_hw_command_unrotated_has_explicit_size():
-    vf = _vf(_cmd(_probe(width=640, height=360, transfer="bt709")))
+    vf = _vf(_cmd(_sdr(width=640, height=360)))
     assert "transpose_vt" not in vf
     assert "scale_vt=w=640:h=360:" in vf
 
 
 def test_hw_tier_skipped_for_180_degrees():
-    assert tiers_for(_probe(rotation=180), ALL_CAPS) == [TIER_SW, TIER_X264]
-    assert tiers_for(_probe(rotation=90), ALL_CAPS) == [TIER_HW, TIER_SW, TIER_X264]
-    assert tiers_for(_probe(), X264_CAPS) == [TIER_X264]
-    assert tiers_for(_probe(), Capabilities()) == []
+    assert tiers_for(_sdr(rotation=180), ALL_CAPS) == [TIER_SW, TIER_X264]
+    assert tiers_for(_sdr(rotation=90), ALL_CAPS) == [TIER_HW, TIER_SW, TIER_X264]
+    assert tiers_for(_sdr(), X264_CAPS) == [TIER_X264]
+    assert tiers_for(_sdr(), Capabilities()) == []
 
 
-def test_sw_command_hdr_without_zscale_uses_colorspace():
-    cmd = _cmd(_probe(), caps=SW_CAPS, tier=TIER_SW)
-    assert "-hwaccel" not in cmd
-    assert _vf(cmd) == "colorspace=all=bt709:iall=bt2020:itrc=bt709:format=yuv420p,scale=1920:1080,format=yuv420p"
+@pytest.mark.parametrize("hdr", [dict(), dict(transfer="smpte2084"), dict(transfer="bt709", dolby_vision=True),
+                                 dict(transfer="")])  # untagged 10-bit BT.2020
+def test_hdr_never_uses_scale_vt(hdr):
+    # scale_vt's color_* options only re-tag HDR frames; they don't tone-map
+    assert tiers_for(_probe(**hdr), ALL_CAPS) == [TIER_SW, TIER_X264]
+
+
+def test_untagged_8bit_or_bt709_is_not_hdr():
+    assert not _probe(transfer="", pix_fmt="yuv420p").hdr
+    assert not _probe(transfer="", primaries="bt709").hdr
+
+
+@pytest.mark.parametrize("transfer, curve", [("arib-std-b67", "hlg"), ("smpte2084", "pq"), ("", "hlg")])
+def test_sw_command_hdr_tonemaps_with_lut(transfer, curve):
+    cmd = _cmd(_probe(transfer=transfer), caps=LUT_CAPS, tier=TIER_SW)
+    assert cmd[cmd.index("-hwaccel") + 1] == "videotoolbox"   # hardware decode, CPU filters
+    assert "-hwaccel_output_format" not in cmd
+    assert _vf(cmd) == ("scale=1920:1080:in_color_matrix=bt2020,format=gbrp16le,"
+                        f"lut3d=file={curve}-v{transcode.LUT_VERSION}-{transcode.LUT_SIZE}.cube:interp=tetrahedral,"
+                        "setparams=color_primaries=bt709:color_trc=bt709:colorspace=gbr,"
+                        "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p")
     assert cmd[cmd.index("-colorspace") + 1] == "bt709"
+
+
+def test_sw_command_hdr_without_lut3d_or_zscale_uses_colorspace():
+    cmd = _cmd(_probe(), caps=SW_CAPS, tier=TIER_SW)
+    assert _vf(cmd) == "colorspace=all=bt709:iall=bt2020:itrc=bt709:format=yuv420p,scale=1920:1080,format=yuv420p"
 
 
 def test_sw_command_hdr_with_zscale_tonemaps():
@@ -406,6 +437,66 @@ def test_hlg_hevc_converted_to_sdr_h264_faststart(lib, video_transcoder, video_c
     assert not list(video_cache.glob("*.tmp.mp4"))
 
 
+# HDR test cards: BT.2020 R'G'B' code values → SDR BT.709 sRGB expected from an independent
+# numpy implementation of BT.2100 (HLG OOTF at 1000 nits / PQ EOTF) → BT.709 gamut → 203-nit
+# reference white → extended-Reinhard roll-off to a 1000-nit peak → gamma 2.4 (QA's reference).
+# "naive" is what you get by showing the code values unconverted, which is what scale_vt's
+# re-tagging produced.
+HDR_CARDS = {
+    "hlg": {
+        "patches": [(0.75, 0.75, 0.75), (0.5, 0.5, 0.5), (0.95, 0.95, 0.95), (0.7, 0.4, 0.35),
+                    (0.45, 0.68, 0.45), (0.4, 0.45, 0.72), (0.72, 0.58, 0.5), (0.2, 0.2, 0.2)],
+        "expected": [(194, 194, 194), (131, 131, 131), (243, 243, 243), (225, 90, 93),
+                     (0, 185, 108), (88, 120, 206), (220, 140, 124), (57, 57, 57)],
+    },
+    "pq": {
+        "patches": [(0.58, 0.58, 0.58), (0.45, 0.45, 0.45), (0.70, 0.70, 0.70), (0.62, 0.42, 0.38),
+                    (0.45, 0.6, 0.45), (0.42, 0.45, 0.62), (0.6, 0.52, 0.48), (0.25, 0.25, 0.25)],
+        "expected": [(194, 194, 194), (135, 135, 135), (238, 238, 238), (255, 58, 82),
+                     (0, 220, 96), (72, 133, 255), (254, 151, 131), (55, 55, 55)],
+    },
+}
+
+
+def _saturation(rgb) -> float:
+    return (max(rgb) - min(rgb)) / max(max(rgb), 1)
+
+
+@requires_libx265
+@pytest.mark.parametrize("pipeline", ["default", "libx264"])
+@pytest.mark.parametrize("curve", HDR_CARDS)
+def test_hdr_pixels_tone_mapped_to_sdr(lib, video_transcoder, monkeypatch, curve, pipeline):
+    """Actual pixel values, not just colour tags: HDR must be converted, not re-labelled."""
+    if pipeline == "libx264":
+        _caps_without(monkeypatch, filters=("scale_vt", "transpose_vt"), encoders=("h264_videotoolbox",))
+    card = HDR_CARDS[curve]
+    size = (320, 180)
+    src = make_hdr_card(lib / f"card_{curve}.MOV", curve, card["patches"], size)
+    video_transcoder.configure({"video_max_edge": 0})
+    video_transcoder.clip(src)
+    video_transcoder.run_until_idle()
+    out = converted(src)
+    got = [pixel_at(out, x, y) for x, y in patch_centers(len(card["patches"]), size)]
+    errors = [sum(abs(a - b) for a, b in zip(g, e)) / 3 for g, e in zip(got, card["expected"])]
+    assert sum(errors) / len(errors) <= 4, list(zip(got, card["expected"]))
+    assert max(errors) <= 10, list(zip(got, card["expected"]))
+    # Colours keep their saturation (washed-out output is the classic HDR→SDR failure)
+    for g, e in zip(got[3:7], card["expected"][3:7]):
+        assert _saturation(g) >= 0.85 * _saturation(e), (g, e)
+
+
+@requires_libx265
+def test_hdr_lut_written_once_to_cache(lib, video_transcoder, video_cache):
+    for i in range(2):
+        src = make_hdr_card(lib / f"c{i}.MOV", "hlg", [(0.5, 0.5, 0.5)], (64, 36))
+        video_transcoder.clip(src)
+    video_transcoder.run_until_idle()
+    luts = list((video_cache / "luts").iterdir())
+    assert [p.name for p in luts] == [f"hlg-v{transcode.LUT_VERSION}-{transcode.LUT_SIZE}.cube"]
+    assert luts[0].read_text().splitlines()[0] == f"LUT_3D_SIZE {transcode.LUT_SIZE}"
+    assert not list(lib.glob("*.cube"))   # nothing next to the originals
+
+
 def _caps_without(monkeypatch, *, filters=(), encoders=()):
     real = transcode.capabilities
 
@@ -514,9 +605,9 @@ def test_progress_and_shortest_first(lib, video_transcoder, monkeypatch):
     order, percents = [], []
     real_run = video_transcoder._run
 
-    def spy(cmd, duration):
+    def spy(cmd, duration, cwd=None):
         order.append(Path(video_transcoder._current["src"]).name)
-        ok, err = real_run(cmd, duration)
+        ok, err = real_run(cmd, duration, cwd)
         percents.append(video_transcoder._current["percent"])
         return ok, err
 

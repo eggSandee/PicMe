@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -32,7 +33,8 @@ from metadata.video import VideoSniff, sniff_video
 log = logging.getLogger(__name__)
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v"}
-PIPELINE_VERSION = 1      # bump when the ffmpeg recipe changes so stale cache entries are ignored
+PIPELINE_VERSION = 2      # bump when the ffmpeg recipe changes so stale cache entries are ignored
+                          # (2: HDR tone-mapped with a 3D LUT instead of re-tagged by scale_vt)
 DEFAULT_MAX_EDGE = 1920   # long-edge cap for converted (and too-large H.264) clips; 0 = no cap
 MAX_FPS = 60              # slo-mo clips are 120/240 fps; TV decoders choke on several of those
 LIVE_PHOTO_MAX_SECONDS = 4.0
@@ -120,7 +122,16 @@ class Probe:
 
     @property
     def hdr(self) -> bool:
-        return self.transfer in ("arib-std-b67", "smpte2084") or self.dolby_vision
+        if self.transfer in ("arib-std-b67", "smpte2084") or self.dolby_vision:
+            return True
+        # 10-bit BT.2020 with no transfer tag (some encoders, e.g. hevc_videotoolbox, don't
+        # write one) is HDR in practice — iPhones only record BT.2020 when HDR is on
+        return self.bit_depth >= 10 and self.primaries == "bt2020" and self.transfer in ("", "unknown")
+
+    @property
+    def tone_curve(self) -> str:
+        """Which HDR transfer to undo: PQ, else HLG (also Dolby Vision 8.4's base layer)."""
+        return "pq" if self.transfer == "smpte2084" else "hlg"
 
     @property
     def bit_depth(self) -> int:
@@ -216,14 +227,16 @@ def _transpose_dir(rotation: int) -> str | None:
     return {90: "cclock", 270: "clock"}.get(r)
 
 
-TIER_HW = "videotoolbox"        # GPU decode + scale_vt tone-map + h264_videotoolbox
-TIER_SW = "software"            # CPU decode/filters + h264_videotoolbox
+TIER_HW = "videotoolbox"        # GPU decode + scale_vt + h264_videotoolbox (SDR sources only)
+TIER_SW = "software"            # VideoToolbox decode, CPU filters (tone-map), h264_videotoolbox
 TIER_X264 = "libx264"           # CPU decode/filters + libx264
 
 
 def tiers_for(p: Probe, caps: Capabilities) -> list[str]:
     tiers = []
-    if caps.hw_pipeline and p.rotation % 360 in (0, 90, 270):
+    # scale_vt's color_* options only re-tag HDR frames as BT.709, they don't tone-map
+    # (measured: pixel-identical to no conversion), so HDR goes through the CPU filters
+    if caps.hw_pipeline and not p.hdr and p.rotation % 360 in (0, 90, 270):
         tiers.append(TIER_HW)
     if "h264_videotoolbox" in caps.encoders:
         tiers.append(TIER_SW)
@@ -232,20 +245,102 @@ def tiers_for(p: Probe, caps: Capabilities) -> list[str]:
     return tiers
 
 
+# --- HDR → SDR tone-mapping LUT ---
+#
+# Homebrew's ffmpeg has neither zscale nor libplacebo, and its tonemap filter needs linear
+# light that nothing else in that build can produce. Instead the whole BT.2100 → SDR
+# conversion is baked into a 3D LUT over BT.2020 R'G'B' code values:
+#   HLG/PQ EOTF (HLG with its system gamma for a 1000-nit display) → BT.2020→BT.709 gamut →
+#   scale so HDR reference white (203 nits, BT.2408) is SDR 1.0 → luminance-preserving
+#   extended-Reinhard roll-off of highlights up to a 1000-nit peak → BT.1886 (gamma 2.4).
+# Measured on HLG/PQ test cards against an independent numpy reference: mean error
+# ~1/255 (VideoToolbox re-tag: 13/38, colorspace filter: 5.5/30).
+
+LUT_VERSION = 1
+LUT_SIZE = 33           # 65 is only ~0.2/255 closer and 8× the size
+HDR_PEAK_NITS = 1000.0  # iPhone HDR is mastered for 1000 nits
+SDR_WHITE_NITS = 203.0
+
+_BT2020_TO_BT709 = ((1.6605, -0.5876, -0.0728), (-0.1246, 1.1329, -0.0083), (-0.0182, -0.1006, 1.1187))
+
+
+def _hlg_inverse_oetf(e: float) -> float:
+    a, b, c = 0.17883277, 0.28466892, 0.55991073
+    return e * e / 3 if e <= 0.5 else (math.exp((e - c) / a) + b) / 12
+
+
+def _pq_eotf(e: float) -> float:
+    m1, m2, c1, c2, c3 = 0.1593017578125, 78.84375, 0.8359375, 18.8515625, 18.6875
+    p = e ** (1 / m2)
+    return 10000 * (max(p - c1, 0.0) / (c2 - c3 * p)) ** (1 / m1)
+
+
+def hdr_to_sdr(r: float, g: float, b: float, curve: str) -> tuple[float, float, float]:
+    """BT.2020 HDR R'G'B' (0–1) → BT.709 SDR R'G'B' (0–1)."""
+    if curve == "pq":
+        nits = [_pq_eotf(v) for v in (r, g, b)]
+    else:
+        scene = [_hlg_inverse_oetf(v) for v in (r, g, b)]
+        ys = 0.2627 * scene[0] + 0.6780 * scene[1] + 0.0593 * scene[2]
+        gain = HDR_PEAK_NITS * max(ys, 1e-9) ** 0.2   # HLG OOTF, system gamma 1.2
+        nits = [gain * v for v in scene]
+    rgb = [max(0.0, sum(m * n for m, n in zip(row, nits))) / SDR_WHITE_NITS for row in _BT2020_TO_BT709]
+    lum = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+    white = HDR_PEAK_NITS / SDR_WHITE_NITS
+    scale = (1 + lum / white ** 2) / (1 + lum)   # extended Reinhard: lum_out / lum
+    return tuple(min(1.0, v * scale) ** (1 / 2.4) for v in rgb)
+
+
+def lut_dir() -> Path:
+    return cache_subdir("video") / "luts"
+
+
+def hdr_lut(curve: str) -> Path:
+    """The .cube LUT for ``curve`` ("hlg"/"pq"), generated into the cache on first use."""
+    d = lut_dir()
+    path = d / hdr_lut_name(curve)
+    if path.exists():
+        return path
+    d.mkdir(parents=True, exist_ok=True)
+    n = LUT_SIZE - 1
+    lines = [f"LUT_3D_SIZE {LUT_SIZE}"]
+    for bi in range(LUT_SIZE):   # .cube order: red changes fastest
+        for gi in range(LUT_SIZE):
+            for ri in range(LUT_SIZE):
+                lines.append("%.6f %.6f %.6f" % hdr_to_sdr(ri / n, gi / n, bi / n, curve))
+    tmp = d / f".{path.name}.{os.getpid()}.tmp"
+    tmp.write_text("\n".join(lines) + "\n", encoding="ascii")
+    os.replace(tmp, path)
+    return path
+
+
 _approx_tonemap_logged = False
 
 
-def _sw_tonemap(p: Probe, caps: Capabilities) -> list[str]:
+def _sw_tonemap(p: Probe, caps: Capabilities, w: int, h: int) -> list[str]:
+    """Filters that scale to w×h and, for HDR, tone-map to SDR BT.709 (yuv420p out)."""
     global _approx_tonemap_logged
     if not p.hdr:
-        return []
+        return [f"scale={w}:{h}", "format=yuv420p"]
+    if "lut3d" in caps.filters:
+        # Downscale first (4× fewer pixels through the LUT at 4K→1080p). The LUT file is
+        # referenced by bare name — ffmpeg runs in lut_dir() — so no path escaping is needed
+        # (Windows drive colons would otherwise break the filter graph).
+        return [f"scale={w}:{h}:in_color_matrix=bt2020", "format=gbrp16le",
+                f"lut3d=file={hdr_lut_name(p.tone_curve)}:interp=tetrahedral",
+                "setparams=color_primaries=bt709:color_trc=bt709:colorspace=gbr",
+                "scale=out_color_matrix=bt709:out_range=tv", "format=yuv420p"]
     if "zscale" in caps.filters:
         return ["zscale=t=linear:npl=100", "format=gbrpf32le", "zscale=p=bt709",
-                "tonemap=hable:desat=0", "zscale=t=bt709:m=bt709:r=tv"]
+                "tonemap=hable:desat=0", "zscale=t=bt709:m=bt709:r=tv", f"scale={w}:{h}", "format=yuv420p"]
     if not _approx_tonemap_logged:
         _approx_tonemap_logged = True
-        log.info("ffmpeg has no zscale filter — HDR clips are tone-mapped approximately in software")
-    return ["colorspace=all=bt709:iall=bt2020:itrc=bt709:format=yuv420p"]
+        log.info("ffmpeg has neither lut3d nor zscale — HDR clips are tone-mapped approximately")
+    return ["colorspace=all=bt709:iall=bt2020:itrc=bt709:format=yuv420p", f"scale={w}:{h}", "format=yuv420p"]
+
+
+def hdr_lut_name(curve: str) -> str:
+    return f"{curve}-v{LUT_VERSION}-{LUT_SIZE}.cube"
 
 
 def build_command(ffmpeg: str, src: Path, dst: Path, p: Probe, caps: Capabilities, max_edge: int,
@@ -262,8 +357,11 @@ def build_command(ffmpeg: str, src: Path, dst: Path, p: Probe, caps: Capabilitie
             filters.append(f"transpose_vt=dir={direction}")
         filters.append(f"scale_vt=w={w}:h={h}:color_matrix=bt709:color_primaries=bt709:color_transfer=bt709")
     else:
+        if tier == TIER_SW:
+            # Hardware decode into ordinary frames; the CPU filters (and autorotate) still apply
+            cmd += ["-hwaccel", "videotoolbox"]
         cmd += ["-i", str(src)]  # autorotate applies on this path
-        filters = [*_sw_tonemap(p, caps), f"scale={w}:{h}", "format=yuv420p"]
+        filters = _sw_tonemap(p, caps, w, h)
     if fps_cap:
         filters.append(f"fps={MAX_FPS}")
     cmd += ["-map", "0:v:0", "-vf", ",".join(filters)]
@@ -532,6 +630,15 @@ class Transcoder:
         if not tiers:
             self._fail(bad, src, "ffmpeg has no H.264 encoder (libx264 or h264_videotoolbox)")
             return
+        out_dir = out_dir.absolute()  # ffmpeg runs in lut_dir(), so no relative paths
+        src = src.absolute()
+        cwd = None
+        if p.hdr and "lut3d" in caps.filters:
+            try:
+                cwd = hdr_lut(p.tone_curve).parent
+            except OSError as e:
+                self._fail(bad, src, f"Could not write tone-mapping LUT: {e}")
+                return
         tmp = out_dir / f"{key}.tmp.mp4"
         error = ""
         started = time.monotonic()
@@ -539,7 +646,7 @@ class Transcoder:
             if self._stopping:
                 tmp.unlink(missing_ok=True)
                 return
-            ok, error = self._run(build_command(ffmpeg, src, tmp, p, caps, max_edge, tier), p.duration)
+            ok, error = self._run(build_command(ffmpeg, src, tmp, p, caps, max_edge, tier), p.duration, cwd)
             if ok and tmp.exists() and tmp.stat().st_size > 0:
                 os.replace(tmp, dst)
                 self._write_sidecar(out_dir / f"{key}.json", src, p, tier, max_edge)
@@ -551,7 +658,7 @@ class Transcoder:
             log.info("Conversion of %s with %s failed, trying next pipeline: %s", src.name, tier, error[-300:])
         self._fail(bad, src, error)
 
-    def _run(self, cmd: list[str], duration: float) -> tuple[bool, str]:
+    def _run(self, cmd: list[str], duration: float, cwd: Path | None = None) -> tuple[bool, str]:
         kwargs: dict = {}
         if sys.platform == "win32":
             kwargs["creationflags"] = subprocess.BELOW_NORMAL_PRIORITY_CLASS
@@ -560,7 +667,7 @@ class Transcoder:
         with tempfile.TemporaryFile() as err:
             try:
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err, stdin=subprocess.DEVNULL,
-                                        text=True, **kwargs)
+                                        text=True, cwd=cwd, **kwargs)
             except OSError as e:
                 return False, str(e)
             self._proc = proc
