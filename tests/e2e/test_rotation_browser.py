@@ -483,6 +483,10 @@ def test_editor_can_configure_slots_the_base_layout_hides(server, open_at, rotat
     hint = page.locator("#rotation-slot-hint")
     assert hint.is_visible()
     assert "Slots 5–6 appear only on days showing Classic 6." in hint.text_content()
+    rotation_config(layouts=["classic-4", "classic-6", "hero-left"], slots=6)
+    page.reload(wait_until="networkidle")
+    assert "Slot 5 appears only on days showing Classic 6 or Hero Left." in hint.text_content()
+    assert "Slot 6 appears only on days showing Classic 6." in hint.text_content()
     assert page.locator(".dormant-slot-btn").count() == 2
     _click(page, ".dormant-slot-btn[data-slot='5']")
     assert page.locator("#slot-panel-title").text_content() == "Slot 5 settings"

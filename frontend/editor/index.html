@@ -825,6 +825,10 @@
     buildRotationSlotHint();
   }
 
+  function orList(names) {
+    return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
+  }
+
   // Which slots show only on some days, with buttons to configure the ones the preview can't show
   function buildRotationSlotHint() {
     const hint = document.getElementById('rotation-slot-hint');
@@ -843,7 +847,7 @@
       let j = i;
       while (j + 1 <= maxCount && eligible.filter(l => l.slots.length >= j + 1).length === shownBy.length) j++;
       const label = i === j ? `Slot ${i} appears` : `Slots ${i}–${j} appear`;
-      lines.push({ text: `${label} only on days showing ${shownBy.map(l => l.name).join(', ')}.`, from: i, to: j });
+      lines.push({ text: `${label} only on days showing ${orList(shownBy.map(l => l.name))}.`, from: i, to: j });
       i = j + 1;
     }
     for (const l of eligible.filter(l => l.slots.length < baseCount)) {
