@@ -580,9 +580,20 @@ class Transcoder:
         return [self._classify(f, still_stems, enqueue) for f in files if f.suffix.lower() in VIDEO_EXTENSIONS]
 
     def clip(self, path: str | Path) -> Clip:
-        """State of one video (for /api/video), queueing it if needed. Live Photo pairing
-        doesn't apply here — a direct request gets whatever it asked for."""
-        return self._classify(Path(path), set(), True)
+        """State of one video (for /api/video), queueing it if needed. A hidden Live Photo
+        clip is reported as such (and not queued), as it would be in a listing."""
+        f = Path(path)
+        still_stems = set()
+        if not self.settings.include_live_photos:
+            stem = f.stem.lower()
+            try:
+                with os.scandir(f.parent) as entries:
+                    still_stems = {stem for e in entries
+                                   if os.path.splitext(e.name)[0].lower() == stem
+                                   and os.path.splitext(e.name)[1].lower() in LIVE_PHOTO_STILL_EXTENSIONS}
+            except OSError:
+                pass
+        return self._classify(f, still_stems, True)
 
     def _classify(self, f: Path, still_stems: set[str], enqueue: bool) -> Clip:
         sniff = sniff_video(f)

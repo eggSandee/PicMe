@@ -216,6 +216,8 @@ def serve_video(path: str):
     # was asked for is served.
     file_path = resolve_media_file(path, VIDEO_EXTENSIONS, "Video")
     clip = transcode.transcoder.clip(file_path)
+    if clip.state == transcode.LIVE_PHOTO:
+        raise HTTPException(status_code=404, detail="Live Photo clips are hidden (include_live_photos)")
     if clip.state == transcode.PENDING:
         raise HTTPException(status_code=409, detail="Video is still being converted")
     if clip.state != transcode.READY:

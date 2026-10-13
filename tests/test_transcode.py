@@ -396,6 +396,17 @@ def test_live_photo_companion_needs_still_and_short_duration(lib, video_transcod
     assert all(c.state == transcode.PENDING for c in video_transcoder.scan(lib))
 
 
+@requires_libx265
+def test_api_hidden_live_photo_clip_is_404_and_not_queued(client, lib, video_transcoder):
+    clip = make_clip(lib / "IMG_0001.MOV", codec="hevc", duration=2)
+    (lib / "img_0001.heic").write_bytes(b"x")
+    assert client.get("/api/video", params={"path": str(clip)}).status_code == 404
+    assert not video_transcoder._pending
+    video_transcoder.configure({"include_live_photos": True})
+    assert client.get("/api/video", params={"path": str(clip)}).status_code == 409   # now converted on demand
+    assert clip.resolve() in video_transcoder._pending
+
+
 def test_cache_key_changes_with_mtime_size_cap_and_version(tmp_path, monkeypatch):
     p = tmp_path / "a.mov"
     p.write_bytes(b"1234")
