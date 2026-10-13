@@ -366,12 +366,11 @@ def test_browse_filesystem_root_has_no_parent(client):
     assert r.json()["parent"] is None
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: /api/browse 500s (FileNotFoundError) when the "
-                                       "path's parent also doesn't exist")
 def test_browse_deep_missing_path(config_path, tmp_path):
     with TestClient(main.app, raise_server_exceptions=False) as c:
         r = c.get("/api/browse", params={"path": str(tmp_path / "a" / "b" / "c")})
     assert r.status_code == 200
+    assert r.json()["path"] == str(tmp_path.resolve())
 
 
 # --- / redirect and static frontends ---
