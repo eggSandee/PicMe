@@ -604,13 +604,19 @@
       </div>
 
       <div class="field">
+        <label>Frame style</label>
+        <select id="g-frame-style"></select>
+      </div>
+
+      <div class="field">
         <label>Frame color</label>
         <input type="color" id="g-frame-color" />
+        <p id="g-frame-color-hint" style="display:none;font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;">Color applies to solid frames only.</p>
       </div>
 
       <div class="field">
         <label>Frame width (px)</label>
-        <input type="number" id="g-frame-width" min="0" max="40" />
+        <input type="number" id="g-frame-width" min="0" max="80" />
       </div>
     </div>
 
@@ -662,6 +668,7 @@
 
 </div>
 <script src="/display/layout-rotation.js"></script>
+<script src="/assets/frames/frames.js"></script>
 <script>
   const API = '';
   const META_FIELDS = [
@@ -738,6 +745,56 @@
   function isMetaKeyOverridden(slotCfg, key) {
     return !!(slotCfg.metadata && key in slotCfg.metadata &&
               slotCfg.metadata[key] !== (config.metadata_defaults || {})[key]);
+  }
+
+  // ── Frame styles ──
+  // Decorative styles (wood, gold) come from frames.js; without it only solid frames are offered.
+
+  const SOLID_FRAME_OPTION = ['solid', 'Solid color'];
+  const DECORATIVE_MIN_WIDTH = 16;  // narrower than this, a decorative moulding loses its detail
+
+  function frameAsset(style) {
+    const frames = window.PICME_FRAMES;
+    return frames && style && Object.prototype.hasOwnProperty.call(frames, style) ? frames[style] : null;
+  }
+
+  function frameStyleOptions(first = SOLID_FRAME_OPTION) {
+    const frames = window.PICME_FRAMES || {};
+    return [first, ...(first === SOLID_FRAME_OPTION ? [] : [SOLID_FRAME_OPTION]),
+            ...Object.keys(frames).map(k => [k, frames[k].label])];
+  }
+
+  // The frame width to use after switching to `style`: a thin solid-frame width jumps to the
+  // style's own default, so the moulding is visible
+  // Frame widths are capped like the inputs' max (the attribute alone doesn't stop typed values)
+  const MAX_FRAME_WIDTH = 80;
+  function clampFrameWidth(v) {
+    const n = parseInt(v);
+    return Number.isFinite(n) ? Math.min(MAX_FRAME_WIDTH, Math.max(0, n)) : 0;
+  }
+
+  function widthForStyle(style, width) {
+    const asset = frameAsset(style);
+    return asset && (width ?? 8) < DECORATIVE_MIN_WIDTH ? asset.default_width : width;
+  }
+
+  // The display's frame border (applyFrameStyle), minus time-of-day. Call once `el` is laid out:
+  // a decorative frame is capped at a sixth of the cell's short side, like a small slot.
+  function frameBorderStyle(el, frameCfg) {
+    const frameOn = frameCfg.show_frame ?? true;
+    const width = frameCfg.frame_width ?? 8;
+    const asset = frameOn ? frameAsset(frameCfg.frame_style ?? 'solid') : null;
+    if (asset) {
+      const fit = Math.floor(Math.min(el.clientWidth, el.clientHeight) / 6);
+      const w = Math.min(Number(width) || 0, Math.max(4, fit));
+      el.style.border = `${w}px solid transparent`;
+      el.style.borderImage = `url("${asset.src}") ${asset.slice} / ${w}px / 0 round`;
+      el.style.backgroundClip = 'padding-box';
+    } else {
+      el.style.border = frameOn ? `${width}px solid ${frameCfg.frame_color ?? '#2c2318'}` : 'none';
+      el.style.borderImage = 'none';
+      el.style.backgroundClip = '';
+    }
   }
 
   // ── Daily layout rotation (resolver shared with the display: /display/layout-rotation.js) ──
@@ -984,11 +1041,6 @@
       div.style.padding   = `${frameCfg.mat_width ?? 16}px`;
       div.style.background = frameCfg.mat_color ?? '#000';
       div.style.position  = 'relative';
-      if (frameCfg.show_frame ?? true) {
-        div.style.border = `${frameCfg.frame_width ?? 8}px solid ${frameCfg.frame_color ?? '#2c2318'}`;
-      } else {
-        div.style.border = 'none';
-      }
 
       // Custom-settings badge — blue dot in top-right corner
       if (activeSlots[i] && hasCustomSettings(slotCfg)) {
@@ -1035,6 +1087,7 @@
       div.appendChild(inner);
       div.addEventListener('click', () => selectSlot(slotCfg.id ?? slotDef.id));
       preview.appendChild(div);
+      frameBorderStyle(div, frameCfg);  // after appending: decorative widths fit the cell
     }
   }
 
@@ -1061,6 +1114,11 @@
     document.getElementById('g-show-frame').checked = fd.show_frame   !== false;
     document.getElementById('g-frame-color').value  = fd.frame_color  || '#2c2318';
     document.getElementById('g-frame-width').value  = fd.frame_width  ?? 8;
+    const styleSel = document.getElementById('g-frame-style');
+    styleSel.innerHTML = '';
+    for (const [val, lbl] of frameStyleOptions()) styleSel.add(new Option(lbl, val));
+    styleSel.value = frameAsset(fd.frame_style) ? fd.frame_style : 'solid';
+    syncGlobalFrameColor();
     document.getElementById('g-video-max-edge').value = String(g.video_max_edge ?? 1920);
     document.getElementById('g-include-live-photos').checked = g.include_live_photos === true;
 
@@ -1101,8 +1159,24 @@
     document.getElementById('g-mat-color').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_color   = e.target.value; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-mat-width').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_width   = parseInt(e.target.value); buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-show-frame').onchange  = e => { ensureFrameDefaults(); config.frame_defaults.show_frame  = e.target.checked; buildPreview(); scheduleAutoSave(); };
+    document.getElementById('g-frame-style').onchange = e => {
+      ensureFrameDefaults();
+      const fd = config.frame_defaults;
+      fd.frame_style = e.target.value;
+      fd.frame_width = widthForStyle(fd.frame_style, fd.frame_width);
+      document.getElementById('g-frame-width').value = fd.frame_width ?? 8;
+      syncGlobalFrameColor();
+      buildPreview();
+      scheduleAutoSave();
+    };
     document.getElementById('g-frame-color').oninput  = e => { ensureFrameDefaults(); config.frame_defaults.frame_color = e.target.value; buildPreview(); scheduleAutoSave(); };
-    document.getElementById('g-frame-width').oninput  = e => { ensureFrameDefaults(); config.frame_defaults.frame_width = parseInt(e.target.value); buildPreview(); scheduleAutoSave(); };
+    document.getElementById('g-frame-width').oninput  = e => {
+      ensureFrameDefaults();
+      const w = clampFrameWidth(e.target.value);
+      if (e.target.value !== '' && String(w) !== e.target.value) e.target.value = w;
+      config.frame_defaults.frame_width = w;
+      buildPreview(); scheduleAutoSave();
+    };
 
     const todEl = document.getElementById('tod-enabled');
     todEl.checked = config.time_of_day?.enabled || false;
@@ -1112,6 +1186,13 @@
 
   function ensureFrameDefaults() {
     if (!config.frame_defaults) config.frame_defaults = {};
+  }
+
+  // A decorative default frame ignores frame_color — say so rather than leave a dead control
+  function syncGlobalFrameColor() {
+    const decorative = !!frameAsset(config.frame_defaults?.frame_style);
+    document.getElementById('g-frame-color').disabled = decorative;
+    document.getElementById('g-frame-color-hint').style.display = decorative ? '' : 'none';
   }
 
   // ── Reset all modal ──
@@ -1307,8 +1388,23 @@
     frameSec.sectionBody.appendChild(makeColorField('Mat color', ef.mat_color ?? '#000000', v => { ensureSlotFrame(slotCfg); slotCfg.frame.mat_color = v; buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'mat_color')));
     frameSec.sectionBody.appendChild(makeField('Mat width (px)', 'number', ef.mat_width ?? 16, v => { ensureSlotFrame(slotCfg); slotCfg.frame.mat_width = parseInt(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'mat_width')));
     frameSec.sectionBody.appendChild(makeToggleRow('Show frame border', ef.show_frame ?? true, v => { ensureSlotFrame(slotCfg); slotCfg.frame.show_frame = v; buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'show_frame')));
-    frameSec.sectionBody.appendChild(makeColorField('Frame color', ef.frame_color ?? '#2c2318', v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_color = v; buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_color')));
-    frameSec.sectionBody.appendChild(makeField('Frame width (px)', 'number', ef.frame_width ?? 8, v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_width = parseInt(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_width')));
+    const slotDecorative = !!frameAsset(ef.frame_style);
+    frameSec.sectionBody.appendChild(makeSelectField('Frame style', frameStyleOptions(), slotDecorative ? ef.frame_style : 'solid', v => {
+      ensureSlotFrame(slotCfg);
+      slotCfg.frame.frame_style = v;
+      const width = getSlotFrame(slotCfg).frame_width;
+      if (widthForStyle(v, width) !== width) slotCfg.frame.frame_width = widthForStyle(v, width);
+      buildPreview();
+      renderSlotPanel();  // refresh the width, the color field and the override dots
+      scheduleAutoSave();
+    }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_style')));
+    const frameColorField = makeColorField('Frame color', ef.frame_color ?? '#2c2318', v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_color = v; buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_color'));
+    if (slotDecorative) {
+      frameColorField.querySelector('input').disabled = true;
+      frameColorField.appendChild(makeHint('Color applies to solid frames only.'));
+    }
+    frameSec.sectionBody.appendChild(frameColorField);
+    frameSec.sectionBody.appendChild(makeField('Frame width (px)', 'number', ef.frame_width ?? 8, v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_width = clampFrameWidth(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_width')));
     left.appendChild(frameSec.el);
 
     // ── Right column — Metadata (adoptable) ──
@@ -1444,7 +1540,11 @@
       inp.min = '0'; inp.max = '80';
       inp.value = val ?? 0;
       inp.style.width = '70px';
-      inp.oninput = () => { onChange(parseInt(inp.value) || 0); scheduleAutoSave(); };
+      inp.oninput = () => {
+        const n = clampFrameWidth(inp.value);
+        if (inp.value !== '' && String(n) !== inp.value) inp.value = n;
+        onChange(n); scheduleAutoSave();
+      };
       wrap.append(lbl, inp);
       return wrap;
     }
@@ -1478,8 +1578,35 @@
       col.appendChild(makeTodColor('Mat color',    tmpl.mat_color,   v => tmpl.mat_color   = v));
       col.appendChild(makeTodNumber('Mat width',   tmpl.mat_width,   v => tmpl.mat_width   = v));
       col.appendChild(makeTodToggle('Show frame',  tmpl.show_frame,  v => tmpl.show_frame  = v));
-      col.appendChild(makeTodColor('Frame color',  tmpl.frame_color, v => tmpl.frame_color = v));
-      col.appendChild(makeTodNumber('Frame width', tmpl.frame_width, v => tmpl.frame_width = v));
+      // "Same as default" leaves frame_style unset, so the global (or slot) style shows through
+      let bumpedWidth = null;
+      const styleField = makeSelectField('Frame style', frameStyleOptions(['', 'Same as default']),
+        frameAsset(tmpl.frame_style) || tmpl.frame_style === 'solid' ? tmpl.frame_style : '', v => {
+          if (v) tmpl.frame_style = v; else delete tmpl.frame_style;
+          // A template's width applies to every style, so undo our own bump when leaving wood/gold
+          // (unless the user has since typed a different width)
+          if (!frameAsset(v) && bumpedWidth && tmpl.frame_width === bumpedWidth.to) {
+            tmpl.frame_width = bumpedWidth.from;
+            bumpedWidth = null;
+          }
+          const bumped = widthForStyle(v, tmpl.frame_width);
+          if (bumped !== tmpl.frame_width) bumpedWidth = { from: tmpl.frame_width, to: bumped };
+          tmpl.frame_width = bumped;
+          widthField.querySelector('input').value = tmpl.frame_width ?? 0;
+          syncColor();
+          scheduleAutoSave();
+        });
+      const colorField = makeTodColor('Frame color',  tmpl.frame_color, v => tmpl.frame_color = v);
+      const colorHint = makeHint('Color applies to solid frames only.');
+      colorField.appendChild(colorHint);
+      const widthField = makeTodNumber('Frame width', tmpl.frame_width, v => tmpl.frame_width = v);
+      function syncColor() {
+        const decorative = !!frameAsset(tmpl.frame_style);
+        colorField.querySelector('input').disabled = decorative;
+        colorHint.style.display = decorative ? '' : 'none';
+      }
+      syncColor();
+      col.append(styleField, colorField, widthField);
       return col;
     }
 
@@ -1494,7 +1621,7 @@
     title.textContent = 'Time-of-Day Templates';
 
     const desc = document.createElement('p');
-    desc.textContent = 'Wall and frame colors shift automatically at the configured times. Per-slot frame overrides still take priority.';
+    desc.textContent = 'Wall and frame colors shift automatically at the configured times. Per-slot frame overrides still take priority. Each period\'s frame width also applies to wood and gold frames, so raise it if they look thin.';
 
     // Time pickers
     const timeRow = document.createElement('div');
@@ -1732,6 +1859,23 @@
     if (type === 'number') { inp.min = 0; }
     inp.oninput = e => onChange(e.target.value);
     wrap.append(lbl, inp);
+    return wrap;
+  }
+
+  function makeSelectField(label, options, value, onChange, overridden = false) {
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const lbl = document.createElement('label');
+    lbl.appendChild(document.createTextNode(label));
+    if (overridden) {
+      const dot = document.createElement('span');
+      dot.className = 'override-dot';
+      dot.title = 'Overrides global default';
+      lbl.appendChild(dot);
+    }
+    const sel = makeSelect(options, value);
+    sel.onchange = e => onChange(e.target.value);
+    wrap.append(lbl, sel);
     return wrap;
   }
 

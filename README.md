@@ -104,7 +104,7 @@ PicMe/
 - [x] iPhone HEVC/HDR videos converted to H.264 automatically in the background (needs ffmpeg)
 - [ ] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
 - [x] Daily layout rotation: layout selection (choose which layouts are eligible to rotate)
-- [ ] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
+- [x] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
 - [ ] Per-slot drag-to-reorder in the editor
 - [ ] Configurable metadata pill size and text size
 - [ ] Basic / Advanced editor mode — Basic hides less-common settings so the editor stays approachable for users who don't need full configurability (exact parameter split TBD)
@@ -346,7 +346,8 @@ Top-level settings:
     "mat_width": 16,             // mat thickness in pixels
     "show_frame": true,          // show outer frame border
     "frame_color": "#2c2318",    // dark wood frame (any CSS color)
-    "frame_width": 8             // frame border thickness in pixels
+    "frame_width": 8,            // frame border thickness in pixels
+    "frame_style": "solid"       // "solid" (uses frame_color) | "wood" | "gold" — decorative frames ignore frame_color
   },
   "metadata_defaults": {         // applied to every slot; per-slot metadata overrides these
     "show_date": true,
@@ -377,7 +378,7 @@ Per-slot `metadata` and `frame` are both optional. If omitted, the slot inherits
   "source_path": "photos",
   "cycle_seconds": 30,
   "metadata": { "show_camera": true },       // inherits everything else from metadata_defaults
-  "frame": { "mat_color": "#ffffff" }        // white mat on this slot only; inherits frame_defaults for the rest
+  "frame": { "mat_color": "#ffffff", "frame_style": "gold" }  // white mat and a gold frame on this slot only; inherits frame_defaults for the rest
 }
 ```
 
@@ -414,6 +415,21 @@ To use a different photo folder (e.g. a folder elsewhere on your PC), set `sourc
 ```json
 "source_path": "C:/Users/yourname/Pictures/Vacations"
 ```
+
+#### Frames
+
+Each slot has a mat (`mat_color`, `mat_width`) around the photo or video and a frame around the mat. The mat always shows: the photo sits inside it, cropped there in **Fill** mode and letterboxed there in **Fit** mode.
+
+`frame_style` picks the frame: `"solid"` draws a plain border in `frame_color`, while `"wood"` and `"gold"` draw a decorative moulding (`frame_color` is ignored for those). Set it under **Default Frame** in the editor, per slot in the slot's Frame section, or per time-of-day period (**Same as default** keeps the slot's usual style). `frame_width` sets the moulding's thickness, too. Choosing wood or gold when the width is under 16 px sets it to that style's own default (28 px wood, 36 px gold), since a thinner moulding loses its detail. The frame never takes more than a sixth of a small slot's shortest side, and corners keep their shape at any size. Time-of-day periods have their own frame width (8 px unless changed), so raise it there if a wood or gold frame looks thin at night.
+
+**Frame assets.** The wood and gold images in `frontend/assets/frames/` are original renders made by `tools/frames/generate_frames.py` (Pillow only, no third-party images; MIT like the rest of PicMe). It also writes `frames.js`, the list of styles the display and editor load. To change or add a style, edit the script and re-run it; `--check` verifies the committed files match, and `--preview /tmp/frames.png` writes a contact sheet to look at:
+
+```bash
+.venv/bin/python tools/frames/generate_frames.py
+.venv/bin/python tools/frames/generate_frames.py --check
+```
+
+`.gitignore` ignores `*.png` to keep photos out of the repo, with an exception for `frontend/assets/frames/`.
 
 #### Daily layout rotation
 
