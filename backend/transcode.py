@@ -205,7 +205,7 @@ def output_size(width: int, height: int, rotation: int, max_edge: int) -> tuple[
     scale = min(1.0, max_edge / max(width, height)) if max_edge else 1.0
 
     def even(v: float) -> int:
-        return max(2, int(round(v / 2)) * 2)
+        return max(2, int(v / 2 + 0.5) * 2)
 
     return even(width * scale), even(height * scale)
 
@@ -346,6 +346,7 @@ class Transcoder:
         self._proc: subprocess.Popen | None = None
         self._current: dict | None = None
         self._tools_checked = 0.0
+        self._tools_lock = threading.Lock()
         self._ffmpeg: str | None = None
         self._ffprobe: str | None = None
         self._warned_missing = False
@@ -362,21 +363,22 @@ class Transcoder:
     def tools(self) -> tuple[str | None, str | None]:
         """(ffmpeg, ffprobe). Re-checked at most every 10 s while missing, so installing ffmpeg
         while PicMe runs is picked up without a restart."""
-        if self._ffmpeg and self._ffprobe:
-            return self._ffmpeg, self._ffprobe
-        now = time.monotonic()
-        if self._tools_checked and now - self._tools_checked < 10:
-            return None, None
-        self._tools_checked = now
-        self._ffmpeg, self._ffprobe = find_tool("ffmpeg"), find_tool("ffprobe")
-        if not (self._ffmpeg and self._ffprobe):
-            self._ffmpeg = self._ffprobe = None
-            if not self._warned_missing:
-                self._warned_missing = True
-                log.warning("ffmpeg not found — iPhone (HEVC) videos will be skipped. Install: %s", INSTALL_HINT)
-            return None, None
-        log.info("Video transcoding with %s (%s)", self._ffmpeg, capabilities(self._ffmpeg).version)
-        return self._ffmpeg, self._ffprobe
+        with self._tools_lock:  # request threads and the folder scan thread race here on startup
+            if self._ffmpeg and self._ffprobe:
+                return self._ffmpeg, self._ffprobe
+            now = time.monotonic()
+            if self._tools_checked and now - self._tools_checked < 10:
+                return None, None
+            self._tools_checked = now
+            ffmpeg, ffprobe = find_tool("ffmpeg"), find_tool("ffprobe")
+            if not (ffmpeg and ffprobe):
+                if not self._warned_missing:
+                    self._warned_missing = True
+                    log.warning("ffmpeg not found — iPhone (HEVC) videos will be skipped. Install: %s", INSTALL_HINT)
+                return None, None
+            log.info("Video transcoding with %s (%s)", ffmpeg, capabilities(ffmpeg).version)
+            self._ffmpeg, self._ffprobe = ffmpeg, ffprobe
+            return ffmpeg, ffprobe
 
     @property
     def available(self) -> bool:

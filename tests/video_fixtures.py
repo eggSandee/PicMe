@@ -7,6 +7,7 @@ changes to the shared photo fixtures. ffmpeg-backed helpers are guarded by
 from __future__ import annotations
 
 import datetime
+import json
 import shutil
 import struct
 import subprocess
@@ -15,7 +16,19 @@ from pathlib import Path
 import pytest
 
 FFMPEG = shutil.which("ffmpeg")
+FFPROBE = shutil.which("ffprobe")
 requires_ffmpeg = pytest.mark.skipif(FFMPEG is None, reason="ffmpeg not installed")
+
+
+def _has_encoder(name: str) -> bool:
+    if FFMPEG is None:
+        return False
+    out = subprocess.run([FFMPEG, "-hide_banner", "-encoders"], capture_output=True, text=True).stdout
+    return any(line.split()[1:2] == [name] for line in out.splitlines())
+
+
+HAS_LIBX265 = _has_encoder("libx265")
+requires_libx265 = pytest.mark.skipif(not HAS_LIBX265, reason="ffmpeg without libx265 (HEVC fixtures)")
 
 MAC_EPOCH = datetime.datetime(1904, 1, 1, tzinfo=datetime.timezone.utc)
 
@@ -24,6 +37,20 @@ _CODEC_ARGS = {
     "h264": ["-c:v", "libx264", "-pix_fmt", "yuv420p"],
     "hevc": ["-c:v", "libx265", "-pix_fmt", "yuv420p", "-tag:v", "hvc1", "-x265-params", "log-level=error"],
 }
+
+# iPhone HDR: 10-bit BT.2020 with HLG (most clips) or PQ (Dolby Vision profile 5-like)
+_HDR_TRANSFER = {"hlg": "arib-std-b67", "pq": "smpte2084"}
+
+# Top-left red, top-right green, bottom-left blue, bottom-right yellow — so orientation
+# can be checked from a decoded corner pixel
+QUADRANT_COLORS = {"tl": (255, 0, 0), "tr": (0, 255, 0), "bl": (0, 0, 255), "br": (255, 255, 0)}
+
+
+def _quadrant_source(w: int, h: int, rate: int, duration: float) -> str:
+    qw, qh = w // 2, h // 2
+    cells = "".join(f"color=c={c}:s={qw}x{qh}:r={rate}:d={duration}[{n}];"
+                    for n, c in (("a", "red"), ("b", "lime"), ("c", "blue"), ("d", "yellow")))
+    return cells + "[a][b][c][d]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0"
 
 
 def make_clip(
@@ -34,25 +61,77 @@ def make_clip(
     creation_time: str | None = None,
     faststart: bool = False,
     color: str | None = None,
+    size: tuple[int, int] = (160, 120),
+    rate: int = 10,
+    hdr: str | None = None,
+    rotation: int = 0,
+    audio: str | None = None,
+    quadrants: bool = False,
 ) -> Path:
-    """Encode a tiny silent test clip (160x120, 10 fps) to ``path``.
+    """Encode a tiny test clip (160x120, 10 fps, silent by default) to ``path``.
 
     ``creation_time`` (ISO 8601, e.g. ``2021-06-15T03:30:00Z``) is written to the
     container's mvhd. ``faststart`` puts ``moov`` before ``mdat``; ffmpeg's default
-    is ``moov`` after ``mdat``.
+    is ``moov`` after ``mdat``. ``hdr`` ("hlg"/"pq", HEVC only) makes a 10-bit BT.2020
+    clip, ``rotation`` adds an iPhone-style display matrix (counter-clockwise degrees),
+    ``audio`` adds a tone in that codec (e.g. "aac"), ``quadrants`` draws four colored
+    quarters (see QUADRANT_COLORS) instead of a test pattern.
     """
     if FFMPEG is None:
         pytest.skip("ffmpeg not installed")
-    source = f"color=c={color}:size=160x120:rate=10" if color else "testsrc=size=160x120:rate=10"
-    cmd = [FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", f"{source}:duration={duration}",
-           *_CODEC_ARGS[codec]]
+    if codec == "hevc" and not HAS_LIBX265:
+        pytest.skip("ffmpeg without libx265")
+    w, h = size
+    if quadrants:
+        cmd = [FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", _quadrant_source(w, h, rate, duration)]
+    else:
+        source = f"color=c={color}:" if color else "testsrc="
+        cmd = [FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", f"{source}size={w}x{h}:rate={rate}:duration={duration}"]
+    if audio:
+        cmd += ["-f", "lavfi", "-i", f"sine=duration={duration}", "-c:a", audio, "-shortest"]
+    if hdr:
+        trc = _HDR_TRANSFER[hdr]
+        cmd += ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-tag:v", "hvc1", "-x265-params",
+                f"log-level=error:colorprim=bt2020:transfer={trc}:colormatrix=bt2020nc",
+                "-color_primaries", "bt2020", "-color_trc", trc, "-colorspace", "bt2020nc"]
+    else:
+        cmd += _CODEC_ARGS[codec]
     if creation_time:
         cmd += ["-metadata", f"creation_time={creation_time}"]
     if faststart:
         cmd += ["-movflags", "+faststart"]
+    if rotation:
+        # -display_rotation is an input option, so the matrix is added in a second (copy) pass
+        tmp = path.with_name(f".unrotated-{path.name}")
+        subprocess.run([*cmd, str(tmp)], check=True, capture_output=True)
+        try:
+            subprocess.run([FFMPEG, "-v", "error", "-y", "-display_rotation", str(rotation), "-i", str(tmp),
+                            "-c", "copy", *(["-movflags", "+faststart"] if faststart else []), str(path)],
+                           check=True, capture_output=True)
+        finally:
+            tmp.unlink(missing_ok=True)
+        return path
     cmd.append(str(path))
     subprocess.run(cmd, check=True, capture_output=True)
     return path
+
+
+def ffprobe_streams(path: Path) -> list[dict]:
+    out = subprocess.run([FFPROBE, "-v", "error", "-print_format", "json", "-show_streams", str(path)],
+                         check=True, capture_output=True, text=True).stdout
+    return json.loads(out)["streams"]
+
+
+def corner_pixel(path: Path, corner: str = "tl") -> tuple[int, int, int]:
+    """Average RGB of a small patch near a corner of the first decoded frame."""
+    (v,) = [s for s in ffprobe_streams(path) if s["codec_type"] == "video"]
+    w, h = v["width"], v["height"]
+    x = 2 if corner[1] == "l" else w - 10
+    y = 2 if corner[0] == "t" else h - 10
+    raw = subprocess.run([FFMPEG, "-v", "error", "-i", str(path), "-vf", f"crop=8:8:{x}:{y},scale=1:1",
+                          "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                         check=True, capture_output=True).stdout
+    return tuple(raw[:3])
 
 
 # --- ISO-BMFF builders ---
