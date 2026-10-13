@@ -77,6 +77,8 @@ DEFAULT_CONFIG = {
         "show_focal_length": False,
         "show_people": False,
     },
+    # Daily layout rotation (README → Daily layout rotation); an empty list means every layout
+    "layout_rotation": {"enabled": False, "layouts": [], "change_at": "04:00"},
     "source_path": "photos",  # relative to the server's cwd — run.sh / run.bat start in the repo root
     "slots": [
         {"id": i, "mode": "photos", "source": "local", "source_path": "photos", "cycle_seconds": 30}
