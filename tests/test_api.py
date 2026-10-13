@@ -58,6 +58,22 @@ def test_load_config_without_file_returns_defaults_without_writing(config_path):
     assert not config_path.exists()
 
 
+def test_config_default_has_rotation_off(client, config_path):
+    cfg = client.get("/api/config").json()
+    assert cfg["layout_rotation"] == {"enabled": False, "layouts": [], "change_at": "04:00"}
+    assert "daily_layout_rotation" not in cfg
+    # default_config() deep-copies, so editing one copy doesn't leak into the next first run
+    main.default_config()["layout_rotation"]["layouts"].append("classic-6")
+    assert main.default_config()["layout_rotation"]["layouts"] == []
+
+
+def test_video_folders_include_dormant_slots(tmp_path):
+    """Slots past the base layout's count show on other rotation days, so their videos convert too."""
+    cfg = make_config(tmp_path / "photos", layout="classic-4", slots=6)
+    cfg["slots"][5] |= {"mode": "video", "source_path": str(tmp_path / "slot6"), "use_global": {"source": False}}
+    assert main.video_folders(cfg) == [str(tmp_path / "slot6")]
+
+
 def test_default_config_is_not_shared():
     a = main.default_config()
     a["slots"][0]["source_path"] = "/elsewhere"

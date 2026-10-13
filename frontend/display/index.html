@@ -118,12 +118,14 @@
   <div id="error-banner"></div>
   <a id="editor-btn" href="/editor">⚙ Editor</a>
 
+  <script src="/display/layout-rotation.js"></script>
   <script>
     const API = '';  // same origin
 
     let config = null;
     let layouts = null;
     let activeSlots = [];
+    let activeLayoutId = null;  // the layout on screen (today's pick when rotation is on)
 
     async function fetchJSON(url) {
       const r = await fetch(url);
@@ -140,6 +142,7 @@
 
     function applyLayout(layout, slotCount) {
       const collage = document.getElementById('collage');
+      collage.dataset.layout = layout.id;
       collage.style.gridTemplateColumns = layout.grid_template_columns;
       collage.style.gridTemplateRows = layout.grid_template_rows;
 
@@ -754,16 +757,18 @@
         if (!configHash || h === configHash) { configHash = h; return; }
         configHash = h;
 
-        // Layout changes require a DOM rebuild — reload is the simplest correct path
-        if (fresh.layout !== config.layout || fresh.daily_layout_rotation !== config.daily_layout_rotation) {
+        // A different layout on screen requires a DOM rebuild — reload is the simplest correct path.
+        // Compare the effective layout, so a rotation edit that keeps today's pick doesn't reload.
+        if (PicMeRotation.resolveLayout(fresh, layouts)?.id !== activeLayoutId) {
           window.location.reload();
           return;
         }
 
-        // Slot mode, timer and group changes affect element setup and timers — reload too
+        // Slot mode, timer and group changes affect element setup and timers — reload too.
+        // Slots the current layout doesn't show are kept up to date below without a reload.
         const slotNeedsReload = (fresh.slots || []).some((s, i) => {
           const old = (config.slots || [])[i];
-          return old && ((s.mode || 'photos') !== (old.mode || 'photos')
+          return i < activeSlots.length && old && ((s.mode || 'photos') !== (old.mode || 'photos')
             || s.cycle_seconds !== old.cycle_seconds
             || (s.group || null) !== (old.group || null));
         });
@@ -776,6 +781,10 @@
         const oldSlots = config.slots || [];
         Object.assign(config, fresh);
         config.slots = oldSlots;
+        // checkRotation() reads these, so a removed key must not linger
+        for (const key of ['layout_rotation', 'daily_layout_rotation']) {
+          if (!(key in fresh)) delete config[key];
+        }
         (fresh.slots || []).forEach((s, i) => { if (oldSlots[i]) Object.assign(oldSlots[i], s); });
 
         // Re-apply wall color + frame (TOD template re-evaluated after config patch)
@@ -811,6 +820,39 @@
       }
     }
 
+    // Daily rotation: reload into the new layout once the rotation day changes (see
+    // layout-rotation.js). A reload rebuilds every slot, timer and decoder, like a layout
+    // change from the editor. Checked by polling, so a TV waking from sleep catches up.
+    const ROTATION_RELOAD_KEY = 'picme.rotationReloads';
+    const ROTATION_RELOAD_LIMIT = 3;                  // rotation reloads allowed...
+    const ROTATION_RELOAD_WINDOW_MS = 5 * 60 * 1000;  // ...within this window
+    let rotationReloadsStopped = false;
+
+    // Guards against a reload loop (e.g. a clock that jumps back on every page load):
+    // after too many rotation reloads in a short time, stay on the current layout.
+    function rotationReload() {
+      const now = Date.now();
+      let recent;
+      try { recent = JSON.parse(sessionStorage.getItem(ROTATION_RELOAD_KEY) || '[]'); } catch (e) { recent = []; }
+      if (!Array.isArray(recent)) recent = [];
+      recent = recent.filter(t => typeof t === 'number' && Math.abs(now - t) < ROTATION_RELOAD_WINDOW_MS);
+      if (recent.length >= ROTATION_RELOAD_LIMIT) {
+        rotationReloadsStopped = true;
+        console.warn(`Layout rotation reloaded ${recent.length} times in 5 minutes; staying on ${activeLayoutId}`);
+        showError('Daily layout rotation keeps switching layouts. Staying on this layout; check the TV clock.');
+        return;
+      }
+      recent.push(now);
+      try { sessionStorage.setItem(ROTATION_RELOAD_KEY, JSON.stringify(recent)); } catch (e) { /* private mode */ }
+      window.location.reload();
+    }
+
+    function checkRotation() {
+      if (rotationReloadsStopped || !layouts) return;
+      const id = PicMeRotation.resolveLayout(config, layouts)?.id;
+      if (id && id !== activeLayoutId) rotationReload();
+    }
+
     async function init() {
       try {
         [config, layouts] = await Promise.all([
@@ -826,18 +868,11 @@
       if (!config || typeof config !== 'object' || Array.isArray(config)) config = {};
       if (!Array.isArray(config.slots)) config.slots = [];
 
-      // If daily rotation is on, pick a layout by day-of-year so it changes each day
-      // but stays consistent throughout the day. Layout selection (choosing which
-      // layouts are eligible) is planned for M4.
-      let layout;
-      if (config.daily_layout_rotation && layouts.length > 1) {
-        const now = new Date();
-        const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
-        layout = layouts[dayOfYear % layouts.length];
-      } else {
-        layout = layouts.find(l => l.id === config.layout) || layouts[0];
-      }
+      // Base layout, or today's pick from the eligible layouts when daily rotation is on.
+      // Slot N is always config.slots[N-1]; slots beyond this layout's count stay dormant.
+      const layout = PicMeRotation.resolveLayout(config, layouts);
       if (!layout) { showError('No layouts found.'); return; }
+      activeLayoutId = layout.id;
 
       // Pad config.slots up to the layout's slot count using slot 1's config as a template
       const slotTemplate = config.slots[0] || { mode: 'photos', source: 'local', source_path: 'photos', cycle_seconds: 30 };
@@ -870,8 +905,12 @@
       configHash = JSON.stringify(config);
       setInterval(checkConfigUpdate, 3000);
 
-      // Re-apply TOD styles at period boundaries (checked every minute)
-      setInterval(() => { if (getTodPeriodName() !== lastTodPeriod) applyTodStyles(); }, 60000);
+      // Re-apply TOD styles at period boundaries and switch the rotated layout at change_at
+      // (checked every 30 s)
+      setInterval(() => {
+        if (getTodPeriodName() !== lastTodPeriod) applyTodStyles();
+        checkRotation();
+      }, 30000);
     }
 
     init();

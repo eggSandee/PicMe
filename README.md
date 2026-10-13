@@ -103,7 +103,7 @@ PicMe/
 - [x] iPhone photos (HEIC/HEIF) — converted on the fly to JPEG so every browser can show them, with full metadata overlays
 - [x] iPhone HEVC/HDR videos converted to H.264 automatically in the background (needs ffmpeg)
 - [ ] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
-- [ ] Daily layout rotation: layout selection (choose which layouts are eligible to rotate)
+- [x] Daily layout rotation: layout selection (choose which layouts are eligible to rotate)
 - [ ] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
 - [ ] Per-slot drag-to-reorder in the editor
 - [ ] Configurable metadata pill size and text size
@@ -330,7 +330,7 @@ Example: if that returns `192.168.68.50`, open `http://192.168.68.50:8000/displa
 
 ### Configuration
 
-The file `config.json` in the project root controls which layout is used and how each slot behaves. It is created automatically with defaults on first run — the first time the display or editor is opened — using the classic-4 layout with every slot showing the `photos` folder. You can edit it directly — changes take effect after restarting the server.
+The file `config.json` in the project root controls which layout is used and how each slot behaves. It is created automatically with defaults on first run — the first time the display or editor is opened — using the classic-4 layout with every slot showing the `photos` folder. You can edit it directly: open displays re-read it every 3 seconds and apply changes on their own. If you change a video slot's folder by hand, restart the server (or open the folder in the editor) so its iPhone clips get converted.
 
 Top-level settings:
 
@@ -360,7 +360,12 @@ Top-level settings:
     "show_people": false
   },
   "video_max_edge": 1920,        // long-edge cap for converted videos: 1280 | 1920 (default, 1080p) | 3840 | 0 = original size
-  "include_live_photos": false   // true = also play the short .MOV clips saved with Live Photos
+  "include_live_photos": false,  // true = also play the short .MOV clips saved with Live Photos
+  "layout_rotation": {           // show a different layout each day (see Daily layout rotation below)
+    "enabled": false,
+    "layouts": [],               // layout ids to rotate through; [] = every layout
+    "change_at": "04:00"         // local time on the display when the next day's layout appears
+  }
 }
 ```
 
@@ -409,6 +414,18 @@ To use a different photo folder (e.g. a folder elsewhere on your PC), set `sourc
 ```json
 "source_path": "C:/Users/yourname/Pictures/Vacations"
 ```
+
+#### Daily layout rotation
+
+Turn on **Rotate layout daily** in the editor's Layout section, then tick the layouts to rotate through. The display shows one of them each day:
+
+- **Which layout:** the ticked layouts take turns in the order the editor lists them, so two days in a row never show the same layout (when 2 or more are ticked). Ticking every layout is saved as `"layouts": []`, which also includes layouts added later. With only one ticked, that layout is shown every day.
+- **When it changes:** at `change_at` (default 04:00) by the display's own clock and time zone. An open display switches by itself within 30 seconds, and a TV that was asleep switches as soon as it wakes. Before `change_at` it is still the previous day's layout.
+- **Stays the same all day:** reloading the page, opening a second TV or opening the editor gives the same layout for the same day. The editor marks today's layout with a **Today** badge and says which layout comes next. Changing the ticked layouts can change today's layout straight away.
+- **Base layout:** clicking a layout still sets `layout`, which is shown when rotation is off and is the layout the editor preview shows.
+- **Slots:** slot *N* is always the same slot on every layout. A layout with fewer slots shows slots 1 to its slot count; the rest are kept with their settings and come back on days with a bigger layout. When rotation is on, the editor creates slots up to the biggest ticked layout (as photo slots using the global settings) and lists the extra slots under the preview so you can edit them.
+- **Video slots and groups:** a video slot plays only on days its position is visible, but its folder is still converted in the background so it's ready. A larger layout can show more video slots at once, so keep their number small. A group only cycles the slots that are visible that day, at the timer of its first visible slot.
+- **Old configs:** `"daily_layout_rotation": true` from earlier versions still works (all layouts, switching at midnight). The editor converts it to `layout_rotation` the next time it saves.
 
 ---
 

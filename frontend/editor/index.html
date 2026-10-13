@@ -122,6 +122,35 @@
 
     .layout-thumb.active span { color: var(--accent); }
 
+    /* Daily rotation: eligibility checkbox and "Today" badge on each layout thumbnail */
+    .layout-thumb { position: relative; }
+    .layout-thumb .rotation-pick-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .layout-thumb .rotation-pick { accent-color: var(--accent); }
+    .layout-thumb .today-badge {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      font-size: 9px;
+      font-weight: 600;
+      color: #fff;
+      background: var(--success);
+      border-radius: 3px;
+      padding: 1px 4px;
+    }
+    #rotation-options[hidden] { display: none; }
+    #rotation-status { font-size: 12px; color: var(--text); line-height: 1.4; margin-top: 8px; }
+    #rotation-slot-hint { font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.5; }
+    #rotation-slot-hint .btn { padding: 2px 8px; font-size: 11px; margin: 0 4px 0 0; }
+
     /* ── Form controls ── */
     .field { margin-bottom: 12px; }
     .field:last-child { margin-bottom: 0; }
@@ -137,6 +166,7 @@
 
     .field input[type="text"],
     .field input[type="number"],
+    .field input[type="time"],
     .field select {
       width: 100%;
       background: var(--surface2);
@@ -467,6 +497,22 @@
     <div class="sidebar-section">
       <h3>Layout</h3>
       <div id="layout-picker"></div>
+
+      <div class="toggle-row" style="margin-top:10px">
+        <label>Rotate layout daily</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-rotation-enabled" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <div id="rotation-options">
+        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 10px;">Tick the layouts to rotate through. The display shows one each day; clicking a layout still sets the base layout used when rotation is off.</p>
+        <div class="field">
+          <label>Switch layout at</label>
+          <input type="time" id="g-rotation-change-at" />
+        </div>
+        <p id="rotation-status"></p>
+      </div>
     </div>
 
     <div class="sidebar-section">
@@ -504,15 +550,6 @@
         <label>Show all metadata</label>
         <label class="toggle">
           <input type="checkbox" id="g-show-metadata" />
-          <span class="toggle-track"></span>
-        </label>
-      </div>
-
-      <!-- TODO M4: add layout selection (choose which layouts rotate) -->
-      <div class="toggle-row" style="margin-top:10px">
-        <label>Rotate layout daily</label>
-        <label class="toggle">
-          <input type="checkbox" id="g-daily-layout" />
           <span class="toggle-track"></span>
         </label>
       </div>
@@ -603,6 +640,7 @@
     <div id="preview-area">
       <h2>Layout Preview — click a slot to configure it</h2>
       <div id="collage-preview"></div>
+      <div id="rotation-slot-hint" hidden></div>
     </div>
 
     <div id="slot-panel">
@@ -623,6 +661,7 @@
   </footer>
 
 </div>
+<script src="/display/layout-rotation.js"></script>
 <script>
   const API = '';
   const META_FIELDS = [
@@ -701,11 +740,164 @@
               slotCfg.metadata[key] !== (config.metadata_defaults || {})[key]);
   }
 
+  // ── Daily layout rotation (resolver shared with the display: /display/layout-rotation.js) ──
+
+  function ensureRotation() {
+    const r = config.layout_rotation;
+    if (!r || typeof r !== 'object' || Array.isArray(r)) {
+      config.layout_rotation = { enabled: false, layouts: [], change_at: '04:00' };
+      return;
+    }
+    if (typeof r.enabled !== 'boolean') r.enabled = r.enabled === true;
+    if (!Array.isArray(r.layouts)) r.layouts = [];
+    if (typeof r.change_at !== 'string') r.change_at = '04:00';
+  }
+
+  // The legacy daily_layout_rotation flag meant "all layouts, switching at midnight"
+  function migrateRotation() {
+    if (!('daily_layout_rotation' in config)) return;
+    if (!config.layout_rotation) {
+      const on = config.daily_layout_rotation === true;
+      config.layout_rotation = { enabled: on, layouts: [], change_at: on ? '00:00' : '04:00' };
+    }
+    delete config.daily_layout_rotation;
+  }
+
+  function rotationOn() { return config.layout_rotation?.enabled === true; }
+
+  function eligibleIds() {
+    return PicMeRotation.eligibleLayouts(config, layouts).map(l => l.id);
+  }
+
+  // Layouts that can appear on the display: the base layout, plus the eligible ones when rotating
+  function reachableLayouts() {
+    const base = layouts.find(l => l.id === config.layout) || layouts[0];
+    const set = new Set(base ? [base] : []);
+    if (rotationOn()) PicMeRotation.eligibleLayouts(config, layouts).forEach(l => set.add(l));
+    return [...set];
+  }
+
+  // Slot N is always config.slots[N-1] on every layout. Create slots up to the largest layout
+  // that can appear, so each one is configurable. Never removes slots: a smaller layout just
+  // leaves the extras dormant. New slots are photo slots on the global settings, not copies
+  // of slot 1 — a video slot 1 would otherwise turn every extra slot into a video slot.
+  function ensureSlotsFor(count) {
+    while (config.slots.length < count) {
+      config.slots.push({
+        id: config.slots.length + 1,
+        mode: 'photos',
+        source: 'local',
+        source_path: config.source_path,
+        use_global: { source: true, metadata: true, frame: true },
+        cycle_seconds: config.slots[0]?.cycle_seconds ?? 30,
+        metadata: {},
+        frame: {},
+      });
+    }
+  }
+
+  function ensureReachableSlots() {
+    ensureSlotsFor(Math.max(0, ...reachableLayouts().map(l => l.slots.length)));
+  }
+
+  function formatClock(d) {
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+
+  function refreshRotationUI() {
+    const on = rotationOn();
+    document.getElementById('g-rotation-enabled').checked = on;
+    document.getElementById('rotation-options').hidden = !on;
+    document.getElementById('g-rotation-change-at').value = config.layout_rotation?.change_at || '04:00';
+
+    const status = document.getElementById('rotation-status');
+    const now = new Date();
+    const next = PicMeRotation.nextChange(config, layouts, now);
+    if (!on) {
+      status.textContent = '';
+    } else if (!next) {
+      status.textContent = 'Tick at least 2 layouts to rotate.';
+    } else {
+      const today = PicMeRotation.resolveLayout(config, layouts, now);
+      const sameDay = next.at.toDateString() === now.toDateString();
+      status.textContent = `Today: ${today.name} · ${next.layout.name} from ${formatClock(next.at)} ${sameDay ? 'today' : 'tomorrow'}`;
+    }
+    buildRotationSlotHint();
+  }
+
+  function orList(names) {
+    return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
+  }
+
+  // Which slots show only on some days, with buttons to configure the ones the preview can't show
+  function buildRotationSlotHint() {
+    const hint = document.getElementById('rotation-slot-hint');
+    hint.innerHTML = '';
+    const base = layouts.find(l => l.id === config.layout) || layouts[0];
+    const eligible = rotationOn() ? PicMeRotation.eligibleLayouts(config, layouts) : [];
+    if (!base || eligible.length < 2) { hint.hidden = true; return; }
+
+    const baseCount = base.slots.length;
+    const maxCount = Math.max(...eligible.map(l => l.slots.length));
+    const lines = [];
+    // Group consecutive extra slots shown by the same layouts: "Slots 5–6 appear only on…"
+    let i = baseCount + 1;
+    while (i <= maxCount) {
+      const shownBy = eligible.filter(l => l.slots.length >= i);
+      let j = i;
+      while (j + 1 <= maxCount && eligible.filter(l => l.slots.length >= j + 1).length === shownBy.length) j++;
+      const label = i === j ? `Slot ${i} appears` : `Slots ${i}–${j} appear`;
+      lines.push({ text: `${label} only on days showing ${orList(shownBy.map(l => l.name))}.`, from: i, to: j });
+      i = j + 1;
+    }
+    for (const l of eligible.filter(l => l.slots.length < baseCount)) {
+      lines.push({ text: `${l.name} days show slots 1–${l.slots.length} only; the rest are kept.` });
+    }
+    if (lines.length === 0) { hint.hidden = true; return; }
+
+    for (const line of lines) {
+      const p = document.createElement('p');
+      p.textContent = line.text + ' ';
+      for (let id = line.from; line.from && id <= line.to; id++) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-secondary dormant-slot-btn';
+        btn.dataset.slot = id;
+        btn.textContent = `Edit slot ${id}`;
+        btn.onclick = () => selectSlot(id);
+        p.appendChild(btn);
+      }
+      hint.appendChild(p);
+    }
+    hint.hidden = false;
+  }
+
+  function setRotationEligible(id, ticked) {
+    ensureRotation();
+    const ids = new Set(eligibleIds());
+    if (ticked) ids.add(id); else ids.delete(id);
+    if (ids.size === 0) return false;  // keep at least one layout ticked
+    // All ticked is stored as [] ("all"), so layouts added later join automatically
+    config.layout_rotation.layouts = ids.size === layouts.length ? [] : layouts.filter(l => ids.has(l.id)).map(l => l.id);
+    return true;
+  }
+
+  function onRotationChanged() {
+    ensureReachableSlots();
+    buildLayoutPicker();
+    refreshRotationUI();
+    renderSlotPanel();
+    scheduleAutoSave();
+  }
+
   // ── Layout picker ──
 
   function buildLayoutPicker() {
     const container = document.getElementById('layout-picker');
     container.innerHTML = '';
+    const rotating = rotationOn();
+    const eligible = new Set(eligibleIds());
+    const todayId = rotating ? PicMeRotation.resolveLayout(config, layouts)?.id : null;
     for (const layout of layouts) {
       const thumb = document.createElement('div');
       thumb.className = 'layout-thumb' + (layout.id === config.layout ? ' active' : '');
@@ -726,6 +918,31 @@
       label.textContent = layout.name;
 
       thumb.append(grid, label);
+
+      if (rotating) {
+        const pickRow = document.createElement('label');
+        pickRow.className = 'rotation-pick-row';
+        pickRow.addEventListener('click', e => e.stopPropagation());  // ticking isn't selecting
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'rotation-pick';
+        cb.dataset.id = layout.id;
+        cb.checked = eligible.has(layout.id);
+        cb.onchange = () => {
+          if (!setRotationEligible(layout.id, cb.checked)) { cb.checked = true; return; }
+          onRotationChanged();
+        };
+        pickRow.append(cb, document.createTextNode('Rotate'));
+        thumb.appendChild(pickRow);
+      }
+      if (layout.id === todayId) {
+        const badge = document.createElement('span');
+        badge.className = 'today-badge';
+        badge.textContent = 'Today';
+        badge.title = 'The display shows this layout today';
+        thumb.appendChild(badge);
+      }
+
       thumb.addEventListener('click', () => selectLayout(layout.id));
       container.appendChild(thumb);
     }
@@ -734,9 +951,12 @@
   function selectLayout(id) {
     config.layout = id;
     selectedSlotId = null;
+    ensureReachableSlots();
     buildLayoutPicker();
     buildPreview();
+    refreshRotationUI();
     renderSlotPanel();
+    scheduleAutoSave();
   }
 
   // ── Collage preview ──
@@ -836,7 +1056,6 @@
     document.getElementById('g-date-format').value  = g.date_format   || 'long';
     document.getElementById('g-max-pills').value    = g.max_metadata_pills ?? 0;
     document.getElementById('g-show-metadata').checked  = g.show_metadata !== false;
-    document.getElementById('g-daily-layout').checked   = g.daily_layout_rotation === true;
     document.getElementById('g-mat-color').value    = fd.mat_color    || '#000000';
     document.getElementById('g-mat-width').value    = fd.mat_width    ?? 16;
     document.getElementById('g-show-frame').checked = fd.show_frame   !== false;
@@ -870,7 +1089,13 @@
       scheduleAutoSave();
     };
     document.getElementById('g-show-metadata').onchange  = e => { config.show_metadata = e.target.checked; buildPreview(); scheduleAutoSave(); };
-    document.getElementById('g-daily-layout').onchange   = e => { config.daily_layout_rotation = e.target.checked; scheduleAutoSave(); };
+    document.getElementById('g-rotation-enabled').onchange = e => { ensureRotation(); config.layout_rotation.enabled = e.target.checked; onRotationChanged(); };
+    document.getElementById('g-rotation-change-at').onchange = e => {
+      if (!e.target.value) return;
+      ensureRotation();
+      config.layout_rotation.change_at = e.target.value;
+      onRotationChanged();
+    };
     document.getElementById('g-video-max-edge').onchange = e => { config.video_max_edge = parseInt(e.target.value); scheduleAutoSave(); };
     document.getElementById('g-include-live-photos').onchange = e => { config.include_live_photos = e.target.checked; scheduleAutoSave(); };
     document.getElementById('g-mat-color').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_color   = e.target.value; buildPreview(); scheduleAutoSave(); };
@@ -1046,6 +1271,9 @@
       modeSection.appendChild(loopsField);
       modeSection.appendChild(makeToggleRow('Play audio', !!slotCfg.video_audio, v => { slotCfg.video_audio = v; scheduleAutoSave(); }));
       modeSection.appendChild(makeHint('Muted by default. TV browsers may block sound until someone interacts with the display page. Folder should contain .mp4 / .mov files. iPhone (HEVC) clips are converted automatically in the background and join the rotation when ready.'));
+      if (reachableLayouts().some(l => l.slots.length < slotCfg.id)) {
+        modeSection.appendChild(makeHint('On layouts with fewer slots this slot may be hidden; its folder still converts in the background.'));
+      }
     }
     left.appendChild(modeSection);
 
@@ -1579,10 +1807,14 @@
       if (!config.source_path) config.source_path = config.slots[0]?.source_path || 'photos';
       config.slots.forEach(migrateUseGlobal);
       ensureTod();
+      migrateRotation();
+      ensureRotation();
+      if (rotationOn()) ensureReachableSlots();
       selectedSlotId = null;
       bindGlobalSettings();
       buildLayoutPicker();
       buildPreview();
+      refreshRotationUI();
       renderSlotPanel();
       setStatus('Changes discarded.', '');
     } catch (e) {
@@ -1606,11 +1838,27 @@
     if (!config.source_path) config.source_path = config.slots[0]?.source_path || 'photos';
     config.slots.forEach(migrateUseGlobal);
     ensureTod();
+    migrateRotation();
+    ensureRotation();
+    if (rotationOn()) ensureReachableSlots();
     bindGlobalSettings();
     buildLayoutPicker();
     buildPreview();
+    refreshRotationUI();
     renderSlotPanel();
   }
+
+  // Keep the Today badge and status line current when the editor stays open past change_at
+  let _rotationUIKey = null;
+  setInterval(() => {
+    if (!rotationOn() || document.activeElement?.id === 'g-rotation-change-at') return;
+    const now = new Date();
+    const key = `${PicMeRotation.resolveLayout(config, layouts, now)?.id}|${now.toDateString()}`;
+    if (key === _rotationUIKey) return;
+    _rotationUIKey = key;
+    buildLayoutPicker();
+    refreshRotationUI();
+  }, 60000);
 
   init();
 </script>
