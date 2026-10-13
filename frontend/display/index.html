@@ -39,11 +39,12 @@
       box-sizing: border-box;
     }
 
+    /* Media sit inside the mat: --mat is the mat width, set per slot by applyFrameStyle */
     .mat-frame img, .mat-frame video {
-      width: 100%; height: 100%;
+      width: calc(100% - 2 * var(--mat, 0px)); height: calc(100% - 2 * var(--mat, 0px));
       object-fit: contain; /* default; overridden per-slot by applyFrameStyle */
       position: absolute;
-      top: 0; left: 0;
+      top: var(--mat, 0px); left: var(--mat, 0px);
       transition: opacity 0.8s ease;
     }
 
@@ -245,6 +246,7 @@
       const frameColor = frameCfg.frame_color ?? '#2c2318';
 
       matFrame.style.padding    = `${matWidth}px`;
+      matFrame.style.setProperty('--mat', `${matWidth}px`);
       matFrame.style.background = matColor;
       matFrame.style.border     = frameOn ? `${frameWidth}px solid ${frameColor}` : 'none';
 
