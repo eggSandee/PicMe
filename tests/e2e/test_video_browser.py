@@ -226,6 +226,20 @@ def test_unplayable_clip_is_skipped(h264_browser, server, open_page, e2e_config_
     assert w.errors == []
 
 
+def test_show_metadata_false_clears_video_date_pill(h264_browser, server, open_page, e2e_config_path, video_lib):
+    """QA regression: turning show_metadata off left the pills already on screen."""
+    cfg = write_config(e2e_config_path, video_lib["photos"], video_lib["videos"], video_slots={1}, loops=50,
+                       show_metadata=True, metadata_defaults={"show_date": True})
+    w = open_display(open_page, server)
+    page = w.page
+    wait_video_slots_playing(page, 1)
+    page.wait_for_function("() => document.querySelector('#slot-1 .overlay-pill.visible')", timeout=5_000)
+
+    e2e_config_path.write_text(json.dumps(cfg | {"show_metadata": False}))
+    page.wait_for_function("() => !document.querySelector('#slot-1 .overlay-pill')", timeout=5_000)
+    assert w.errors == []
+
+
 LOOPS_INPUT = "#slot-panel-body .field:has(label:text-is('Play each video (times)')) input"
 NO_VIDEOS = "#slot-panel-body >> text=This folder has no videos"
 
