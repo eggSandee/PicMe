@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -328,6 +327,17 @@ def test_find_tool_prefers_path(monkeypatch, tmp_path):
 
 
 @requires_ffmpeg
+def test_ffmpeg_installed_while_running_is_picked_up(monkeypatch, video_transcoder):
+    real = transcode.find_tool
+    monkeypatch.setattr(transcode, "find_tool", lambda name: None)
+    assert video_transcoder.available is False
+    monkeypatch.setattr(transcode, "find_tool", real)
+    assert video_transcoder.available is False      # re-checked at most every 10 s
+    video_transcoder._tools_checked -= 11
+    assert video_transcoder.available is True
+
+
+@requires_ffmpeg
 def test_capabilities_parses_real_ffmpeg():
     caps = transcode.capabilities(FFMPEG)
     assert "scale" in caps.filters and "colorspace" in caps.filters
@@ -484,7 +494,10 @@ def test_prune_removes_outputs_of_changed_or_deleted_sources(tmp_path, video_cac
         (video_cache / f"{name}.mp4").write_bytes(b"mp4")
         (video_cache / f"{name}.json").write_text(json.dumps(
             {"source": str(p), "mtime_ns": st.st_mtime_ns, "size": st.st_size,
-             "version": transcode.PIPELINE_VERSION}))
+             "version": transcode.PIPELINE_VERSION, "max_edge": transcode.DEFAULT_MAX_EDGE}))
+    old_cap = json.loads((video_cache / "k.json").read_text()) | {"max_edge": 3840}
+    (video_cache / "c.mp4").write_bytes(b"mp4")
+    (video_cache / "c.json").write_text(json.dumps(old_cap))
     gone.unlink()
     edited.write_bytes(b"longer")
     (video_cache / "x.tmp.mp4").write_bytes(b"half")

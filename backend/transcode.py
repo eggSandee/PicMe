@@ -21,7 +21,7 @@ import sys
 import tempfile
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -607,7 +607,8 @@ class Transcoder:
             pass
 
     def prune(self) -> None:
-        """Delete converted copies whose original was deleted, edited or replaced."""
+        """Delete converted copies whose original was deleted, edited or replaced, or that were
+        made by an older pipeline or for a different size cap."""
         try:
             sidecars = list(cache_dir().glob("*.json"))
         except OSError:
@@ -617,7 +618,8 @@ class Transcoder:
                 meta = json.loads(sidecar.read_text(encoding="utf-8"))
                 st = Path(meta["source"]).stat()
                 stale = (st.st_mtime_ns != meta["mtime_ns"] or st.st_size != meta["size"]
-                         or meta.get("version") != PIPELINE_VERSION)
+                         or meta.get("version") != PIPELINE_VERSION
+                         or meta.get("max_edge") != self.settings.max_edge)  # made for an old size cap
             except FileNotFoundError:
                 stale = True
             except (OSError, ValueError, KeyError, TypeError):

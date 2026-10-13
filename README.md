@@ -101,6 +101,7 @@ PicMe/
 - [x] Video loops for a configurable number of times before the slot advances
 - [x] Supported formats: MP4, MOV (browser-native playback)
 - [x] iPhone photos (HEIC/HEIF) — converted on the fly to JPEG so every browser can show them, with full metadata overlays
+- [x] iPhone HEVC/HDR videos converted to H.264 automatically in the background (needs ffmpeg)
 - [ ] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
 - [ ] Daily layout rotation: layout selection (choose which layouts are eligible to rotate)
 - [ ] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
@@ -199,8 +200,8 @@ Each slot supports the following settings:
 - Video slots ignore `cycle_seconds` and `group` — they advance when their loops finish, and group timers never cut a video off.
 - Only the date pill is shown, read from the clip's recording date (MP4/MOV `mvhd` creation time). Clips without a plausible date show no pill.
 - Browsers usually block autoplay with sound until someone interacts with the page. If sound is blocked, the video keeps playing muted.
-- Files the browser can't decode (e.g. iPhone HEVC or ProRes `.mov` in Chrome / many TV browsers) are skipped automatically. Use H.264 for best compatibility.
-- Each playing video uses a hardware decoder; on TVs keep the number of video slots small and prefer modest resolutions (1080p or lower).
+- iPhone (HEVC), HDR and ProRes clips are converted to H.264 in the background so every browser can play them. Until a clip is converted it's left out of the rotation. See **iPhone videos (HEVC)** below.
+- Each playing video uses a hardware decoder; on TVs keep the number of video slots small. Clips larger than `video_max_edge` (default 1080p) are scaled down for this reason.
 
 ---
 
@@ -228,7 +229,8 @@ Each slot supports the following settings:
 | **Python 3.13** | Download from [python.org](https://python.org/downloads) (Windows) or `brew install python@3.13` (macOS). |
 | **A modern browser** | Chrome, Edge, Firefox, or Safari. The display is designed for full-screen use on a TV browser. |
 | **Your photos** | JPEG, PNG, GIF, WebP, or HEIC/HEIF (iPhone) files in a folder on your machine. Extensions are matched case-insensitively (`IMG_1234.HEIC` works). |
-| **Videos (optional)** | MP4 or MOV files for video slots. H.264 is recommended — HEVC/ProRes `.mov` (common from iPhones) may not play in Chrome or on TVs and will be skipped. |
+| **Videos (optional)** | MP4 or MOV files for video slots. H.264 clips play as-is. iPhone (HEVC/HDR) and ProRes clips are converted automatically, which needs ffmpeg (below). |
+| **ffmpeg (optional, recommended for iPhone videos)** | macOS: `brew install ffmpeg`. Windows: `winget install Gyan.FFmpeg`, then open a new terminal so `PATH` updates. Without ffmpeg PicMe runs normally, but iPhone videos are skipped. |
 
 ---
 
@@ -356,7 +358,9 @@ Top-level settings:
     "show_iso": false,
     "show_focal_length": false,
     "show_people": false
-  }
+  },
+  "video_max_edge": 1920,        // long-edge cap for converted videos: 1280 | 1920 (default, 1080p) | 3840 | 0 = original size
+  "include_live_photos": false   // true = also play the short .MOV clips saved with Live Photos
 }
 ```
 
@@ -426,7 +430,29 @@ The first time a large HEIC is shown it takes about a second to convert. The con
 
 Set the `PICME_CACHE_DIR` environment variable to use a different folder. Your original photos are only ever read, never modified, and nothing is written into your photo folders. The cache is safe to delete at any time. A HEIC that can't be decoded is skipped like any other broken image.
 
-Live Photos export as a pair: `IMG_1234.HEIC` plus a short `IMG_1234.MOV`. The HEIC shows up in photo slots. The `.MOV` is currently treated like any other video (iPhone clips are usually HEVC, see *What you need*).
+Live Photos export as a pair: `IMG_1234.HEIC` plus a short `IMG_1234.MOV`. The HEIC shows up in photo slots. The `.MOV` is hidden from video slots by default (see below).
+
+---
+
+### iPhone videos (HEVC)
+
+iPhones record video in HEVC (H.265), usually 10-bit HDR, which Chrome and most TV browsers (e.g. Samsung) can't play. PicMe converts these clips in the background to H.264 MP4, which plays everywhere:
+
+- **Which clips are converted:** anything that isn't plain 8-bit H.264 — HEVC, HDR (HLG / Dolby Vision), ProRes, uncommon audio (e.g. iPhone 16 spatial audio) — plus H.264 clips larger than `video_max_edge`. Ordinary H.264 clips are streamed untouched.
+- **Look:** HDR is tone-mapped to standard range so clips don't look washed out, and portrait clips stay upright. On a Mac the conversion uses the GPU (VideoToolbox). Elsewhere it uses the CPU, and HDR → SDR is approximate unless your ffmpeg has the `zscale` filter (the gyan.dev Windows builds do; Homebrew's doesn't, but the Mac's GPU path doesn't need it).
+- **Size:** converted clips are scaled down to `video_max_edge` (default 1920, i.e. 1080p; set in the editor under *Videos → Max video size*). Several 4K videos at once overwhelm most TV decoders. Clips are never scaled up, and frame rates above 60 fps (slo-mo) are capped at 60.
+- **Background, one at a time:** conversion starts when PicMe starts (for every video slot's folder) and whenever a folder is opened in the editor or saved. It runs one clip at a time at low priority, shortest first. Until a clip is ready it's left out of the rotation; the display picks it up within a few minutes without a reload. The editor shows progress for the selected video slot, e.g. *"12 of 40 videos ready — converting IMG_1234.MOV (45%)"*.
+- **Cache:** converted copies are stored next to the HEIC cache, in a `video` folder (`~/Library/Caches/PicMe/video` on macOS, `%LOCALAPPDATA%\PicMe\Cache\video` on Windows, `~/.cache/picme/video` on Linux, or `$PICME_CACHE_DIR/video`). Your originals are only ever read, and nothing is written into your video folders. Expect roughly 45 MB per minute of 1080p video. Copies whose original is deleted or edited are cleaned up at startup. The folder is safe to delete; it's rebuilt as needed.
+- **Live Photos:** the 2–3 second `.MOV` an iPhone saves with each Live Photo would flicker by in a video slot, so a `.MOV`/`.MP4` of 4 seconds or less with the same name as a HEIC/JPEG in the same folder is hidden. A longer clip that happens to share a photo's name is still shown. Turn on *Include Live Photo clips* in the editor (`include_live_photos`) to show them anyway.
+- **A clip that can't be converted** (e.g. a damaged file) is skipped, and the editor counts it. Replacing or editing the file retries it.
+
+**Installing ffmpeg.** PicMe looks for `ffmpeg` and `ffprobe` on your `PATH`, then in Homebrew's folders (`/opt/homebrew/bin`, `/usr/local/bin`), so it's found even when PicMe is started at login.
+
+- **macOS:** `brew install ffmpeg`
+- **Windows:** `winget install Gyan.FFmpeg`, then open a new terminal (or log out and back in) so `PATH` picks it up. Or download the "essentials" build from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), unzip it, and add its `bin` folder to `PATH`.
+- **Anywhere:** set `PICME_FFMPEG` and `PICME_FFPROBE` to the full paths of the two programs.
+
+If ffmpeg is missing, PicMe logs a warning, keeps playing H.264 clips, skips iPhone clips, and the editor shows how to install it. Once ffmpeg is installed PicMe picks it up within a few minutes (or when you open the video slot in the editor); no restart needed.
 
 ---
 
