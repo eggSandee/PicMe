@@ -956,6 +956,7 @@
     buildPreview();
     refreshRotationUI();
     renderSlotPanel();
+    scheduleAutoSave();
   }
 
   // ── Collage preview ──
@@ -1846,6 +1847,18 @@
     refreshRotationUI();
     renderSlotPanel();
   }
+
+  // Keep the Today badge and status line current when the editor stays open past change_at
+  let _rotationUIKey = null;
+  setInterval(() => {
+    if (!rotationOn() || document.activeElement?.id === 'g-rotation-change-at') return;
+    const now = new Date();
+    const key = `${PicMeRotation.resolveLayout(config, layouts, now)?.id}|${now.toDateString()}`;
+    if (key === _rotationUIKey) return;
+    _rotationUIKey = key;
+    buildLayoutPicker();
+    refreshRotationUI();
+  }, 60000);
 
   init();
 </script>

@@ -501,9 +501,28 @@ def test_editor_selecting_a_bigger_layout_creates_its_slots(server, open_at, rot
     page = w.page
     assert page.locator("#rotation-slot-hint").is_hidden()
     _click(page, ".layout-thumb[data-id=classic-6]")
+    # Picking a layout is saved, together with the slots it created
+    saved = _saved(rotation_config.path, lambda c: c["layout"] == "classic-6")
+    assert [s["id"] for s in saved["slots"]] == [1, 2, 3, 4, 5, 6]
     page.locator("#collage-preview .preview-slot").nth(5).click()
     assert page.locator("#slot-panel-title").text_content() == "Slot 6 settings"
     assert page.evaluate("config.slots.map(s => s.mode)") == ["photos"] * 6
+    assert w.errors == []
+
+
+def test_editor_today_badge_follows_the_clock_past_change_at(server, open_at, rotation_config):
+    """An editor left open across change_at updates its Today badge and status without a reload."""
+    rotation_config(slots=6)
+    w = open_at(f"{server}/editor/", at=local(2026, 10, 13, 3, 58))
+    page = w.page
+    status = page.locator("#rotation-status")
+    assert status.text_content() == "Today: Classic 4 · Classic 6 from 04:00 today"
+    assert page.locator(".layout-thumb:has(.today-badge)").get_attribute("data-id") == "classic-4"
+    page.clock.run_for(3 * 60_000)
+    _until(page, "() => document.querySelector('#rotation-status').textContent.startsWith('Today: Classic 6')")
+    assert status.text_content() == "Today: Classic 6 · Classic 4 from 04:00 tomorrow"
+    assert page.locator(".layout-thumb:has(.today-badge)").get_attribute("data-id") == "classic-6"
+    assert w.loads == 1
     assert w.errors == []
 
 
