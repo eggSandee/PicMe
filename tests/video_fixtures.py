@@ -208,3 +208,22 @@ def mvhd(seconds: int, version: int = 0) -> bytes:
 
 
 FTYP = box(b"ftyp", b"isom" + struct.pack(">I", 0x200) + b"isomiso2mp41")
+
+
+def h264_stub(total_size: int = 1024) -> bytes:
+    """A minimal MP4 that sniffs as 8-bit H.264 (High profile, 160x120, no audio), padded
+    with an mdat of arbitrary bytes to ``total_size``. Not decodable — for tests of
+    listing and byte serving, which pass H.264 through untouched."""
+    tkhd = box(b"tkhd", bytes(4) + bytes(72) + struct.pack(">II", 160 << 16, 120 << 16))
+    hdlr = box(b"hdlr", bytes(8) + b"vide" + bytes(12) + b"\x00")
+    avcc = box(b"avcC", bytes([1, 100, 0, 30, 0xFF, 0xE0, 0]))
+    avc1 = box(b"avc1", bytes(_AVC1_FIXED) + avcc)
+    stsd = box(b"stsd", bytes(4) + struct.pack(">I", 1) + avc1)
+    trak = box(b"trak", tkhd + box(b"mdia", hdlr + box(b"minf", box(b"stbl", stsd))))
+    head = FTYP + box(b"moov", mvhd(0) + trak)
+    pad = total_size - len(head) - 8
+    assert pad >= 0, "stub larger than total_size"
+    return head + box(b"mdat", bytes(range(256)) * (pad // 256) + bytes(range(pad % 256)))
+
+
+_AVC1_FIXED = 78   # visual sample entry fields before child boxes

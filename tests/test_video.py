@@ -11,6 +11,7 @@ from metadata import video as video_module
 from metadata.video import extract_video_date
 from video_fixtures import (
     FTYP,
+    h264_stub,
     box,
     large_box,
     mac_seconds,
@@ -26,7 +27,7 @@ STAMP = datetime.datetime(2021, 6, 15, 3, 30, tzinfo=UTC)
 STAMP_SECONDS = mac_seconds(STAMP)
 
 # Arbitrary non-video payload served by /api/video — the route streams bytes, it doesn't decode
-VIDEO_BYTES = bytes(range(256)) * 4  # 1024 bytes
+VIDEO_BYTES = h264_stub(1024)  # sniffs as plain H.264, so it is served untouched
 
 
 @pytest.fixture

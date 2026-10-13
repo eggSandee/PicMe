@@ -13,7 +13,7 @@ import time
 import pytest
 
 from conftest import _exif_bytes, _make_image, make_config
-from video_fixtures import FFMPEG, HAS_LIBX265, make_clip
+from video_fixtures import FFMPEG, HAS_LIBX265, h264_stub, make_clip
 
 pytestmark = pytest.mark.e2e
 
@@ -83,7 +83,8 @@ def video_lib(tmp_path_factory):
                   duration=2)
         make_clip(lib["iphone"] / "IMG_0002.MOV", codec="hevc", color="red", duration=2)
         _make_image(lib["iphone"] / "IMG_0002.JPG", fmt="JPEG", exif=_exif_bytes(date=True))
-    (lib["mixed"] / "corrupt.mp4").write_bytes(b"\x00\x00\x00\x18ftypisom" + b"\xde\xad\xbe\xef" * 512)
+    # Looks like plain H.264 to the server (so it's listed as-is) but can't be decoded
+    (lib["mixed"] / "corrupt.mp4").write_bytes(h264_stub(4096))
     return lib
 
 
