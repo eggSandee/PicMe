@@ -850,6 +850,35 @@ def test_api_config_settings_apply(client, lib, video_transcoder):
 
 
 @requires_libx265
+def test_changing_size_cap_keeps_playing_old_copy_until_replaced(client, lib, video_transcoder, video_cache):
+    src = make_clip(lib / "IMG_0700.MOV", codec="hevc", size=(320, 180))
+    cfg = {"source_path": str(lib), "video_max_edge": 0,
+           "slots": [{"id": 1, "mode": "video", "use_global": {"source": True}}]}
+    assert client.post("/api/config", json=cfg).status_code == 200
+    client.get("/api/images/list", params={"folder": str(lib), "kind": "video"})
+    video_transcoder.run_until_idle()
+    first = converted(src)
+    assert video_stream(first)["width"] == 320
+
+    assert client.post("/api/config", json=cfg | {"video_max_edge": 160}).status_code == 200
+    video_transcoder.prune()   # e.g. PicMe restarted before the new copy was made
+    r = client.get("/api/images/list", params={"folder": str(lib), "kind": "video"}).json()
+    assert r["images"] == [str(src)]   # still listed...
+    resp = client.get("/api/video", params={"path": str(src)})
+    assert resp.status_code == 200 and resp.content == first.read_bytes()   # ...playing the old copy
+    assert src.resolve() in video_transcoder._pending   # while the new one is made in the background
+
+    video_transcoder.run_until_idle()
+    second = converted(src)
+    assert second != first and video_stream(second)["width"] == 160
+    assert client.get("/api/video", params={"path": str(src)}).content == second.read_bytes()
+    assert not first.exists() and not first.with_suffix(".json").exists()   # superseded copy pruned
+    assert [f.name for f in video_cache.glob("*.mp4")] == [second.name]
+    video_transcoder.prune()
+    assert second.exists() and len(list(video_cache.glob("*.ready"))) == 1
+
+
+@requires_libx265
 def test_startup_converts_video_slot_folders_in_background(config_path, lib, monkeypatch):
     from fastapi.testclient import TestClient
 

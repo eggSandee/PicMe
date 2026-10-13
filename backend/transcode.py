@@ -416,6 +416,21 @@ def cache_key(src: Path, max_edge: int) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def source_key(src: str | Path, mtime_ns: int, size: int) -> str:
+    """Like cache_key but for any size cap: ``<source_key>.ready`` names the key of the
+    newest converted copy, which keeps playing while a copy for a new cap is made."""
+    raw = f"{src}|{mtime_ns}|{size}|v{PIPELINE_VERSION}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _latest_copy(out_dir: Path, src: Path) -> str | None:
+    st = src.stat()
+    try:
+        return (out_dir / f"{source_key(src, st.st_mtime_ns, st.st_size)}.ready").read_text().strip() or None
+    except OSError:
+        return None
+
+
 # --- Orphaned ffmpeg ---
 #
 # A hard-killed PicMe (kill -9, a crash, uvicorn reload killing the worker process) leaves
@@ -592,12 +607,21 @@ class Transcoder:
         if mp4.exists():
             return Clip(f, READY, mp4, duration)
         failed = (out_dir / f"{key}.bad").exists()
+        # A copy made for a different size cap keeps playing until its replacement is ready
+        latest = _latest_copy(out_dir, src)
+        previous = out_dir / f"{latest}.mp4" if latest else None
+        if previous is not None and not previous.exists():
+            previous = None
         if failed or not self.available:
+            if previous is not None:
+                return Clip(f, READY, previous, duration)
             if sniff is not None and browser_playable(sniff):   # only converting for the size cap or the audio
                 return Clip(f, READY, f, duration)
             return Clip(f, FAILED if failed else NO_FFMPEG, duration=duration)
         if enqueue:
             self.enqueue(src, duration)
+        if previous is not None:
+            return Clip(f, READY, previous, duration)
         return Clip(f, PENDING, duration=duration)
 
     # -- queue --
@@ -725,6 +749,7 @@ class Transcoder:
             if ok and tmp.exists() and tmp.stat().st_size > 0:
                 os.replace(tmp, dst)
                 self._write_sidecar(out_dir / f"{key}.json", src, p, tier, max_edge)
+                self._supersede(out_dir, src, key)
                 log.info("Converted %s (%s, %.1fs)", src.name, tier, time.monotonic() - started)
                 return
             tmp.unlink(missing_ok=True)
@@ -784,6 +809,22 @@ class Transcoder:
         except OSError:
             pass
 
+    @staticmethod
+    def _supersede(out_dir: Path, src: Path, key: str) -> None:
+        """Point the source's .ready alias at ``key`` and delete the copy it replaces."""
+        try:
+            st = src.stat()
+            alias = out_dir / f"{source_key(src, st.st_mtime_ns, st.st_size)}.ready"
+            old = _latest_copy(out_dir, src)
+            tmp = alias.with_name(f"{alias.name}.{os.getpid()}.tmp")
+            tmp.write_text(key)
+            os.replace(tmp, alias)
+            if old and old != key:
+                for suffix in (".mp4", ".json"):
+                    (out_dir / f"{old}{suffix}").unlink(missing_ok=True)
+        except OSError as e:   # e.g. Windows, while the old copy is being streamed; prune() retries
+            log.debug("Could not retire the previous copy of %s: %s", src, e)
+
     # -- maintenance --
 
     def cleanup_tmp(self) -> None:
@@ -814,26 +855,43 @@ class Transcoder:
 
     def prune(self) -> None:
         """Delete converted copies whose original was deleted, edited or replaced, or that were
-        made by an older pipeline or for a different size cap."""
+        made by an older pipeline, or for an old size cap and no longer the one being played
+        (a copy for an old cap stays the source's latest until its replacement is ready)."""
         try:
-            sidecars = list(cache_dir().glob("*.json"))
+            d = cache_dir()
+            sidecars = list(d.glob("*.json"))
+            aliases = list(d.glob("*.ready"))
         except OSError:
             return
+        live_aliases = set()
         for sidecar in sidecars:
+            key = sidecar.name[:-len(".json")]
             try:
                 meta = json.loads(sidecar.read_text(encoding="utf-8"))
                 st = Path(meta["source"]).stat()
+                alias = f"{source_key(meta['source'], meta['mtime_ns'], meta['size'])}.ready"
                 stale = (st.st_mtime_ns != meta["mtime_ns"] or st.st_size != meta["size"]
-                         or meta.get("version") != PIPELINE_VERSION
-                         or meta.get("max_edge") != self.settings.max_edge)  # made for an old size cap
+                         or meta.get("version") != PIPELINE_VERSION)
+                if not stale and meta.get("max_edge") != self.settings.max_edge:
+                    try:
+                        stale = (d / alias).read_text().strip() != key   # superseded
+                    except OSError:
+                        stale = True
             except FileNotFoundError:
                 stale = True
             except (OSError, ValueError, KeyError, TypeError):
                 continue
             if stale:
-                key = sidecar.name[:-len(".json")]
                 for suffix in (".mp4", ".json"):
-                    (sidecar.parent / f"{key}{suffix}").unlink(missing_ok=True)
+                    try:
+                        (d / f"{key}{suffix}").unlink(missing_ok=True)
+                    except OSError:
+                        pass
+            else:
+                live_aliases.add(alias)
+        for alias in aliases:
+            if alias.name not in live_aliases:
+                alias.unlink(missing_ok=True)
 
     # -- status --
 
