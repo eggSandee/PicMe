@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import os
@@ -51,10 +52,48 @@ app.add_middleware(
 )
 
 
+# Written on first run (see README → Configuration): classic-4, every slot showing ./photos
+DEFAULT_CONFIG = {
+    "layout": "classic-4",
+    "wall_color": "#1a1a1a",
+    "show_metadata": True,
+    "date_format": "long",
+    "max_metadata_pills": 3,
+    "frame_defaults": {
+        "mat_color": "#000000",
+        "mat_width": 16,
+        "show_frame": True,
+        "frame_color": "#2c2318",
+        "frame_width": 8,
+    },
+    "metadata_defaults": {
+        "show_date": True,
+        "show_location": False,
+        "show_camera": False,
+        "show_megapixels": False,
+        "show_fstop": False,
+        "show_shutter_speed": False,
+        "show_iso": False,
+        "show_focal_length": False,
+        "show_people": False,
+    },
+    "source_path": "photos",  # relative to the server's cwd — run.sh / run.bat start in the repo root
+    "slots": [
+        {"id": i, "mode": "photos", "source": "local", "source_path": "photos", "cycle_seconds": 30}
+        for i in range(1, 5)
+    ],
+}
+
+
+def default_config() -> dict:
+    return copy.deepcopy(DEFAULT_CONFIG)
+
+
 def load_config() -> dict:
+    """The saved config, or the defaults if there is none yet. Never writes."""
     if CONFIG_PATH.exists():
         return json.loads(CONFIG_PATH.read_text())
-    return {}
+    return default_config()
 
 
 def save_config(config: dict) -> None:
@@ -119,7 +158,15 @@ def resolve_media_file(path: str, extensions: set[str], label: str) -> Path:
 
 @app.get("/api/config")
 def get_config():
-    return load_config()
+    if CONFIG_PATH.exists():
+        return load_config()  # never rewritten here, even if it's {} — the display copes
+    # First run: the display or editor is the first to ask, so write the defaults now
+    config = default_config()
+    try:
+        save_config(config)
+    except OSError as e:
+        logging.getLogger(__name__).warning("Could not write default config to %s: %s", CONFIG_PATH, e)
+    return config
 
 
 @app.post("/api/config")

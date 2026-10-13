@@ -330,7 +330,7 @@ Example: if that returns `192.168.68.50`, open `http://192.168.68.50:8000/displa
 
 ### Configuration
 
-The file `config.json` in the project root controls which layout is used and how each slot behaves. It is created automatically with defaults on first run. You can edit it directly — changes take effect after restarting the server.
+The file `config.json` in the project root controls which layout is used and how each slot behaves. It is created automatically with defaults on first run — the first time the display or editor is opened — using the classic-4 layout with every slot showing the `photos` folder. You can edit it directly — changes take effect after restarting the server.
 
 Top-level settings:
 
