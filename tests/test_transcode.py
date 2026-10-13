@@ -635,6 +635,9 @@ def test_hard_killed_picme_leaves_no_orphan_ffmpeg(lib, video_transcoder, video_
         (pidfile,) = video_cache.glob("ffmpeg-*.pid")
         meta = json.loads(pidfile.read_text())
         assert meta["owner"] == child.pid
+        deadline = time.monotonic() + 10   # ffmpeg opens its output a moment after starting
+        while not list(video_cache.glob("*.tmp.mp4")) and time.monotonic() < deadline:
+            time.sleep(0.05)
         (old_tmp,) = video_cache.glob("*.tmp.mp4")
         assert str(child.pid) in old_tmp.name   # per-process tmp name
         child.send_signal(signal.SIGKILL)       # no shutdown hook runs
