@@ -689,6 +689,37 @@ def test_api_without_ffmpeg(client, lib, monkeypatch):
     assert not transcode.transcoder._pending
 
 
+@requires_libx265
+def test_api_without_ffmpeg_still_plays_h264_that_would_only_be_resized(client, lib, monkeypatch):
+    """Without ffmpeg, H.264 over the size cap or with non-AAC audio plays as-is (as it did
+    before conversion existed); only codecs browsers can't decode are skipped."""
+    monkeypatch.setattr(transcode, "find_tool", lambda name: None)
+    transcode.transcoder.configure({"video_max_edge": 160})
+    big = make_clip(lib / "big.mp4", size=(320, 240))
+    alac = make_clip(lib / "alac.mov", audio="alac")
+    hevc = make_clip(lib / "IMG_0501.MOV", codec="hevc")
+    assert transcode.needs_transcode(sniff_video(big), 160) and transcode.needs_transcode(sniff_video(alac), 160)
+    r = client.get("/api/images/list", params={"folder": str(lib), "kind": "video"}).json()
+    assert sorted(r["images"]) == sorted([str(big), str(alac)]) and r["pending"] == 0
+    for clip in (big, alac):
+        resp = client.get("/api/video", params={"path": str(clip)})
+        assert resp.status_code == 200 and resp.content == clip.read_bytes()   # the original
+    assert client.get("/api/video", params={"path": str(hevc)}).status_code == 415
+    status = client.get("/api/videos/status", params={"folder": str(lib)}).json()
+    assert (status["ready"], status["skipped_no_ffmpeg"]) == (2, 1)
+
+
+@requires_ffmpeg
+def test_h264_whose_conversion_failed_plays_as_is(lib, video_transcoder, video_cache):
+    video_transcoder.configure({"video_max_edge": 160})
+    big = make_clip(lib / "big.mp4", size=(320, 240))
+    key = transcode.cache_key(big.resolve(), 160)
+    (transcode.cache_dir() / f"{key}.bad").write_text("boom")
+    clip = video_transcoder.clip(big)
+    assert (clip.state, clip.serve) == (transcode.READY, big)
+    assert not video_transcoder._pending
+
+
 def test_app_starts_without_ffmpeg(config_path, monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 

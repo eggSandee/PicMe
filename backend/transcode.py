@@ -209,6 +209,12 @@ def needs_transcode(sniff: VideoSniff, max_edge: int) -> bool:
     )
 
 
+def browser_playable(sniff: VideoSniff) -> bool:
+    """8-bit H.264: plays in every browser even if it's over the size cap or has odd audio.
+    Served as-is when it can't be converted (no ffmpeg, or the conversion failed)."""
+    return sniff.codec in _PLAYABLE_VIDEO and sniff.profile in _8BIT_420_PROFILES
+
+
 def output_size(width: int, height: int, rotation: int, max_edge: int) -> tuple[int, int]:
     """Displayed (post-rotation) size, long edge capped (never upscaled), both even."""
     if abs(rotation) % 180 == 90:
@@ -517,10 +523,11 @@ class Transcoder:
         mp4 = out_dir / f"{key}.mp4"
         if mp4.exists():
             return Clip(f, READY, mp4, duration)
-        if (out_dir / f"{key}.bad").exists():
-            return Clip(f, FAILED, duration=duration)
-        if not self.available:
-            return Clip(f, NO_FFMPEG, duration=duration)
+        failed = (out_dir / f"{key}.bad").exists()
+        if failed or not self.available:
+            if browser_playable(sniff):   # only converting for the size cap or the audio
+                return Clip(f, READY, f, duration)
+            return Clip(f, FAILED if failed else NO_FFMPEG, duration=duration)
         if enqueue:
             self.enqueue(src, duration)
         return Clip(f, PENDING, duration=duration)
