@@ -23,6 +23,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 import heic  # noqa: E402  (registers the HEIF opener, so Image.save(format="HEIF") works)
 import main  # noqa: E402  (needs backend/ on sys.path)
+import transcode  # noqa: E402
 from metadata import exif as exif_module  # noqa: E402
 
 LAYOUTS_DIR = REPO_ROOT / "layouts"
@@ -224,6 +225,17 @@ def heic_cache_dir(tmp_path, monkeypatch) -> Path:
     path = tmp_path / "picme-cache"
     monkeypatch.setenv("PICME_CACHE_DIR", str(path))
     return path / "heic"
+
+
+@pytest.fixture(autouse=True)
+def video_transcoder(monkeypatch) -> transcode.Transcoder:
+    """A fresh transcoder per test whose worker never starts on its own — tests convert
+    synchronously with ``run_until_idle()``. Its cache is under ``heic_cache_dir``'s root."""
+    monkeypatch.setenv("PICME_TRANSCODE_AUTOSTART", "0")
+    t = transcode.Transcoder()
+    monkeypatch.setattr(transcode, "transcoder", t)
+    yield t
+    t.stop()
 
 
 @pytest.fixture(autouse=True)

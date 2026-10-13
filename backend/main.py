@@ -1,6 +1,8 @@
 import json
+import logging
 import os
 import random
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -8,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+import transcode
 from heic import HEIC_EXTENSIONS, HeicConversionError, get_converted, is_heic
 from metadata.exif import get_metadata
 from metadata.video import get_video_metadata
@@ -18,7 +21,27 @@ LAYOUTS_PATH = ROOT / "layouts"
 FRONTEND_DISPLAY = ROOT / "frontend" / "display"
 FRONTEND_EDITOR  = ROOT / "frontend" / "editor"
 
-app = FastAPI(title="PicMe")
+def start_transcoder() -> None:
+    try:
+        config = load_config()
+    except (OSError, ValueError) as e:
+        logging.getLogger(__name__).warning("Could not read config to queue videos: %s", e)
+        config = {}
+    transcode.transcoder.configure(config)
+    if os.environ.get("PICME_TRANSCODE_AUTOSTART", "1") == "0":
+        return  # tests drive the transcoder themselves
+    transcode.transcoder.start()
+    refresh_transcoder(config)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    start_transcoder()
+    yield
+    transcode.transcoder.stop()  # kills a running ffmpeg (uvicorn reload restarts the process)
+
+
+app = FastAPI(title="PicMe", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,8 +61,27 @@ def save_config(config: dict) -> None:
     CONFIG_PATH.write_text(json.dumps(config, indent=2))
 
 
+def video_folders(config: dict) -> list[str]:
+    """Effective folders of video-mode slots (same rule as the display's slotFolder)."""
+    folders = []
+    for slot in config.get("slots") or []:
+        if slot.get("mode") != "video":
+            continue
+        adopted = (slot.get("use_global") or {}).get("source") is not False
+        folder = (config.get("source_path") or slot.get("source_path")) if adopted else slot.get("source_path")
+        if folder:
+            folders.append(folder)
+    return folders
+
+
+def refresh_transcoder(config: dict) -> None:
+    """Apply video settings and queue every video slot's folder for conversion."""
+    transcode.transcoder.configure(config)
+    transcode.transcoder.enqueue_folders(video_folders(config))
+
+
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"} | HEIC_EXTENSIONS
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v"}
+VIDEO_EXTENSIONS = transcode.VIDEO_EXTENSIONS
 MEDIA_KINDS = {"photos": SUPPORTED_EXTENSIONS, "video": VIDEO_EXTENSIONS}
 
 
@@ -50,6 +92,9 @@ def list_media(folder: str, kind: str = "photos") -> list[str]:
     path = Path(folder)
     if not path.exists() or not path.is_dir():
         return []
+    if kind == "video":
+        # Only clips the browser can play now: as-is H.264, or an already-converted copy
+        return [str(c.path) for c in transcode.transcoder.scan(path) if c.state == transcode.READY]
     return [
         str(f)
         for f in path.iterdir()
@@ -80,6 +125,7 @@ def get_config():
 @app.post("/api/config")
 def set_config(config: dict):
     save_config(config)
+    refresh_transcoder(config)
     return {"ok": True}
 
 
@@ -129,8 +175,23 @@ def image_metadata(path: str):
 
 @app.get("/api/images/list")
 def list_images_api(folder: str, kind: str = "photos"):
-    images = list_media(folder, kind)
-    return {"images": images, "count": len(images)}
+    if kind != "video":
+        images = list_media(folder, kind)
+        return {"images": images, "count": len(images)}
+    # Listing also queues clips that need converting, so a folder opened in the editor starts
+    # converting. `pending` lets the editor tell "no videos" from "videos still converting".
+    path = Path(folder)
+    clips = transcode.transcoder.scan(path) if path.is_dir() else []
+    images = [str(c.path) for c in clips if c.state == transcode.READY]
+    return {"images": images, "count": len(images),
+            "pending": sum(c.state == transcode.PENDING for c in clips)}
+
+
+@app.get("/api/videos/status")
+def videos_status(folder: str = ""):
+    """Conversion progress for a folder's videos (or every video slot's folder)."""
+    folders = [folder] if folder else video_folders(load_config())
+    return transcode.transcoder.status(folders)
 
 
 @app.get("/api/image")
@@ -150,10 +211,17 @@ def serve_image(path: str):
 def serve_video(path: str):
     """Serve a video file by absolute path. FileResponse handles Range/If-Range (206/416)
     natively, which TV browsers need to stream and seek."""
+    # The original is validated first, so the cache is only reachable through a real video
     file_path = resolve_media_file(path, VIDEO_EXTENSIONS, "Video")
-    # .mov is served as video/mp4 too: some Chromium-based TV browsers reject media labelled
-    # video/quicktime, while their MP4 demuxer reads H.264 QuickTime containers fine.
-    return FileResponse(str(file_path), media_type="video/mp4")
+    clip = transcode.transcoder.clip(file_path)
+    if clip.state == transcode.PENDING:
+        raise HTTPException(status_code=409, detail="Video is still being converted")
+    if clip.state != transcode.READY:
+        raise HTTPException(status_code=415, detail="Video can't be played in a browser and couldn't be converted")
+    # Either the original (H.264) or its converted copy. .mov is served as video/mp4 too: some
+    # Chromium-based TV browsers reject media labelled video/quicktime, while their MP4 demuxer
+    # reads H.264 QuickTime containers fine.
+    return FileResponse(str(clip.serve), media_type="video/mp4")
 
 
 # Serve the display and editor frontends

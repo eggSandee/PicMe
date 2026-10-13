@@ -96,12 +96,12 @@ def test_list_unknown_kind_is_400(client, media_dir, kind):
 
 def test_list_video_kind_on_photo_only_folder_is_empty(client, photo_library):
     r = client.get("/api/images/list", params={"folder": str(photo_library.dir), "kind": "video"})
-    assert r.json() == {"images": [], "count": 0}
+    assert r.json() == {"images": [], "count": 0, "pending": 0}
 
 
 def test_list_video_kind_missing_folder_is_empty(client, tmp_path):
     r = client.get("/api/images/list", params={"folder": str(tmp_path / "nope"), "kind": "video"})
-    assert r.json() == {"images": [], "count": 0}
+    assert r.json() == {"images": [], "count": 0, "pending": 0}
 
 
 # --- /api/images/random?kind=video ---
