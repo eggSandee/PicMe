@@ -531,4 +531,39 @@ def test_editor_time_of_day_frame_style(write_cfg, open_display):
     day.select_option("")
     cfg = _saved(write_cfg, lambda c: "frame_style" not in c["time_of_day"]["day"])
     assert "frame_style" not in cfg["time_of_day"]["night"]
+    # The template's width applies to every style, so leaving gold undoes the automatic bump
+    assert cfg["time_of_day"]["day"]["frame_width"] == 8
+    assert w.errors == []
+
+
+def test_editor_time_of_day_keeps_a_typed_width_when_leaving_gold(write_cfg, open_display):
+    write_cfg({"frame_style": "wood", "frame_width": 28})
+    w = open_display("/editor/")
+    page = w.page
+    page.click("#tod-configure-btn")
+    fields = page.locator(".tod-modal-overlay .field")
+    day = fields.filter(has_text="Frame style").first.locator("select")
+    width = fields.filter(has_text="Frame width").first.locator("input")
+    day.select_option("gold")
+    width.fill("40")
+    _saved(write_cfg, lambda c: (c.get("time_of_day") or {}).get("day", {}).get("frame_width") == 40)
+    day.select_option("")
+    cfg = _saved(write_cfg, lambda c: "frame_style" not in c["time_of_day"]["day"])
+    assert cfg["time_of_day"]["day"]["frame_width"] == 40
+    assert w.errors == []
+
+
+def test_editor_frame_width_is_capped(write_cfg, open_display):
+    write_cfg({"frame_style": "solid", "frame_width": 8})
+    w = open_display("/editor/")
+    page = w.page
+    page.fill("#g-frame-width", "200")
+    cfg = _saved(write_cfg, lambda c: c["frame_defaults"]["frame_width"] != 8)
+    assert cfg["frame_defaults"]["frame_width"] == 80
+    assert page.input_value("#g-frame-width") == "80"
+    page.click("#tod-configure-btn")
+    tod_width = page.locator(".tod-modal-overlay .field").filter(has_text="Frame width").first.locator("input")
+    tod_width.fill("500")
+    cfg = _saved(write_cfg, lambda c: (c.get("time_of_day") or {}).get("day", {}).get("frame_width") not in (None, 8))
+    assert cfg["time_of_day"]["day"]["frame_width"] == 80
     assert w.errors == []

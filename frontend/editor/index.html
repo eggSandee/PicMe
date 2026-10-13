@@ -766,6 +766,13 @@
 
   // The frame width to use after switching to `style`: a thin solid-frame width jumps to the
   // style's own default, so the moulding is visible
+  // Frame widths are capped like the inputs' max (the attribute alone doesn't stop typed values)
+  const MAX_FRAME_WIDTH = 80;
+  function clampFrameWidth(v) {
+    const n = parseInt(v);
+    return Number.isFinite(n) ? Math.min(MAX_FRAME_WIDTH, Math.max(0, n)) : 0;
+  }
+
   function widthForStyle(style, width) {
     const asset = frameAsset(style);
     return asset && (width ?? 8) < DECORATIVE_MIN_WIDTH ? asset.default_width : width;
@@ -1163,7 +1170,13 @@
       scheduleAutoSave();
     };
     document.getElementById('g-frame-color').oninput  = e => { ensureFrameDefaults(); config.frame_defaults.frame_color = e.target.value; buildPreview(); scheduleAutoSave(); };
-    document.getElementById('g-frame-width').oninput  = e => { ensureFrameDefaults(); config.frame_defaults.frame_width = parseInt(e.target.value); buildPreview(); scheduleAutoSave(); };
+    document.getElementById('g-frame-width').oninput  = e => {
+      ensureFrameDefaults();
+      const w = clampFrameWidth(e.target.value);
+      if (e.target.value !== '' && String(w) !== e.target.value) e.target.value = w;
+      config.frame_defaults.frame_width = w;
+      buildPreview(); scheduleAutoSave();
+    };
 
     const todEl = document.getElementById('tod-enabled');
     todEl.checked = config.time_of_day?.enabled || false;
@@ -1391,7 +1404,7 @@
       frameColorField.appendChild(makeHint('Color applies to solid frames only.'));
     }
     frameSec.sectionBody.appendChild(frameColorField);
-    frameSec.sectionBody.appendChild(makeField('Frame width (px)', 'number', ef.frame_width ?? 8, v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_width = parseInt(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_width')));
+    frameSec.sectionBody.appendChild(makeField('Frame width (px)', 'number', ef.frame_width ?? 8, v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_width = clampFrameWidth(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_width')));
     left.appendChild(frameSec.el);
 
     // ── Right column — Metadata (adoptable) ──
@@ -1527,7 +1540,11 @@
       inp.min = '0'; inp.max = '80';
       inp.value = val ?? 0;
       inp.style.width = '70px';
-      inp.oninput = () => { onChange(parseInt(inp.value) || 0); scheduleAutoSave(); };
+      inp.oninput = () => {
+        const n = clampFrameWidth(inp.value);
+        if (inp.value !== '' && String(n) !== inp.value) inp.value = n;
+        onChange(n); scheduleAutoSave();
+      };
       wrap.append(lbl, inp);
       return wrap;
     }
@@ -1562,10 +1579,19 @@
       col.appendChild(makeTodNumber('Mat width',   tmpl.mat_width,   v => tmpl.mat_width   = v));
       col.appendChild(makeTodToggle('Show frame',  tmpl.show_frame,  v => tmpl.show_frame  = v));
       // "Same as default" leaves frame_style unset, so the global (or slot) style shows through
+      let bumpedWidth = null;
       const styleField = makeSelectField('Frame style', frameStyleOptions(['', 'Same as default']),
         frameAsset(tmpl.frame_style) || tmpl.frame_style === 'solid' ? tmpl.frame_style : '', v => {
           if (v) tmpl.frame_style = v; else delete tmpl.frame_style;
-          tmpl.frame_width = widthForStyle(v, tmpl.frame_width);
+          // A template's width applies to every style, so undo our own bump when leaving wood/gold
+          // (unless the user has since typed a different width)
+          if (!frameAsset(v) && bumpedWidth && tmpl.frame_width === bumpedWidth.to) {
+            tmpl.frame_width = bumpedWidth.from;
+            bumpedWidth = null;
+          }
+          const bumped = widthForStyle(v, tmpl.frame_width);
+          if (bumped !== tmpl.frame_width) bumpedWidth = { from: tmpl.frame_width, to: bumped };
+          tmpl.frame_width = bumped;
           widthField.querySelector('input').value = tmpl.frame_width ?? 0;
           syncColor();
           scheduleAutoSave();
