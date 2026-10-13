@@ -17,6 +17,7 @@ import math
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -415,6 +416,70 @@ def cache_key(src: Path, max_edge: int) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+# --- Orphaned ffmpeg ---
+#
+# A hard-killed PicMe (kill -9, a crash, uvicorn reload killing the worker process) leaves
+# its ffmpeg running. Each running ffmpeg is recorded in ffmpeg-<PicMe pid>.pid, and its
+# output is <key>.<PicMe pid>.tmp.mp4, so a restarted PicMe never writes the same file and
+# can stop ffmpegs (and delete half-written outputs) whose PicMe is gone.
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":   # os.kill(pid, 0) would terminate the process on Windows
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            return bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _is_ffmpeg(pid: int) -> bool:
+    """Guards against the pid having been reused by an unrelated process."""
+    cmd = (["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"] if sys.platform == "win32"
+           else ["ps", "-p", str(pid), "-o", "comm="])
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "ffmpeg" in out.lower()
+
+
+def _terminate(pid: int) -> None:
+    try:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, timeout=10)
+            return
+        os.kill(pid, signal.SIGTERM)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and _pid_alive(pid):
+            time.sleep(0.05)
+        if _pid_alive(pid):
+            os.kill(pid, signal.SIGKILL)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def _tmp_owner(tmp: Path) -> int:
+    """PicMe pid in ``<key>.<pid>.tmp.mp4`` (0 for anything else, e.g. the old ``<key>.tmp.mp4``)."""
+    parts = tmp.name.split(".")
+    return int(parts[1]) if len(parts) == 4 and parts[1].isdigit() else 0
+
+
 # Per-clip state as seen by listing / serving
 READY = "ready"            # plays as-is, or converted copy is cached
 PENDING = "pending"        # queued or converting
@@ -649,7 +714,7 @@ class Transcoder:
             except OSError as e:
                 self._fail(bad, src, f"Could not write tone-mapping LUT: {e}")
                 return
-        tmp = out_dir / f"{key}.tmp.mp4"
+        tmp = out_dir / f"{key}.{os.getpid()}.tmp.mp4"
         error = ""
         started = time.monotonic()
         for tier in tiers:
@@ -681,6 +746,11 @@ class Transcoder:
             except OSError as e:
                 return False, str(e)
             self._proc = proc
+            pidfile = cache_dir() / f"ffmpeg-{os.getpid()}.pid"
+            try:
+                pidfile.write_text(json.dumps({"owner": os.getpid(), "ffmpeg": proc.pid, "output": cmd[-1]}))
+            except OSError:
+                pass
             try:
                 for line in proc.stdout:
                     if line.startswith("out_time_us=") and duration > 0 and self._current is not None:
@@ -692,6 +762,7 @@ class Transcoder:
                 proc.wait()
             finally:
                 self._proc = None
+                pidfile.unlink(missing_ok=True)
             err.seek(0)
             stderr = err.read()[-2048:].decode("utf-8", "replace")
         return proc.returncode == 0, stderr
@@ -716,10 +787,28 @@ class Transcoder:
     # -- maintenance --
 
     def cleanup_tmp(self) -> None:
-        """Remove half-written outputs left by a crash or a killed process."""
+        """Stop ffmpegs left running by a PicMe that was killed, and remove half-written
+        outputs whose writer is gone. Another PicMe sharing the cache keeps its own."""
+        me = os.getpid()
         try:
-            for f in cache_dir().glob("*.tmp.mp4"):
-                f.unlink(missing_ok=True)
+            d = cache_dir()
+            for pidfile in d.glob("ffmpeg-*.pid"):
+                try:
+                    meta = json.loads(pidfile.read_text())
+                    owner, child = int(meta["owner"]), int(meta["ffmpeg"])
+                except (OSError, ValueError, KeyError, TypeError):
+                    pidfile.unlink(missing_ok=True)
+                    continue
+                if owner == me or _pid_alive(owner):
+                    continue
+                if _pid_alive(child) and _is_ffmpeg(child):
+                    log.info("Stopping ffmpeg (pid %d) left running by a previous PicMe", child)
+                    _terminate(child)
+                pidfile.unlink(missing_ok=True)
+            for f in d.glob("*.tmp.mp4"):
+                owner = _tmp_owner(f)
+                if owner != me and not _pid_alive(owner):
+                    f.unlink(missing_ok=True)
         except OSError:
             pass
 

@@ -598,6 +598,78 @@ def test_prune_removes_outputs_of_changed_or_deleted_sources(tmp_path, video_cac
     assert sorted(f.name for f in video_cache.iterdir()) == ["k.json", "k.mp4"]
 
 
+_HARD_KILL_CHILD = """
+import sys, time
+sys.path.insert(0, sys.argv[1])
+import transcode
+t = transcode.Transcoder()
+t.configure({"video_max_edge": 100})
+t.clip(sys.argv[2])
+t.start()
+deadline = time.monotonic() + 15
+while not list(transcode.cache_dir().glob("ffmpeg-*.pid")) and time.monotonic() < deadline:
+    time.sleep(0.05)
+print("converting" if t._proc else "not converting", flush=True)
+time.sleep(60)
+"""
+
+
+@requires_ffmpeg
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
+def test_hard_killed_picme_leaves_no_orphan_ffmpeg(lib, video_transcoder, video_cache, tmp_path, monkeypatch):
+    import signal
+    import subprocess
+
+    from conftest import REPO_ROOT
+    # -re makes ffmpeg read at real-time speed, so the 20 s conversion is still running when killed
+    wrapper = tmp_path / "ffmpeg"
+    wrapper.write_text(f'#!/bin/sh\nexec "{FFMPEG}" -re "$@"\n')
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("PICME_FFMPEG", str(wrapper))
+    src = make_clip(lib / "long.mp4", duration=20)
+    meta = {}
+    child = subprocess.Popen([sys.executable, "-c", _HARD_KILL_CHILD, str(REPO_ROOT / "backend"), str(src)],
+                             stdout=subprocess.PIPE, text=True)
+    try:
+        assert child.stdout.readline().strip() == "converting"
+        (pidfile,) = video_cache.glob("ffmpeg-*.pid")
+        meta = json.loads(pidfile.read_text())
+        assert meta["owner"] == child.pid
+        (old_tmp,) = video_cache.glob("*.tmp.mp4")
+        assert str(child.pid) in old_tmp.name   # per-process tmp name
+        child.send_signal(signal.SIGKILL)       # no shutdown hook runs
+        child.wait(10)
+        time.sleep(0.5)
+        orphan = meta["ffmpeg"]
+        assert transcode._pid_alive(orphan) and transcode._is_ffmpeg(orphan)   # still running
+        live_other = video_cache / f"other.{os.getppid()}.tmp.mp4"   # a PicMe that's still alive
+        live_other.write_bytes(b"in progress")
+
+        video_transcoder.start()   # the next PicMe starting up
+        deadline = time.monotonic() + 10
+        while transcode._pid_alive(orphan) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not transcode._pid_alive(orphan)
+        assert not old_tmp.exists() and not pidfile.exists()
+        assert live_other.exists()
+    finally:
+        child.kill()
+        if transcode._pid_alive(meta.get("ffmpeg", 0)):
+            os.kill(meta["ffmpeg"], signal.SIGKILL)
+
+
+def test_tmp_cleanup_keeps_outputs_of_running_picme(video_transcoder, video_cache):
+    video_cache.mkdir(parents=True, exist_ok=True)
+    mine = video_cache / f"a.{os.getpid()}.tmp.mp4"
+    legacy, dead = video_cache / "b.tmp.mp4", video_cache / "c.999999999.tmp.mp4"
+    for f in (mine, legacy, dead):
+        f.write_bytes(b"x")
+    (video_cache / "ffmpeg-999999999.pid").write_text(json.dumps({"owner": 999999999, "ffmpeg": os.getpid()}))
+    video_transcoder.cleanup_tmp()
+    assert mine.exists() and not legacy.exists() and not dead.exists()
+    assert not (video_cache / "ffmpeg-999999999.pid").exists()   # and it didn't kill us (not ffmpeg)
+
+
 @requires_libx265
 def test_progress_and_shortest_first(lib, video_transcoder, monkeypatch):
     long_clip = make_clip(lib / "long.mov", codec="hevc", duration=3)
