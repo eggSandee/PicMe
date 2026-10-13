@@ -13,11 +13,68 @@ from conftest import EXIF_DATE_ISO, LAYOUTS_DIR, make_config
 
 # --- /api/config ---
 
-def test_config_get_without_file_returns_empty(client, config_path):
+def test_config_get_without_file_creates_defaults(client, config_path):
     assert not config_path.exists()
     r = client.get("/api/config")
     assert r.status_code == 200
-    assert r.json() == {}
+    cfg = r.json()
+    assert cfg["layout"] == "classic-4"
+    assert cfg["source_path"] == "photos"
+    assert [s["id"] for s in cfg["slots"]] == [1, 2, 3, 4]
+    assert all(s["mode"] == "photos" and s["source_path"] == "photos" for s in cfg["slots"])
+    assert cfg["show_metadata"] is True
+    assert cfg["metadata_defaults"]["show_date"] is True
+    assert cfg["frame_defaults"]["show_frame"] is True
+    # Persisted on first run, so the editor and a restart see the same thing
+    assert json.loads(config_path.read_text()) == cfg
+    assert client.get("/api/config").json() == cfg
+
+
+def test_default_config_layout_exists_with_matching_slot_count():
+    layout = json.loads((LAYOUTS_DIR / f"{main.DEFAULT_CONFIG['layout']}.json").read_text())
+    assert len(layout["slots"]) == len(main.DEFAULT_CONFIG["slots"])
+
+
+def test_config_get_does_not_overwrite_existing_empty_config(client, config_path):
+    config_path.write_text("{}")
+    assert client.get("/api/config").json() == {}
+    assert config_path.read_text() == "{}"
+
+
+def test_config_get_does_not_overwrite_config_without_slots(client, config_path):
+    config_path.write_text(json.dumps({"layout": "classic-6"}))
+    assert client.get("/api/config").json() == {"layout": "classic-6"}
+    assert json.loads(config_path.read_text()) == {"layout": "classic-6"}
+
+
+def test_lifespan_does_not_create_config(config_path):
+    with TestClient(main.app):
+        pass
+    assert not config_path.exists()
+
+
+def test_load_config_without_file_returns_defaults_without_writing(config_path):
+    assert main.load_config() == main.default_config()
+    assert not config_path.exists()
+
+
+def test_default_config_is_not_shared():
+    a = main.default_config()
+    a["slots"][0]["source_path"] = "/elsewhere"
+    a["metadata_defaults"]["show_date"] = False
+    b = main.default_config()
+    assert b["slots"][0]["source_path"] == "photos"
+    assert b["metadata_defaults"]["show_date"] is True
+
+
+def test_config_get_serves_defaults_when_config_cannot_be_written(client, config_path, monkeypatch):
+    def read_only(config):
+        raise PermissionError("read-only install")
+    monkeypatch.setattr(main, "save_config", read_only)
+    r = client.get("/api/config")
+    assert r.status_code == 200
+    assert r.json() == main.default_config()
+    assert not config_path.exists()
 
 
 def test_config_get_returns_saved_file(client, written_config):
