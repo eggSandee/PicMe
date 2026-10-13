@@ -256,7 +256,8 @@
     // Paths claimed by a slot (on screen or loading), with a claim count — a small library can
     // force a repeat, so one slot releasing a path must not free it while another still shows it
     const displayedPaths = new Map();
-    const unplayablePaths = new Set(); // videos that failed to load/decode (safety net — the server only lists playable clips)
+    // Photos and videos that failed to load or decode — skipped until their folder is retried
+    const unplayablePaths = new Set();
 
     function claimPath(path) {
       displayedPaths.set(path, (displayedPaths.get(path) || 0) + 1);
@@ -303,7 +304,7 @@
       return queueLoads[key];
     }
 
-    // `fallback` is returned instead of q.images[0] when every file is on screen or unplayable
+    // `fallback` is returned instead of a repeat when every file is on screen or unplayable
     function nextFromQueue(folder, kind = 'photos', fallback = null) {
       const q = folderQueues[`${kind}:${folder}`];
       if (!q || q.images.length === 0) return null;
@@ -319,8 +320,8 @@
         }
         if (!displayedPaths.has(candidate) && !unplayablePaths.has(candidate)) return candidate;
       }
-      // All images currently displayed (very small library) — allow a repeat
-      return fallback ?? q.images[0];
+      // All images currently displayed (very small library) — allow a repeat, but never of a bad file
+      return fallback ?? q.images.find(p => !unplayablePaths.has(p)) ?? null;
     }
 
     // Per-slot state
@@ -330,39 +331,105 @@
       return (slotCfg.use_global?.source !== false) ? (config.source_path || slotCfg.source_path) : slotCfg.source_path;
     }
 
-    async function loadNextImage(slotCfg) {
-      const state = slotState[slotCfg.id];
-      const slotEl = document.getElementById(`slot-${slotCfg.id}`);
-      if (!slotEl) return;
+    const PHOTO_RETRY_MS = 60000;  // empty folder / every photo failed — try again later
+    const photoRetryTimers = {};   // folder -> pending retry
 
-      const folder = slotFolder(slotCfg);
-      await ensureQueue(folder);
-      const nextPath = nextFromQueue(folder);
-      if (!nextPath) return;
-      claimPath(nextPath);  // claim before loading so a concurrent slot can't pick it too
+    // Wait, then forget this folder's failures, re-list it and retry its blank slots, so added or
+    // replaced files are picked up. Cycle ticks in the meantime find nothing to try, so a folder
+    // of bad files can't spin. One timer per folder, so slots can't reset each other's retries.
+    function retryPhotoLater(folder) {
+      if (photoRetryTimers[folder]) return;  // already waiting — don't push the retry back
+      photoRetryTimers[folder] = setTimeout(() => {
+        delete photoRetryTimers[folder];
+        const key = `photos:${folder}`;
+        for (const p of folderQueues[key]?.images || []) unplayablePaths.delete(p);
+        delete folderQueues[key];
+        // Slots already showing a photo just carry on with their cycle timers
+        for (const s of activeSlots) {
+          if (s.mode !== 'video' && slotFolder(s) === folder && !slotState[s.id]?.currentPath) loadNextImage(s);
+        }
+      }, PHOTO_RETRY_MS);
+    }
+
+    // Load `path` into the slot's hidden <img> and crossfade to it. False if it won't load.
+    async function showImage(slotCfg, slotEl, path) {
+      const state = slotState[slotCfg.id];
+      claimPath(path);  // claim before loading so a concurrent slot can't pick it too
 
       const [imgA, imgB] = slotEl.querySelectorAll('.mat-frame img');
       const current = state.activeImg === 'A' ? imgA : imgB;
       const next    = state.activeImg === 'A' ? imgB : imgA;
+      const url = imageUrl(path);
 
       try {
-        next.src = imageUrl(nextPath);
         await new Promise((resolve, reject) => {
-          next.onload = resolve;
-          next.onerror = reject;
+          // Ignore a late event from an earlier attempt's src
+          next.onload  = () => { if (next.getAttribute('src') === url) resolve(); };
+          next.onerror = () => { if (next.getAttribute('src') === url) reject(new Error('image error')); };
+          next.src = url;
         });
-        // Release this slot's old image
-        if (state.currentPath) releasePath(state.currentPath);
-        state.currentPath = nextPath;
-
-        next.className = 'visible';
-        current.className = 'hidden';
-        state.activeImg = state.activeImg === 'A' ? 'B' : 'A';
-
-        updateOverlay(slotCfg, nextPath);
       } catch (e) {
-        releasePath(nextPath);
-        console.warn(`Slot ${slotCfg.id}: failed to load image`, e);
+        // Corrupt file, a HEIC the server couldn't convert (415), or deleted since listing
+        console.warn(`Slot ${slotCfg.id}: failed to load ${path}`, e);
+        releasePath(path);
+        unplayablePaths.add(path);
+        return false;
+      } finally {
+        next.onload = next.onerror = null;
+      }
+
+      // Release this slot's old image
+      if (state.currentPath) releasePath(state.currentPath);
+      state.currentPath = path;
+
+      next.className = 'visible';
+      current.className = 'hidden';
+      state.activeImg = state.activeImg === 'A' ? 'B' : 'A';
+
+      updateOverlay(slotCfg, path);
+      return true;
+    }
+
+    async function loadNextImage(slotCfg) {
+      const state = slotState[slotCfg.id];
+      const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+      // A cycle tick while this slot is still working through failures waits for the next one
+      if (!state || !slotEl || state.photoLoading) return;
+      state.photoLoading = true;
+      const folder = slotFolder(slotCfg);
+
+      try {
+        let queue;
+        try {
+          queue = await ensureQueue(folder);
+        } catch (e) {
+          console.warn(`Slot ${slotCfg.id}: could not list photos`, e);
+          retryPhotoLater(folder);
+          return;
+        }
+        // A photo that won't load is skipped and the next one tried straight away, so a corrupt
+        // first pick doesn't leave the slot blank — at most one pass over the folder
+        while (true) {
+          const nextPath = nextFromQueue(folder);
+          if (!nextPath) {
+            // Empty folder, or every photo in it failed
+            retryPhotoLater(folder);
+            return;
+          }
+          if (await showImage(slotCfg, slotEl, nextPath)) {
+            state.photoFailures = 0;
+            return;
+          }
+          state.photoFailures = (state.photoFailures || 0) + 1;
+          if (state.photoFailures >= queue.images.length) {
+            console.warn(`Slot ${slotCfg.id}: no photos would load — retrying in ${PHOTO_RETRY_MS / 1000}s`);
+            state.photoFailures = 0;
+            retryPhotoLater(folder);
+            return;
+          }
+        }
+      } finally {
+        state.photoLoading = false;
       }
     }
 
@@ -614,6 +681,19 @@
     }
 
     async function updateOverlay(slotCfg, imagePath) {
+      const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+      if (!slotEl) return;
+      const overlay = slotEl.querySelector('.slot-overlay');
+      if (!overlay) return;
+
+      // Each call supersedes earlier ones for this slot: a metadata fetch for an older photo, or
+      // one started before show_metadata was turned off, must not add its pills afterwards
+      const state = slotState[slotCfg.id];
+      const seq = state.overlaySeq = (state.overlaySeq || 0) + 1;
+
+      // Clear previous pills completely — hidden elements in a flex column take up space
+      overlay.innerHTML = '';
+
       // Global kill switch
       if (config.show_metadata === false) return;
 
@@ -626,18 +706,11 @@
 
       const maxPills = config.max_metadata_pills ?? Infinity;
       const anyEnabled = meta.show_date || METADATA_FIELDS.some(f => meta[f.flag]);
-
-      const slotEl = document.getElementById(`slot-${slotCfg.id}`);
-      if (!slotEl) return;
-      const overlay = slotEl.querySelector('.slot-overlay');
-      if (!overlay) return;
-
-      // Clear previous pills completely — hidden elements in a flex column take up space
-      overlay.innerHTML = '';
       if (!anyEnabled) return;
 
       try {
         const data = await fetchJSON(`${API}/api/metadata?path=${encodeURIComponent(imagePath)}`);
+        if (seq !== state.overlaySeq || config.show_metadata === false) return;
 
         const pills = [];
 
@@ -689,7 +762,7 @@
 
         // Slot mode, timer and group changes affect element setup and timers — reload too
         const slotNeedsReload = (fresh.slots || []).some((s, i) => {
-          const old = config.slots[i];
+          const old = (config.slots || [])[i];
           return old && ((s.mode || 'photos') !== (old.mode || 'photos')
             || s.cycle_seconds !== old.cycle_seconds
             || (s.group || null) !== (old.group || null));
@@ -700,7 +773,7 @@
         }
 
         // Everything else (colors, frame, metadata, audio) — patch in place so photos keep cycling
-        const oldSlots = config.slots;
+        const oldSlots = config.slots || [];
         Object.assign(config, fresh);
         config.slots = oldSlots;
         (fresh.slots || []).forEach((s, i) => { if (oldSlots[i]) Object.assign(oldSlots[i], s); });
@@ -748,6 +821,10 @@
         showError('Could not load config from server. Is the backend running?');
         return;
       }
+
+      // A hand-emptied config.json ({} or no slots) still gets a full layout of photo slots
+      if (!config || typeof config !== 'object' || Array.isArray(config)) config = {};
+      if (!Array.isArray(config.slots)) config.slots = [];
 
       // If daily rotation is on, pick a layout by day-of-year so it changes each day
       // but stays consistent throughout the day. Layout selection (choosing which
