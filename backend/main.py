@@ -21,6 +21,7 @@ CONFIG_PATH = ROOT / "config.json"
 LAYOUTS_PATH = ROOT / "layouts"
 FRONTEND_DISPLAY = ROOT / "frontend" / "display"
 FRONTEND_EDITOR  = ROOT / "frontend" / "editor"
+FRONTEND_ASSETS  = ROOT / "frontend" / "assets"  # decorative frame PNGs + frames.js (tools/frames)
 
 def start_transcoder() -> None:
     try:
@@ -65,6 +66,7 @@ DEFAULT_CONFIG = {
         "show_frame": True,
         "frame_color": "#2c2318",
         "frame_width": 8,
+        "frame_style": "solid",  # or a decorative style from frontend/assets/frames/frames.js
     },
     "metadata_defaults": {
         "show_date": True,
@@ -280,6 +282,7 @@ def serve_video(path: str):
 # Serve the display and editor frontends
 app.mount("/display", StaticFiles(directory=str(FRONTEND_DISPLAY), html=True), name="display")
 app.mount("/editor",  StaticFiles(directory=str(FRONTEND_EDITOR),  html=True), name="editor")
+app.mount("/assets",  StaticFiles(directory=str(FRONTEND_ASSETS)), name="assets")
 
 # Serve a simple root redirect
 @app.get("/")
