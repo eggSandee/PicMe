@@ -56,7 +56,7 @@ PicMe/
 - [x] Fullscreen browser display with configurable slot grid
 - [x] Independent per-slot cycling timers
 - [x] Slot grouping (define groups that cycle together)
-- [x] No duplicate photos across slots — shuffled per-folder queue ensures each image appears in at most one slot at a time
+- [x] No duplicate photos across slots — shuffled per-folder queue ensures a photo is never in two slots at once. When every slot ticks together and every photo is taken, a slot waits for another slot to finish its swap or keeps its current photo for that cycle; a photo repeats only when there are fewer usable photos than slots. (While a slot crossfades, its outgoing photo can still be fading out as another slot fades it in — that overlap is the crossfade, not a duplicate.)
 - [x] 3–5 built-in layout templates (e.g., 2x2, 3x2, asymmetric hero)
 - [x] Basic config file (auto-managed JSON)
 
@@ -534,6 +534,8 @@ Install the dev dependencies (`uv pip install -r requirements-dev.txt`), then fr
 ```
 
 The browser tests (`tests/e2e/`) drive a locally installed Chrome via Playwright and are skipped automatically if Chrome can't launch.
+
+To check for duplicate photos across slots, sample only each slot's decoded `img.visible` (or the display's `displayedPaths` claims), never both `<img>`s or anything with opacity > 0 — the outgoing image of a crossfade would count as a duplicate. See the comment above `SAMPLE_SLOTS` in `tests/e2e/test_browser.py`.
 
 ---
 
