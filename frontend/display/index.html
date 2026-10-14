@@ -26,6 +26,13 @@
       position: relative;
       overflow: hidden;
       background: #111;
+      /* Pill tokens: set per slot by applyPillStyle (pill-size.js); these are the fallbacks */
+      --pill-inset: 10px;
+      --pill-font-size: 12px;
+      --pill-pad-y: 0.25em;
+      --pill-pad-x: 0.75em;
+      --pill-gap: 4px;
+      --pill-radius: 999px;
     }
 
     /* Mat sits inside the slot, providing the matte border around the photo */
@@ -56,23 +63,35 @@
     .slot.video-mode .mat-frame video { display: block; }
     .slot.video-mode .mat-frame img { display: none; }
 
+    /* Pills read only the --pill-* tokens, so anything that sets them (a slot, a mat opening)
+       gets the same pills */
     .slot-overlay {
       position: absolute;
-      bottom: 10px;
-      left: 10px;
+      bottom: var(--pill-inset);
+      left: var(--pill-inset);
+      max-width: calc(100% - 2 * var(--pill-inset));
+      max-height: calc(100% - 2 * var(--pill-inset));
+      overflow: hidden;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      align-items: flex-start;
+      gap: var(--pill-gap);
+      font-size: var(--pill-font-size);
       z-index: 10;
       pointer-events: none;
     }
 
     .overlay-pill {
-      background: rgba(0, 0, 0, 0.55);
+      flex-shrink: 0;
+      max-width: 100%;
+      background: rgba(20, 20, 20, 0.62);
+      /* Faint light edge keeps the pill's shape visible over black mats, letterbox and night */
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
       color: #fff;
-      font-size: 12px;
-      padding: 3px 9px;
-      border-radius: 20px;
+      font-size: var(--pill-font-size);
+      line-height: 1.25;
+      padding: var(--pill-pad-y) var(--pill-pad-x);
+      border-radius: var(--pill-radius);
       backdrop-filter: blur(4px);
       white-space: nowrap;
       opacity: 0;
@@ -80,6 +99,20 @@
     }
 
     .overlay-pill.visible { opacity: 1; }
+    /* Hidden by fitOverlay when the slot is too short for every pill */
+    .overlay-pill.fit-hidden { display: none; }
+
+    /* Text that doesn't fit scrolls (fitOverlay sets the animation); it is never cut with "…" */
+    .pill-clip { display: block; overflow: hidden; }
+    /* Soft edges while scrolling, instead of glyphs cut hard at the padding */
+    .overlay-pill.scrolling .pill-clip {
+      -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 0.5em, #000 calc(100% - 0.5em), transparent 100%);
+      mask-image: linear-gradient(90deg, transparent 0, #000 0.5em, #000 calc(100% - 0.5em), transparent 100%);
+    }
+    .pill-text { display: inline-block; vertical-align: top; width: -webkit-max-content; width: max-content; }
+    @media (prefers-reduced-motion: reduce) {
+      .pill-text { animation: none !important; }
+    }
 
     #editor-btn {
       position: fixed;
@@ -120,6 +153,7 @@
   <a id="editor-btn" href="/editor">⚙ Editor</a>
 
   <script src="/display/layout-rotation.js"></script>
+  <script src="/display/pill-size.js"></script>
   <script src="/assets/frames/frames.js"></script>
   <script>
     const API = '';  // same origin
@@ -261,7 +295,6 @@
       matFrame.style.padding    = `${matWidth}px`;
       matFrame.style.setProperty('--mat', `${matWidth}px`);
       matFrame.style.background = matColor;
-      const overlay = slotEl.querySelector('.slot-overlay');
       if (asset) {
         // A 9-slice PNG: corners scale uniformly (never stretch) and edges tile with `round`.
         // On a small slot the moulding is capped at a sixth of the short side.
@@ -271,16 +304,101 @@
         matFrame.style.borderImage = `url("${asset.src}") ${asset.slice} / ${w}px / 0 round`;
         matFrame.style.backgroundClip = 'padding-box';
         // Keep the metadata pills inside the moulding
-        if (overlay) overlay.style.left = overlay.style.bottom = `${w + 10}px`;
+        slotEl.style.setProperty('--pill-inset', `${w + 10}px`);
       } else {
         matFrame.style.border = frameOn ? `${frameWidth}px solid ${frameColor}` : 'none';
         matFrame.style.borderImage = 'none';
         matFrame.style.backgroundClip = '';
-        if (overlay) overlay.style.left = overlay.style.bottom = '';
+        slotEl.style.removeProperty('--pill-inset');
       }
 
       const fit = slotCfg.fill_mode === 'cover' ? 'cover' : 'contain';
       matFrame.querySelectorAll('img, video').forEach(el => el.style.objectFit = fit);
+
+      // Pill size depends on the space inside the frame, so it follows every frame change
+      applyPillStyle(slotEl, slotCfg);
+    }
+
+    // ── Metadata pill size (README → Metadata pills) ──
+
+    // The slot's metadata settings: global defaults, plus the slot's own when it doesn't use global
+    function effectiveMeta(slotCfg) {
+      return (slotCfg.use_global?.metadata !== false)
+        ? (config.metadata_defaults || {})
+        : { ...(config.metadata_defaults || {}), ...(slotCfg.metadata || {}) };
+    }
+
+    function pillInset(slotEl) {
+      return parseFloat(getComputedStyle(slotEl).getPropertyValue('--pill-inset')) || 0;
+    }
+
+    // Set the slot's pill tokens for the space inside its frame, then re-fit its pills.
+    // Without pill-size.js the CSS fallbacks apply.
+    function applyPillStyle(slotEl, slotCfg) {
+      if (window.PicMePills) {
+        const inset = pillInset(slotEl);
+        const w = Math.max(0, slotEl.clientWidth - 2 * inset);
+        const h = Math.max(0, slotEl.clientHeight - 2 * inset);
+        const tokens = PicMePills.tokens(PicMePills.resolve(effectiveMeta(slotCfg)), w, h);
+        for (const [name, value] of Object.entries(tokens)) slotEl.style.setProperty(name, value);
+      }
+      fitOverlay(slotEl);
+    }
+
+    // One @keyframes rule per scroll distance, added on first use
+    const marqueeRules = new Set();
+    let marqueeSheet = null;
+
+    function marqueeAnimation(distance, windowSec) {
+      const m = window.PicMePills?.marquee(distance, windowSec);
+      if (!m) return '';
+      if (!marqueeRules.has(m.name)) {
+        if (!marqueeSheet) marqueeSheet = document.head.appendChild(document.createElement('style')).sheet;
+        marqueeSheet.insertRule(m.css, marqueeSheet.cssRules.length);
+        marqueeRules.add(m.name);
+      }
+      return `${m.name} ${m.duration.toFixed(2)}s linear infinite`;
+    }
+
+    // Make the slot's pills fit inside the overlay (the slot minus --pill-inset on each side):
+    // 1. Too tall: hide non-date pills from the lowest priority up. The date is never hidden;
+    //    if it alone doesn't fit, it drops to the smallest font and the overlay clips it.
+    // 2. Too wide: the pill's text scrolls slowly back and forth (static under reduced motion).
+    // Hidden pills stay in the DOM, so a resize can bring them back.
+    function fitOverlay(slotEl) {
+      const overlay = slotEl.querySelector('.slot-overlay');
+      if (!overlay) return;
+      const pills = [...overlay.querySelectorAll('.overlay-pill')];
+      overlay.style.removeProperty('--pill-font-size');
+      pills.forEach(p => p.classList.remove('fit-hidden'));
+      if (pills.length === 0) return;
+
+      const overflows = () => overlay.scrollHeight > overlay.clientHeight + 0.5;
+      const optional = pills.filter(p => !p.dataset.date);
+      while (overflows() && optional.length) optional.pop().classList.add('fit-hidden');
+      if (overflows() && window.PicMePills) overlay.style.setProperty('--pill-font-size', `${PicMePills.FONT_MIN}px`);
+
+      // A photo slot shows each photo for cycle_seconds; video slots have no fixed window
+      const slotCfg = (config.slots || []).find(s => `slot-${s.id}` === slotEl.id);
+      const windowSec = slotCfg && slotCfg.mode !== 'video' ? Number(slotCfg.cycle_seconds) : undefined;
+
+      // Measure every pill first, then write, so this lays out once
+      const visible = pills.filter(p => !p.classList.contains('fit-hidden'));
+      const distances = visible.map(p => {
+        const clip = p.querySelector('.pill-clip'), text = p.querySelector('.pill-text');
+        return clip && text ? text.offsetWidth - clip.clientWidth : 0;
+      });
+      visible.forEach((p, i) => {
+        const text = p.querySelector('.pill-text');
+        if (!text) return;
+        const scrolls = distances[i] >= 1;
+        p.classList.toggle('scrolling', scrolls);
+        const animation = scrolls ? marqueeAnimation(distances[i], windowSec) : '';
+        // Same distance as last time: leave the running scroll alone
+        if ((text.dataset.marquee || '') === animation) return;
+        text.dataset.marquee = animation;
+        text.style.animation = animation;
+      });
     }
 
     // Shuffled queue per folder and media kind — ensures no file repeats until all are shown,
@@ -714,6 +832,20 @@
       return new Intl.DateTimeFormat(undefined, opts).format(new Date(isoDate + 'T00:00'));
     }
 
+    // The text sits in a clip box so a long pill can scroll inside its padding
+    function makePill(text) {
+      const pill = document.createElement('div');
+      pill.className = 'overlay-pill';
+      const clip = document.createElement('span');
+      clip.className = 'pill-clip';
+      const span = document.createElement('span');
+      span.className = 'pill-text';
+      span.textContent = text;
+      clip.appendChild(span);
+      pill.appendChild(clip);
+      return pill;
+    }
+
     async function updateOverlay(slotCfg, imagePath) {
       const slotEl = document.getElementById(`slot-${slotCfg.id}`);
       if (!slotEl) return;
@@ -732,10 +864,9 @@
       if (config.show_metadata === false) return;
 
       // Respect use_global.metadata: if true, use only global defaults (slot.metadata is empty)
-      let meta = (slotCfg.use_global?.metadata !== false)
-        ? (config.metadata_defaults || {})
-        : { ...(config.metadata_defaults || {}), ...(slotCfg.metadata || {}) };
-      // Video slots only ever show the date pill (from the MP4/MOV container)
+      let meta = effectiveMeta(slotCfg);
+      // Video slots only ever show the date pill (from the MP4/MOV container). Pill and text
+      // size come from applyPillStyle, which reads the full settings, so they still apply.
       if (slotCfg.mode === 'video') meta = { show_date: meta.show_date };
 
       const maxPills = config.max_metadata_pills ?? Infinity;
@@ -753,23 +884,21 @@
         for (const { flag, key } of METADATA_FIELDS) {
           if (shown >= maxPills) break;
           if (!meta[flag] || !data[key]) continue;
-          const pill = document.createElement('div');
-          pill.className = 'overlay-pill';
-          pill.textContent = data[key];
-          pills.push(pill);
+          pills.push(makePill(data[key]));
           shown++;
         }
 
         // Date always at bottom, not counted against the cap
         if (meta.show_date && data.date_iso) {
-          const pill = document.createElement('div');
-          pill.className = 'overlay-pill';
-          pill.textContent = formatDate(data.date_iso);
+          const pill = makePill(formatDate(data.date_iso));
+          pill.dataset.date = '1';
           pills.push(pill);
         }
 
         if (pills.length === 0) return;
         pills.forEach(p => overlay.appendChild(p));
+        // Measured at opacity 0, before the fade-in: opacity doesn't affect layout
+        fitOverlay(slotEl);
         // Double rAF so the browser registers the initial opacity:0 before transitioning to 1
         requestAnimationFrame(() => requestAnimationFrame(() => {
           pills.forEach(p => p.classList.add('visible'));
@@ -944,7 +1073,7 @@
       }, 30000);
     }
 
-    // Decorative frame widths depend on slot size, so re-fit them after a resize
+    // Decorative frame widths and pill sizes depend on slot size, so re-fit them after a resize
     let resizeTimer = null;
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);

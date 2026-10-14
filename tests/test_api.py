@@ -24,6 +24,8 @@ def test_config_get_without_file_creates_defaults(client, config_path):
     assert all(s["mode"] == "photos" and s["source_path"] == "photos" for s in cfg["slots"])
     assert cfg["show_metadata"] is True
     assert cfg["metadata_defaults"]["show_date"] is True
+    assert cfg["metadata_defaults"]["text_size"] == "medium"
+    assert cfg["metadata_defaults"]["pill_size"] == "medium"
     assert cfg["frame_defaults"]["show_frame"] is True
     assert cfg["frame_defaults"]["frame_style"] == "solid"  # decorative frames are opt-in
     # Persisted on first run, so the editor and a restart see the same thing
