@@ -1232,7 +1232,10 @@
     }
 
     // Wire global setting changes
-    document.getElementById('g-source-path').oninput   = e => { config.source_path = e.target.value; _refreshGlobalVideoWarn?.(); scheduleAutoSave(); };
+    // Folder paths are saved on change (blur/Enter), not per keystroke — a half-typed path would
+    // reach the display and the video converter. The "no videos" hint still follows the typing.
+    document.getElementById('g-source-path').oninput   = e => _refreshGlobalVideoWarn?.(e.target.value);
+    document.getElementById('g-source-path').onchange  = e => { config.source_path = e.target.value; _refreshGlobalVideoWarn?.(); scheduleAutoSave(); };
     document.getElementById('g-source-browse').onclick  = () => {
       const inp = document.getElementById('g-source-path');
       openFolderBrowser(inp.value, path => { inp.value = path; config.source_path = path; _refreshGlobalVideoWarn?.(); scheduleAutoSave(); });
@@ -1409,14 +1412,15 @@
     if (isVideo) checkFolderHasVideos(effectiveSrc, noVideosWarn, videoStatusHint);
     // Adopted source: re-check when the global folder changes
     _refreshGlobalVideoWarn = (isVideo && sourceAdopted)
-      ? () => checkFolderHasVideos(config.source_path || '', noVideosWarn, videoStatusHint)
+      ? (folder = config.source_path) => checkFolderHasVideos(folder || '', noVideosWarn, videoStatusHint)
       : null;
 
     srcSec.sectionBody.appendChild(makePathField('Media folder', effectiveSrc, v => {
       slotCfg.source_path = v;
-      if (slotCfg.mode === 'video') checkFolderHasVideos(v, noVideosWarn, videoStatusHint);
       scheduleAutoSave();
-    }, srcOverridden));
+    }, srcOverridden, v => {
+      if (slotCfg.mode === 'video') checkFolderHasVideos(v, noVideosWarn, videoStatusHint);
+    }));
     srcSec.el.appendChild(noVideosWarn);
     srcSec.el.appendChild(videoStatusHint);
     left.appendChild(srcSec.el);
@@ -1771,7 +1775,8 @@
     document.addEventListener('keydown', esc);
   }
 
-  function makePathField(label, value, onChange, overridden = false) {
+  // `onChange` commits the path (on blur/Enter or a Browse pick); `onInput` is for live hints only
+  function makePathField(label, value, onChange, overridden = false, onInput = null) {
     const wrap = document.createElement('div');
     wrap.className = 'field';
     const lbl = document.createElement('label');
@@ -1787,13 +1792,15 @@
     const input = document.createElement('input');
     input.type = 'text';
     input.value = value;
-    input.oninput = () => onChange(input.value);
+    input.oninput = () => onInput?.(input.value);
+    input.onchange = () => onChange(input.value);
     const btn = document.createElement('button');
     btn.className = 'btn btn-secondary';
     btn.type = 'button';
     btn.textContent = 'Browse…';
     btn.onclick = () => openFolderBrowser(input.value, path => {
       input.value = path;
+      onInput?.(path);
       onChange(path);
     });
     row.append(input, btn);
