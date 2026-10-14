@@ -184,3 +184,33 @@ def test_a_missing_photo_folder_keeps_the_photo_and_leaves_no_retry_behind(
     assert dpage.evaluate("Object.keys(photoRetryTimers)") == []
     assert _loads(dpage) == 1
     assert w.errors == [] and display.errors == []
+
+
+def test_a_folder_change_during_a_photo_load_is_not_dropped(server, open_at, write_config, e2e_config_path, folders):
+    cfg = write_config()
+    cfg["slots"][0] |= {"use_global": {"source": False, "frame": True, "metadata": True}}
+    e2e_config_path.write_text(json.dumps(cfg, indent=2))
+    display = _open_display(open_at, server)
+    dpage = display.page
+
+    held = []
+    dpage.route("**/api/image?*", lambda route: held.append(route) if "green" in route.request.url
+                else route.continue_())
+
+    def move_slot1(name):
+        cfg["slots"][0]["source_path"] = folders[name]
+        e2e_config_path.write_text(json.dumps(cfg, indent=2))
+        _until(lambda: dpage.evaluate("config.slots[0].source_path") == folders[name], timeout=8,
+               what=f"the display to move slot 1 to {name}")
+
+    move_slot1("green")
+    _until(lambda: held, what="slot 1 to start loading a green photo")
+    move_slot1("blue")  # while the green photo is still loading
+    time.sleep(0.5)
+    for route in held:
+        route.continue_()
+
+    # The blue move isn't dropped until the next (300 s) cycle tick
+    _until(lambda: folders["blue"] in _src(dpage), timeout=6, what="slot 1 to show the blue folder")
+    assert _loads(dpage) == 1
+    assert display.errors == []

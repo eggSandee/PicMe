@@ -542,11 +542,17 @@
       return true;
     }
 
-    async function loadNextImage(slotCfg) {
+    // `folderChanged`: the slot just moved to another folder, so a load still in flight (from
+    // the old folder) is followed by one from the new folder rather than the next cycle tick
+    async function loadNextImage(slotCfg, folderChanged = false) {
       const state = slotState[slotCfg.id];
       const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+      if (!state || !slotEl) return;
       // A cycle tick while this slot is still working through failures waits for the next one
-      if (!state || !slotEl || state.photoLoading) return;
+      if (state.photoLoading) {
+        if (folderChanged) state.photoLoadPending = true;
+        return;
+      }
       state.photoLoading = true;
       const folder = slotFolder(slotCfg);
 
@@ -582,6 +588,10 @@
         }
       } finally {
         state.photoLoading = false;
+        if (state.photoLoadPending) {
+          state.photoLoadPending = false;
+          loadNextImage(slotCfg);
+        }
       }
     }
 
@@ -989,7 +999,7 @@
           const path = slotState[slotCfg.id]?.currentPath;
           if (path) updateOverlay(slotCfg, path);
           // A photo slot moved to another folder shows a photo from it now, not at its next cycle
-          if (slotCfg.mode !== 'video' && movedSlots.has(i)) loadNextImage(slotCfg);
+          if (slotCfg.mode !== 'video' && movedSlots.has(i)) loadNextImage(slotCfg, true);
         });
         // A retry for a folder no visible photo slot uses any more would only re-list it
         for (const folder of Object.keys(photoRetryTimers)) {
