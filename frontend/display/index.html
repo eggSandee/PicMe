@@ -402,7 +402,11 @@
     }
 
     // Shuffled queue per folder and media kind — ensures no file repeats until all are shown,
-    // and no two slots show the same photo or video at the same time.
+    // and no two slots show the same photo or video at the same time. A slot claims its next
+    // photo before loading it and releases the old one when it swaps, so when every slot ticks
+    // at once the free photos can run out; a slot then waits for another slot's swap to free one
+    // (see loadNextImage) rather than doubling up. Repeats only fill blank slots in a library
+    // with fewer usable photos than slots.
     const folderQueues = {};     // `${kind}:${folder}` -> { images, index }
     const queueLoads = {};       // `${kind}:${folder}` -> in-flight list request, shared by concurrent slots
     // Paths claimed by a slot (on screen or loading), with a claim count — a small library can
@@ -410,6 +414,9 @@
     const displayedPaths = new Map();
     // Photos and videos that failed to load or decode — skipped until their folder is retried
     const unplayablePaths = new Set();
+    // Slots waiting for a claim to be released, and photo loads that will release one when done
+    const releaseWaiters = new Set();
+    let photoLoadsInFlight = 0;
 
     function claimPath(path) {
       displayedPaths.set(path, (displayedPaths.get(path) || 0) + 1);
@@ -419,6 +426,16 @@
       const n = displayedPaths.get(path) || 0;
       if (n <= 1) displayedPaths.delete(path);
       else displayedPaths.set(path, n - 1);
+      for (const wake of [...releaseWaiters]) wake();
+    }
+
+    // Resolves on the next release, or after `ms` if none comes
+    function waitForRelease(ms) {
+      return new Promise(resolve => {
+        const wake = () => { clearTimeout(timer); releaseWaiters.delete(wake); resolve(); };
+        const timer = setTimeout(wake, ms);
+        releaseWaiters.add(wake);
+      });
     }
 
     function shuffle(arr) {
@@ -513,6 +530,7 @@
       const next    = state.activeImg === 'A' ? imgB : imgA;
       const url = imageUrl(path);
 
+      photoLoadsInFlight++;
       try {
         await new Promise((resolve, reject) => {
           // Ignore a late event from an earlier attempt's src
@@ -527,6 +545,7 @@
         unplayablePaths.add(path);
         return false;
       } finally {
+        photoLoadsInFlight--;
         next.onload = next.onerror = null;
       }
 
@@ -562,7 +581,17 @@
         // A photo that won't load is skipped and the next one tried straight away, so a corrupt
         // first pick doesn't leave the slot blank — at most one pass over the folder
         while (true) {
-          const nextPath = nextFromQueue(folder);
+          // A slot showing a photo never repeats one another slot holds: when every photo is
+          // claimed (all slots ticked at once), wait for a slot mid-swap to release its old
+          // photo, else keep this one for the tick. Blank slots repeat rather than stay empty.
+          const own = state.currentPath;
+          let nextPath = nextFromQueue(folder, 'photos', own);
+          const deadline = Date.now() + Math.min(5000, (slotCfg.cycle_seconds || 30) * 500);
+          while (own && nextPath === own && photoLoadsInFlight > 0 && Date.now() < deadline) {
+            await waitForRelease(deadline - Date.now());
+            nextPath = nextFromQueue(folder, 'photos', own);
+          }
+          if (own && nextPath === own) return;
           if (!nextPath) {
             // Empty folder, or every photo in it failed
             retryPhotoLater(folder);
