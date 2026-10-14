@@ -107,7 +107,7 @@ PicMe/
 - [x] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
 - [ ] Per-slot drag-to-reorder in the editor
 - [x] Configurable metadata pill size and text size
-- [ ] Basic / Advanced editor mode — Basic hides less-common settings so the editor stays approachable for users who don't need full configurability (exact parameter split TBD)
+- [x] Basic / Advanced editor mode — Basic hides less-common settings so the editor stays approachable for users who don't need full configurability (see [Editor modes](#editor-modes))
 
 ---
 
@@ -338,7 +338,7 @@ Top-level settings:
 {
   "layout": "classic-4",
   "wall_color": "#1a1a1a",       // background color shown between and around frames (the "wall")
-  "show_metadata": true,         // global kill switch — false hides all overlays on all slots instantly
+  "show_metadata": true,         // global kill switch — false hides all overlays on all slots instantly (the editor's Default Metadata → Show metadata)
   "date_format": "long",         // "long" (July 4, 2019) | "medium" (Jul 4, 2019) | "short" (7/4/2019) | "iso" (2019-07-04)
   "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
   "frame_defaults": {            // mat and frame style applied to every slot; per-slot frame: {} overrides
@@ -415,7 +415,7 @@ Non-date pills are shown in the table order above. If `max_metadata_pills` is se
 
 #### Metadata pills
 
-`text_size` and `pill_size` set how big the metadata pills are. Set them under **Default Metadata** in the editor, or per slot in the slot's **Metadata Overlays** section (turn **Use global** off first, as with the other metadata settings). Hand-edited values other than the ones below are treated as `"medium"`.
+`text_size` and `pill_size` set how big the metadata pills are. Set them under **Default Metadata** in the editor, or per slot in the slot's **Metadata Overlays** section (in **Advanced** mode; turn **Use global** off first, as with the other metadata settings). Hand-edited values other than the ones below are treated as `"medium"`.
 
 - **`text_size`** scales with the slot, so the same setting looks right in a big slot and a small one. The text is 4% of the shorter side of the space inside the frame (at least 14 px and at most 32 px), multiplied by the preset: `small` 0.8, `medium` 1, `large` 1.25, `x-large` 1.5. The result is always between 12 px and 48 px. At 1920×1080, a classic-4 slot gets 20 px text with `medium`, about 13 mm tall on a 55" TV and comfortable from the couch.
 - **`pill_size`** sets the padding around the text, in proportion to the text: `small` is snug, `medium` matches the original look and `large` is roomier. Pills are always fully rounded.
@@ -451,7 +451,7 @@ Each slot has a mat (`mat_color`, `mat_width`) around the photo or video and a f
 
 #### Daily layout rotation
 
-Turn on **Rotate layout daily** in the editor's Layout section, then tick the layouts to rotate through. The display shows one of them each day:
+Turn on **Rotate layout daily** in the editor's Layout section, then (in **Advanced** mode) tick the layouts to rotate through. In Basic mode every layout rotates, unless Advanced has narrowed the list. The display shows one of them each day:
 
 - **Which layout:** the ticked layouts take turns in the order the editor lists them, so two days in a row never show the same layout (when 2 or more are ticked). Ticking every layout is saved as `"layouts": []`, which also includes layouts added later. With only one ticked, that layout is shown every day.
 - **When it changes:** at `change_at` (default 04:00) by the display's own clock and time zone. An open display switches by itself within 30 seconds, and a TV that was asleep switches as soon as it wakes. Before `change_at` it is still the previous day's layout.
@@ -460,6 +460,32 @@ Turn on **Rotate layout daily** in the editor's Layout section, then tick the la
 - **Slots:** slot *N* is always the same slot on every layout. A layout with fewer slots shows slots 1 to its slot count; the rest are kept with their settings and come back on days with a bigger layout. When rotation is on, the editor creates slots up to the biggest ticked layout (as photo slots using the global settings) and lists the extra slots under the preview so you can edit them.
 - **Video slots and groups:** a video slot plays only on days its position is visible, but its folder is still converted in the background so it's ready. A larger layout can show more video slots at once, so keep their number small. A group only cycles the slots that are visible that day, at the timer of its first visible slot.
 - **Old configs:** `"daily_layout_rotation": true` from earlier versions still works (all layouts, switching at midnight). The editor converts it to `layout_rotation` the next time it saves.
+
+#### Editor modes
+
+The switch at the top of the editor's sidebar picks **Basic** or **Advanced**. Basic shows the settings most people change; Advanced shows everything.
+
+- **A view preference only.** Hidden settings keep their values and still apply on the display. Switching modes never changes `config.json`.
+- **Per browser.** The choice is saved in the browser (`localStorage`), not in the config, so each person's editor remembers its own mode. A browser that has never chosen starts in Basic. If the browser blocks storage, the editor still works and starts in Basic each time.
+- **Advanced values in Basic.** When the config sets advanced settings away from their defaults, Basic shows **"N advanced settings active · Show"** under the switch. Hover it for the list; **Show** switches to Advanced.
+
+Which settings each mode shows (the split lives in one table, `EDITOR_SETTINGS` in `frontend/editor/index.html`, so it is easy to change):
+
+| | Basic | Advanced adds |
+|---|---|---|
+| **Layout** | Layout picker, Rotate layout daily (and today's rotation status) | Which layouts rotate, Switch layout at |
+| **Global** | Default media folder, Wall color | Reset all slots to global |
+| **Frame** | Mat color, Frame style | Mat width, Show frame border, Frame color, Frame width |
+| **Metadata** | Show metadata; Text size, Pill size and the fields (Date, Location, Camera…) | Date format, Max metadata pills |
+| **Time-of-Day, Videos** | — | The whole sections (templates, max video size, Live Photo clips) |
+| **Each slot** | Media folder, Photos / Video (and the "no videos" warning), Change every (seconds), Fit / Fill, Show metadata | Use global toggles, Group, Frame, the slot's own metadata settings, video loops and audio, conversion status |
+
+In Basic, a slot's media folder is always editable: typing a different folder gives the slot its own folder, and clearing it or typing the default folder makes it follow the default again.
+
+**Show metadata.** The **Default Metadata** section and each slot's **Metadata Overlays** section open and close with a **Show metadata** switch (instantly if the computer is set to reduce motion):
+
+- **Default Metadata** controls `show_metadata`. Off hides every pill on every slot and keeps all the other metadata settings. While it is off, each slot's switch is greyed out.
+- **A slot's switch** is on when the slot shows at least one pill (for a video slot, the date). Turning it off sets `use_global.metadata: false` and every `show_*` field to `false` for that slot; text and pill size are kept. Turning it on removes the slot's `show_*` fields so it uses the default fields again. If those show nothing (for example no field is on in Default Metadata), it turns the date on for that slot. A slot's own field choices made in Advanced are not remembered after turning it off and on again.
 
 ---
 
