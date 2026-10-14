@@ -29,6 +29,9 @@
   // MARQUEE_PAUSE s hold at the start and at the end.
   const MARQUEE_SPEED = 25;
   const MARQUEE_PAUSE = 2;
+  // When the photo changes sooner than a slow pass would finish, scroll faster (up to this),
+  // so the whole text is shown at least once while the photo is on screen.
+  const MARQUEE_MAX_SPEED = 60;
 
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const has = (obj, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key);
@@ -61,23 +64,31 @@
     };
   }
 
+  // px/s for a `d` px scroll on a photo shown for `windowSec` s (unknown, e.g. video: base speed)
+  function marqueeSpeed(d, windowSec) {
+    if (!(windowSec > 0)) return MARQUEE_SPEED;
+    const avail = windowSec - 2 * MARQUEE_PAUSE;  // a hold, one pass, and slack for the fade
+    return clamp(avail > 0 ? d / avail : MARQUEE_MAX_SPEED, MARQUEE_SPEED, MARQUEE_MAX_SPEED);
+  }
+
   // Ping-pong scroll over `distance` px: hold, scroll left, hold, scroll back.
-  // Returns { name, duration (s), css } — css is an @keyframes rule to add once per name.
-  function marquee(distance) {
+  // Returns { name, duration (s), speed, css } — css is an @keyframes rule to add once per name.
+  function marquee(distance, windowSec) {
     const d = Math.max(1, Math.ceil(distance));
-    const travel = d / MARQUEE_SPEED;
+    const speed = marqueeSpeed(d, windowSec);
+    const travel = d / speed;
     const duration = 2 * (MARQUEE_PAUSE + travel);
     const pct = t => `${(100 * t / duration).toFixed(3)}%`;
-    const name = `pill-marquee-${d}`;
+    const name = `pill-marquee-${d}-${Math.round(speed)}`;
     const css = `@keyframes ${name} {`
       + ` 0%, ${pct(MARQUEE_PAUSE)} { transform: translateX(0); }`
       + ` ${pct(MARQUEE_PAUSE + travel)}, ${pct(2 * MARQUEE_PAUSE + travel)} { transform: translateX(-${d}px); }`
       + ` 100% { transform: translateX(0); } }`;
-    return { name, duration, css };
+    return { name, duration, speed, css };
   }
 
   window.PicMePills = {
-    TEXT_SIZES, PILL_SIZES, FONT_MIN, FONT_MAX, MARQUEE_SPEED, MARQUEE_PAUSE,
+    TEXT_SIZES, PILL_SIZES, FONT_MIN, FONT_MAX, MARQUEE_SPEED, MARQUEE_PAUSE, MARQUEE_MAX_SPEED,
     resolve, fontSize, tokens, marquee,
   };
 })();

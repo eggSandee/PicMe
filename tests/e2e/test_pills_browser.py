@@ -388,6 +388,47 @@ def test_reduced_motion_shows_a_static_clip_without_ellipsis(write_cfg, open_dis
     assert w.errors == []
 
 
+def test_marquee_speeds_up_so_the_whole_text_shows_before_the_photo_changes(write_cfg, open_display):
+    write_cfg({"show_location": True})
+    w = open_display()
+    m = lambda d, win=None: w.page.evaluate("([d, win]) => PicMePills.marquee(d, win ?? undefined).speed", [d, win])
+    assert m(500) == 25                 # no window (video slots): the base speed
+    assert m(500, 300) == 25            # long photo cycle: slow as before
+    assert m(300, 12) == pytest.approx(300 / 8)  # 12 s cycle: one hold + pass fits in 12 - 2*2 s
+    assert m(777, 12) == 60             # never faster than the cap
+    assert m(100, 12) == 25             # never slower than the base
+    assert w.errors == []
+
+
+def test_short_photo_cycle_scrolls_long_pills_faster(write_cfg, open_display):
+    write_cfg({"show_location": True, "text_size": "x-large"},
+              slot_overrides={i: {"cycle_seconds": 12} for i in range(1, 5)})
+    w = open_display(routes=[("**/api/metadata?*", long_location)])
+    loc = slot(w.page, 1)["pills"][0]
+    distance = loc["textWidth"] - loc["clipWidth"]
+    assert loc["scrolling"] and distance > 300
+    speed = min(60, max(25, distance / 8))
+    assert loc["animation"] == f"pill-marquee-{distance}-{round(speed)}"
+    assert speed > 25
+    assert w.errors == []
+
+
+def test_pills_keep_an_outline_and_scrolling_pills_fade_at_the_edges(write_cfg, open_display):
+    write_cfg({"show_location": True})
+    w = open_display(routes=[("**/api/metadata?*", long_location)])
+    styles = w.page.evaluate("""() => [...document.querySelectorAll('#slot-1 .overlay-pill')].map(p => ({
+        shadow: getComputedStyle(p).boxShadow,
+        scrolling: p.classList.contains('scrolling'),
+        mask: getComputedStyle(p.querySelector('.pill-clip')).webkitMaskImage
+            || getComputedStyle(p.querySelector('.pill-clip')).maskImage,
+    }))""")
+    assert styles and all("inset" in s["shadow"] for s in styles)  # visible shape over black mats
+    scrolling = [s for s in styles if s["scrolling"]]
+    assert scrolling and all("linear-gradient" in s["mask"] for s in scrolling)
+    assert all(s["mask"] in ("none", "", None) for s in styles if not s["scrolling"])
+    assert w.errors == []
+
+
 def test_scrolling_follows_a_resize(write_cfg, open_display):
     write_cfg({"show_location": True, "text_size": "small"}, layout="hero-center", slots=5)
     w = open_display(routes=[("**/api/metadata?*", long_location)])
@@ -401,7 +442,8 @@ def test_scrolling_follows_a_resize(write_cfg, open_display):
     assert after["scrolling"]
     # A new scroll distance for the narrower slot
     assert after["animation"] != before["animation"]
-    assert after["animation"] == f"pill-marquee-{after['textWidth'] - after['clipWidth']}"
+    # 300 s cycle: plenty of time, so the base 25 px/s
+    assert after["animation"] == f"pill-marquee-{after['textWidth'] - after['clipWidth']}-25"
     assert_fits(slot(page, 3))
     assert w.errors == []
 

@@ -84,7 +84,9 @@
     .overlay-pill {
       flex-shrink: 0;
       max-width: 100%;
-      background: rgba(0, 0, 0, 0.55);
+      background: rgba(20, 20, 20, 0.62);
+      /* Faint light edge keeps the pill's shape visible over black mats, letterbox and night */
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
       color: #fff;
       font-size: var(--pill-font-size);
       line-height: 1.25;
@@ -102,6 +104,11 @@
 
     /* Text that doesn't fit scrolls (fitOverlay sets the animation); it is never cut with "…" */
     .pill-clip { display: block; overflow: hidden; }
+    /* Soft edges while scrolling, instead of glyphs cut hard at the padding */
+    .overlay-pill.scrolling .pill-clip {
+      -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 0.5em, #000 calc(100% - 0.5em), transparent 100%);
+      mask-image: linear-gradient(90deg, transparent 0, #000 0.5em, #000 calc(100% - 0.5em), transparent 100%);
+    }
     .pill-text { display: inline-block; vertical-align: top; width: -webkit-max-content; width: max-content; }
     @media (prefers-reduced-motion: reduce) {
       .pill-text { animation: none !important; }
@@ -342,8 +349,8 @@
     const marqueeRules = new Set();
     let marqueeSheet = null;
 
-    function marqueeAnimation(distance) {
-      const m = window.PicMePills?.marquee(distance);
+    function marqueeAnimation(distance, windowSec) {
+      const m = window.PicMePills?.marquee(distance, windowSec);
       if (!m) return '';
       if (!marqueeRules.has(m.name)) {
         if (!marqueeSheet) marqueeSheet = document.head.appendChild(document.createElement('style')).sheet;
@@ -371,6 +378,10 @@
       while (overflows() && optional.length) optional.pop().classList.add('fit-hidden');
       if (overflows() && window.PicMePills) overlay.style.setProperty('--pill-font-size', `${PicMePills.FONT_MIN}px`);
 
+      // A photo slot shows each photo for cycle_seconds; video slots have no fixed window
+      const slotCfg = (config.slots || []).find(s => `slot-${s.id}` === slotEl.id);
+      const windowSec = slotCfg && slotCfg.mode !== 'video' ? Number(slotCfg.cycle_seconds) : undefined;
+
       // Measure every pill first, then write, so this lays out once
       const visible = pills.filter(p => !p.classList.contains('fit-hidden'));
       const distances = visible.map(p => {
@@ -382,7 +393,7 @@
         if (!text) return;
         const scrolls = distances[i] >= 1;
         p.classList.toggle('scrolling', scrolls);
-        const animation = scrolls ? marqueeAnimation(distances[i]) : '';
+        const animation = scrolls ? marqueeAnimation(distances[i], windowSec) : '';
         // Same distance as last time: leave the running scroll alone
         if ((text.dataset.marquee || '') === animation) return;
         text.dataset.marquee = animation;
