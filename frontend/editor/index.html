@@ -635,6 +635,15 @@
 
     <div class="sidebar-section">
       <h3>Default Metadata</h3>
+      <div class="field">
+        <label>Text size</label>
+        <select id="g-text-size"></select>
+      </div>
+      <div class="field">
+        <label>Pill size</label>
+        <select id="g-pill-size"></select>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Sizes scale with each slot. Small slots hide lower-priority pills (never the date), and text too long for its pill scrolls.</p>
       <div id="g-meta-toggles"></div>
     </div>
 
@@ -668,6 +677,7 @@
 
 </div>
 <script src="/display/layout-rotation.js"></script>
+<script src="/display/pill-size.js"></script>
 <script src="/assets/frames/frames.js"></script>
 <script>
   const API = '';
@@ -745,6 +755,17 @@
   function isMetaKeyOverridden(slotCfg, key) {
     return !!(slotCfg.metadata && key in slotCfg.metadata &&
               slotCfg.metadata[key] !== (config.metadata_defaults || {})[key]);
+  }
+
+  // ── Metadata pill size (sizing shared with the display: /display/pill-size.js) ──
+
+  const TEXT_SIZE_OPTIONS = [['small', 'Small'], ['medium', 'Medium (default)'], ['large', 'Large'], ['x-large', 'Extra large']];
+  const PILL_SIZE_OPTIONS = [['small', 'Small'], ['medium', 'Medium (default)'], ['large', 'Large']];
+
+  // { text_size, pill_size } for a metadata object — unknown values show as medium
+  function pillSizes(meta) {
+    return window.PicMePills ? PicMePills.resolve(meta)
+      : { text_size: meta?.text_size || 'medium', pill_size: meta?.pill_size || 'medium' };
   }
 
   // ── Frame styles ──
@@ -1066,29 +1087,50 @@
         inner.appendChild(playBadge);
       }
 
-      // Metadata position preview — small pills at bottom-left showing where overlays appear
-      if (config.show_metadata !== false) {
-        const slotMeta = getSlotMeta(slotCfg);
-        // Video slots only show the date pill
-        let pillCount = isVideo ? 1 : META_FIELDS.filter(f => slotMeta[f.key]).length;
-        if (pillCount === 0) pillCount = 1;
-        const maxPills = config.max_metadata_pills > 0 ? config.max_metadata_pills : META_FIELDS.length;
-        pillCount = Math.min(pillCount, maxPills);
-        const pillBar = document.createElement('div');
-        pillBar.style.cssText = 'position:absolute;bottom:4px;left:4px;display:flex;flex-direction:column;gap:2px;pointer-events:none;';
-        for (let p = 0; p < pillCount; p++) {
-          const pill = document.createElement('div');
-          pill.style.cssText = `height:4px;width:14px;background:rgba(255,255,255,0.2);border-radius:2px;`;
-          pillBar.appendChild(pill);
-        }
-        inner.appendChild(pillBar);
-      }
-
       div.appendChild(inner);
       div.addEventListener('click', () => selectSlot(slotCfg.id ?? slotDef.id));
       preview.appendChild(div);
       frameBorderStyle(div, frameCfg);  // after appending: decorative widths fit the cell
+      if (config.show_metadata !== false) inner.appendChild(previewPills(slotCfg, div, preview));
     }
+  }
+
+  // Metadata position preview — bars at bottom-left showing where the pills appear and how big
+  // they are, sized as on a 1920 px wide display (as pill-size.js sizes the display's pills)
+  function previewPills(slotCfg, cell, preview) {
+    const slotMeta = getSlotMeta(slotCfg);
+    // Video slots only show the date pill
+    let pillCount = slotCfg.mode === 'video' ? 1 : META_FIELDS.filter(f => slotMeta[f.key]).length;
+    if (pillCount === 0) pillCount = 1;
+    const maxPills = config.max_metadata_pills > 0 ? config.max_metadata_pills : META_FIELDS.length;
+    pillCount = Math.min(pillCount, maxPills);
+
+    let barH = 4, barW = 14, gap = 2;
+    if (window.PicMePills && preview.clientWidth > 0) {
+      const scale = preview.clientWidth / 1920;
+      // Pills sit 10 px inside the slot, and inside a decorative moulding
+      const decorative = getComputedStyle(cell).borderImageSource !== 'none';
+      const inset = 10 + (decorative ? parseFloat(getComputedStyle(cell).borderTopWidth) / scale : 0);
+      const sizes = PicMePills.resolve(slotMeta);
+      const font = PicMePills.fontSize(sizes, cell.offsetWidth / scale - 2 * inset, cell.offsetHeight / scale - 2 * inset);
+      const pad = PicMePills.PILL_SIZES[sizes.pill_size];
+      barH = Math.max(2, (font * 1.25 + 2 * pad.py * font) * scale);
+      barW = Math.max(8, (5 * font + 2 * pad.px * font) * scale);  // a typical pill: about 5em of text
+      gap = Math.max(1, pad.gap * font * scale);
+      // Like the display, drop pills that don't fit the slot's height
+      const room = cell.offsetHeight - 2 * inset * scale;
+      pillCount = Math.max(1, Math.min(pillCount, Math.floor((room + gap) / (barH + gap))));
+    }
+
+    const pillBar = document.createElement('div');
+    pillBar.className = 'preview-pills';
+    pillBar.style.cssText = `position:absolute;bottom:4px;left:4px;display:flex;flex-direction:column;gap:${gap}px;pointer-events:none;`;
+    for (let p = 0; p < pillCount; p++) {
+      const pill = document.createElement('div');
+      pill.style.cssText = `height:${barH}px;width:${barW}px;max-width:calc(100% - 4px);background:rgba(255,255,255,0.2);border-radius:${barH / 2}px;`;
+      pillBar.appendChild(pill);
+    }
+    return pillBar;
   }
 
   function selectSlot(id) {
@@ -1121,6 +1163,22 @@
     syncGlobalFrameColor();
     document.getElementById('g-video-max-edge').value = String(g.video_max_edge ?? 1920);
     document.getElementById('g-include-live-photos').checked = g.include_live_photos === true;
+
+    // Global pill and text size
+    const sizes = pillSizes(md);
+    for (const [id, key, options] of [['g-text-size', 'text_size', TEXT_SIZE_OPTIONS], ['g-pill-size', 'pill_size', PILL_SIZE_OPTIONS]]) {
+      const sel = document.getElementById(id);
+      sel.innerHTML = '';
+      for (const [val, lbl] of options) sel.add(new Option(lbl, val));
+      sel.value = sizes[key];
+      sel.onchange = e => {
+        if (!config.metadata_defaults) config.metadata_defaults = {};
+        config.metadata_defaults[key] = e.target.value;
+        buildPreview();
+        renderSlotPanel();  // override dots compare against the default
+        scheduleAutoSave();
+      };
+    }
 
     // Global metadata toggles
     const container = document.getElementById('g-meta-toggles');
@@ -1417,9 +1475,20 @@
       scheduleAutoSave();
     });
 
+    const em = getSlotMeta(slotCfg);
+    const slotSizes = pillSizes(em);
+    for (const [key, label, options] of [['text_size', 'Text size', TEXT_SIZE_OPTIONS], ['pill_size', 'Pill size', PILL_SIZE_OPTIONS]]) {
+      metaSec.sectionBody.appendChild(makeSelectField(label, options, slotSizes[key], v => {
+        if (!slotCfg.metadata) slotCfg.metadata = {};
+        slotCfg.metadata[key] = v;
+        buildPreview();
+        renderSlotPanel();
+        scheduleAutoSave();
+      }, !metaAdopted && isMetaKeyOverridden(slotCfg, key)));
+    }
+
     const metaGrid = document.createElement('div');
     metaGrid.className = 'meta-grid';
-    const em = getSlotMeta(slotCfg);
     for (const { key, label } of META_FIELDS) {
       metaGrid.appendChild(makeToggleRow(label, em[key] || false, checked => {
         if (!slotCfg.metadata) slotCfg.metadata = {};
