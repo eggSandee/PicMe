@@ -496,8 +496,8 @@
     // Per-slot state
     const slotState = {};
 
-    function slotFolder(slotCfg) {
-      return (slotCfg.use_global?.source !== false) ? (config.source_path || slotCfg.source_path) : slotCfg.source_path;
+    function slotFolder(slotCfg, cfg = config) {
+      return (slotCfg.use_global?.source !== false) ? (cfg.source_path || slotCfg.source_path) : slotCfg.source_path;
     }
 
     const PHOTO_RETRY_MS = 60000;  // empty folder / every photo failed — try again later
@@ -561,11 +561,17 @@
       return true;
     }
 
-    async function loadNextImage(slotCfg) {
+    // `folderChanged`: the slot just moved to another folder, so a load still in flight (from
+    // the old folder) is followed by one from the new folder rather than the next cycle tick
+    async function loadNextImage(slotCfg, folderChanged = false) {
       const state = slotState[slotCfg.id];
       const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+      if (!state || !slotEl) return;
       // A cycle tick while this slot is still working through failures waits for the next one
-      if (!state || !slotEl || state.photoLoading) return;
+      if (state.photoLoading) {
+        if (folderChanged) state.photoLoadPending = true;
+        return;
+      }
       state.photoLoading = true;
       const folder = slotFolder(slotCfg);
 
@@ -611,6 +617,10 @@
         }
       } finally {
         state.photoLoading = false;
+        if (state.photoLoadPending) {
+          state.photoLoadPending = false;
+          loadNextImage(slotCfg);
+        }
       }
     }
 
@@ -937,6 +947,15 @@
       }
     }
 
+    async function folderHasMedia(folder, kind) {
+      try {
+        const data = await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder || '')}&kind=${kind}`);
+        return data.images.length > 0;
+      } catch (e) {
+        return false;
+      }
+    }
+
     // Config polling — apply changes live when config.json is updated by the editor
     let configHash = '';
     async function checkConfigUpdate() {
@@ -966,7 +985,25 @@
           return;
         }
 
-        // Everything else (colors, frame, metadata, audio) — patch in place so photos keep cycling
+        // A visible slot moved to another folder changes what's on screen only once that folder
+        // has media of the slot's kind — a missing folder (or a half-typed path) leaves the slot
+        // showing what it has. A video slot then reloads (its queue and decoders are set up per
+        // folder); a photo slot shows a photo from it below.
+        const movedSlots = new Set();
+        await Promise.all((fresh.slots || []).slice(0, activeSlots.length).map(async (s, i) => {
+          const old = (config.slots || [])[i];
+          const folder = slotFolder(s, fresh);
+          if (old && folder !== slotFolder(old) && await folderHasMedia(folder, s.mode === 'video' ? 'video' : 'photos')) {
+            movedSlots.add(i);
+          }
+        }));
+        if (activeSlots.some((s, i) => s.mode === 'video' && movedSlots.has(i))) {
+          window.location.reload();
+          return;
+        }
+
+        // Everything else (colors, frame, metadata, audio, photo folders) — patch in place so
+        // photos keep cycling
         const oldSlots = config.slots || [];
         Object.assign(config, fresh);
         config.slots = oldSlots;
@@ -974,15 +1011,31 @@
         for (const key of ['layout_rotation', 'daily_layout_rotation']) {
           if (!(key in fresh)) delete config[key];
         }
-        (fresh.slots || []).forEach((s, i) => { if (oldSlots[i]) Object.assign(oldSlots[i], s); });
+        // Replace each slot's settings, so a key the editor dropped (e.g. after swapping two
+        // slots) doesn't linger. In place: activeSlots holds these objects.
+        (fresh.slots || []).forEach((s, i) => {
+          const old = oldSlots[i];
+          if (!old) return;
+          for (const key of Object.keys(old)) if (!(key in s)) delete old[key];
+          Object.assign(old, s);
+        });
 
         // Re-apply wall color + frame (TOD template re-evaluated after config patch)
         applyTodStyles();
 
-        for (const slotCfg of activeSlots) {
+        activeSlots.forEach((slotCfg, i) => {
           if (slotCfg.mode === 'video') applyVideoAudio(slotCfg);
           const path = slotState[slotCfg.id]?.currentPath;
           if (path) updateOverlay(slotCfg, path);
+          // A photo slot moved to another folder shows a photo from it now, not at its next cycle
+          if (slotCfg.mode !== 'video' && movedSlots.has(i)) loadNextImage(slotCfg, true);
+        });
+        // A retry for a folder no visible photo slot uses any more would only re-list it
+        for (const folder of Object.keys(photoRetryTimers)) {
+          if (!activeSlots.some(s => s.mode !== 'video' && slotFolder(s) === folder)) {
+            clearTimeout(photoRetryTimers[folder]);
+            delete photoRetryTimers[folder];
+          }
         }
       } catch (e) { /* non-critical — try again next interval */ }
     }

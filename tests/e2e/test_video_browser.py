@@ -344,3 +344,28 @@ def test_iphone_hevc_clip_is_converted_and_plays_upright(h264_browser, server, o
     assert info["h"] > info["w"] and info["ready"] >= 3, info
     assert not any("IMG_0002" in s for s in w.page.evaluate("window.__shown"))
     assert w.errors == []
+
+
+def test_video_slot_reloads_once_for_a_folder_with_clips_but_not_for_one_without(
+        h264_browser, server, open_page, e2e_config_path, video_lib):
+    cfg = write_config(e2e_config_path, video_lib["photos"], video_lib["four"], video_slots={1}, loops=5)
+    w = open_display(open_page, server)
+    page = w.page
+    wait_video_slots_playing(page, 1)
+    page.evaluate("window.__marker = 1")
+
+    # A folder with no videos (e.g. a path still being typed): the slot keeps playing, no reload
+    cfg["slots"][0]["source_path"] = str(video_lib["photos"])
+    e2e_config_path.write_text(json.dumps(cfg, indent=2))
+    page.wait_for_function(f"() => config.slots[0].source_path === {json.dumps(str(video_lib['photos']))}",
+                           timeout=8_000)
+    assert page.evaluate("window.__marker") == 1
+    assert "four_" in page.evaluate(SLOTS_JS)[0]["src"]
+
+    # A folder with clips: one reload into it
+    cfg["slots"][0]["source_path"] = str(video_lib["videos"])
+    e2e_config_path.write_text(json.dumps(cfg, indent=2))
+    page.wait_for_function("() => window.__marker === undefined", timeout=8_000)
+    wait_video_slots_playing(page, 1)
+    assert "clip_" in page.evaluate(SLOTS_JS)[0]["src"]
+    assert w.errors == []

@@ -285,6 +285,13 @@
     .preview-slot:hover { border-color: var(--accent); background: #2a3a4a; }
     .preview-slot.selected { border-color: var(--slot-selected); background: #1e3a5a; color: var(--accent); }
 
+    /* Drag a slot onto another to swap them (slot-drag.js); a long press starts it on touch */
+    #collage-preview, .dormant-slot-btn { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    .preview-slot.drag-source, .dormant-slot-btn.drag-source { opacity: 0.4; }
+    .drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; }
+    .drag-ghost { z-index: 2000; opacity: 0.85; box-shadow: 0 8px 24px rgba(0,0,0,0.6); }
+    body.drag-active, body.drag-active * { cursor: grabbing !important; }
+
     /* ── Slot config panel ── */
     #slot-panel {
       background: var(--surface);
@@ -653,7 +660,7 @@
   <main id="main">
 
     <div id="preview-area">
-      <h2>Layout Preview — click a slot to configure it</h2>
+      <h2>Layout Preview — click a slot to configure it, drag to swap</h2>
       <div id="collage-preview"></div>
       <div id="rotation-slot-hint" hidden></div>
     </div>
@@ -667,7 +674,7 @@
 
   <!-- ── Footer ── -->
   <footer id="footer">
-    <span id="status-msg">Unsaved changes will not affect the display until you save.</span>
+    <span id="status-msg">Changes save automatically.</span>
     <div style="display:flex;gap:8px">
       <a class="btn btn-secondary" href="/display">← Display</a>
       <button class="btn btn-secondary" onclick="reloadConfig()">Discard changes</button>
@@ -679,6 +686,7 @@
 <script src="/display/layout-rotation.js"></script>
 <script src="/display/pill-size.js"></script>
 <script src="/assets/frames/frames.js"></script>
+<script src="/editor/slot-drag.js"></script>
 <script>
   const API = '';
   const META_FIELDS = [
@@ -708,7 +716,7 @@
     el.textContent = msg;
     el.className = type;
     if (type === 'success') setTimeout(() => {
-      el.textContent = 'Unsaved changes will not affect the display until you save.';
+      el.textContent = 'Changes save automatically.';
       el.className = '';
     }, 3000);
   }
@@ -874,6 +882,23 @@
     }
   }
 
+  // Swap everything but the slot number between slots idA and idB. Whole slots move, so frame,
+  // video and group settings stay consistent, and keys added later move too. A preview cell
+  // without a config.slots entry yet gets one first.
+  function swapSlotSettings(idA, idB) {
+    if (!Number.isInteger(idA) || !Number.isInteger(idB) || idA < 1 || idB < 1 || idA === idB) return false;
+    ensureSlotsFor(Math.max(idA, idB));
+    const slots = config.slots;
+    const index = id => { const i = slots.findIndex(s => s.id === id); return i >= 0 ? i : id - 1; };
+    const ia = index(idA), ib = index(idB);
+    if (!slots[ia] || !slots[ib]) return false;
+    const { id: _a, ...a } = slots[ia];
+    const { id: _b, ...b } = slots[ib];
+    slots[ia] = { id: slots[ia].id, ...structuredClone(b) };
+    slots[ib] = { id: slots[ib].id, ...structuredClone(a) };
+    return true;
+  }
+
   function ensureReachableSlots() {
     ensureSlotsFor(Math.max(0, ...reachableLayouts().map(l => l.slots.length)));
   }
@@ -941,6 +966,7 @@
         btn.type = 'button';
         btn.className = 'btn btn-secondary dormant-slot-btn';
         btn.dataset.slot = id;
+        btn.dataset.dragKey = id;  // drop a preview slot here to swap with this dormant slot
         btn.textContent = `Edit slot ${id}`;
         btn.onclick = () => selectSlot(id);
         p.appendChild(btn);
@@ -1058,6 +1084,7 @@
 
       const div = document.createElement('div');
       div.className = 'preview-slot' + (slotCfg.id === selectedSlotId ? ' selected' : '');
+      div.dataset.slot = div.dataset.dragKey = slotCfg.id ?? slotDef.id;
       div.style.gridArea  = slotDef.grid_area;
       div.style.padding   = `${frameCfg.mat_width ?? 16}px`;
       div.style.background = frameCfg.mat_color ?? '#000';
@@ -1133,6 +1160,19 @@
     return pillBar;
   }
 
+  // A slot dragged onto another swaps with it; the panel follows the settings it was showing
+  function onSlotDrop(from, to) {
+    const a = Number(from), b = Number(to);
+    if (!swapSlotSettings(a, b)) return;
+    if (selectedSlotId === a) selectedSlotId = b;
+    else if (selectedSlotId === b) selectedSlotId = a;
+    buildPreview();
+    refreshRotationUI();
+    renderSlotPanel();
+    setStatus(`Swapped slots ${a} and ${b}.`);
+    scheduleAutoSave(`Swapped slots ${a} and ${b} — saved.`);
+  }
+
   function selectSlot(id) {
     selectedSlotId = id;
     buildPreview();
@@ -1192,7 +1232,10 @@
     }
 
     // Wire global setting changes
-    document.getElementById('g-source-path').oninput   = e => { config.source_path = e.target.value; _refreshGlobalVideoWarn?.(); scheduleAutoSave(); };
+    // Folder paths are saved on change (blur/Enter), not per keystroke — a half-typed path would
+    // reach the display and the video converter. The "no videos" hint still follows the typing.
+    document.getElementById('g-source-path').oninput   = e => _refreshGlobalVideoWarn?.(e.target.value);
+    document.getElementById('g-source-path').onchange  = e => { config.source_path = e.target.value; _refreshGlobalVideoWarn?.(); scheduleAutoSave(); };
     document.getElementById('g-source-browse').onclick  = () => {
       const inp = document.getElementById('g-source-path');
       openFolderBrowser(inp.value, path => { inp.value = path; config.source_path = path; _refreshGlobalVideoWarn?.(); scheduleAutoSave(); });
@@ -1369,14 +1412,15 @@
     if (isVideo) checkFolderHasVideos(effectiveSrc, noVideosWarn, videoStatusHint);
     // Adopted source: re-check when the global folder changes
     _refreshGlobalVideoWarn = (isVideo && sourceAdopted)
-      ? () => checkFolderHasVideos(config.source_path || '', noVideosWarn, videoStatusHint)
+      ? (folder = config.source_path) => checkFolderHasVideos(folder || '', noVideosWarn, videoStatusHint)
       : null;
 
     srcSec.sectionBody.appendChild(makePathField('Media folder', effectiveSrc, v => {
       slotCfg.source_path = v;
-      if (slotCfg.mode === 'video') checkFolderHasVideos(v, noVideosWarn, videoStatusHint);
       scheduleAutoSave();
-    }, srcOverridden));
+    }, srcOverridden, v => {
+      if (slotCfg.mode === 'video') checkFolderHasVideos(v, noVideosWarn, videoStatusHint);
+    }));
     srcSec.el.appendChild(noVideosWarn);
     srcSec.el.appendChild(videoStatusHint);
     left.appendChild(srcSec.el);
@@ -1731,7 +1775,8 @@
     document.addEventListener('keydown', esc);
   }
 
-  function makePathField(label, value, onChange, overridden = false) {
+  // `onChange` commits the path (on blur/Enter or a Browse pick); `onInput` is for live hints only
+  function makePathField(label, value, onChange, overridden = false, onInput = null) {
     const wrap = document.createElement('div');
     wrap.className = 'field';
     const lbl = document.createElement('label');
@@ -1747,13 +1792,15 @@
     const input = document.createElement('input');
     input.type = 'text';
     input.value = value;
-    input.oninput = () => onChange(input.value);
+    input.oninput = () => onInput?.(input.value);
+    input.onchange = () => onChange(input.value);
     const btn = document.createElement('button');
     btn.className = 'btn btn-secondary';
     btn.type = 'button';
     btn.textContent = 'Browse…';
     btn.onclick = () => openFolderBrowser(input.value, path => {
       input.value = path;
+      onInput?.(path);
       onChange(path);
     });
     row.append(input, btn);
@@ -1993,7 +2040,7 @@
 
   // ── Save / load ──
 
-  async function saveConfig() {
+  async function saveConfig(savedMsg = 'Saved.') {
     try {
       const r = await fetch(`${API}/api/config`, {
         method: 'POST',
@@ -2001,16 +2048,16 @@
         body: JSON.stringify(config),
       });
       if (!r.ok) throw new Error('Server error');
-      setStatus('Saved.', 'success');
+      setStatus(savedMsg, 'success');
     } catch (e) {
       setStatus('Save failed — is the backend running?', 'error');
     }
   }
 
   let _saveTimer = null;
-  function scheduleAutoSave() {
+  function scheduleAutoSave(savedMsg) {
     clearTimeout(_saveTimer);
-    _saveTimer = setTimeout(saveConfig, 500);
+    _saveTimer = setTimeout(() => saveConfig(savedMsg), 500);
   }
 
   async function reloadConfig() {
@@ -2059,12 +2106,16 @@
     buildPreview();
     refreshRotationUI();
     renderSlotPanel();
+    PicMeSlotDrag.attach([document.getElementById('collage-preview'), document.getElementById('rotation-slot-hint')], {
+      onDrop: onSlotDrop,
+      canDrop: (from, to) => from !== to && [from, to].every(k => /^[1-9][0-9]*$/.test(k)),
+    });
   }
 
   // Keep the Today badge and status line current when the editor stays open past change_at
   let _rotationUIKey = null;
   setInterval(() => {
-    if (!rotationOn() || document.activeElement?.id === 'g-rotation-change-at') return;
+    if (!rotationOn() || document.activeElement?.id === 'g-rotation-change-at' || PicMeSlotDrag.isDragging()) return;
     const now = new Date();
     const key = `${PicMeRotation.resolveLayout(config, layouts, now)?.id}|${now.toDateString()}`;
     if (key === _rotationUIKey) return;
