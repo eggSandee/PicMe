@@ -674,7 +674,7 @@
 
   <!-- ── Footer ── -->
   <footer id="footer">
-    <span id="status-msg">Unsaved changes will not affect the display until you save.</span>
+    <span id="status-msg">Changes save automatically.</span>
     <div style="display:flex;gap:8px">
       <a class="btn btn-secondary" href="/display">← Display</a>
       <button class="btn btn-secondary" onclick="reloadConfig()">Discard changes</button>
@@ -716,7 +716,7 @@
     el.textContent = msg;
     el.className = type;
     if (type === 'success') setTimeout(() => {
-      el.textContent = 'Unsaved changes will not affect the display until you save.';
+      el.textContent = 'Changes save automatically.';
       el.className = '';
     }, 3000);
   }

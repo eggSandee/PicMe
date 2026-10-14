@@ -214,3 +214,18 @@ def test_a_folder_change_during_a_photo_load_is_not_dropped(server, open_at, wri
     _until(lambda: folders["blue"] in _src(dpage), timeout=6, what="slot 1 to show the blue folder")
     assert _loads(dpage) == 1
     assert display.errors == []
+
+
+def test_footer_says_changes_save_automatically(server, open_at, write_config, e2e_config_path):
+    write_config()
+    w = open_at(f"{server}/editor/")
+    status = w.page.locator("#status-msg")
+    assert status.inner_text() == "Changes save automatically."
+
+    w.page.locator("#g-wall-color").evaluate(
+        "el => { el.value = '#223344'; el.dispatchEvent(new Event('input', { bubbles: true })); }")
+    _wait_saved(e2e_config_path, lambda c: c.get("wall_color") == "#223344")
+    _until(lambda: status.inner_text() == "Saved.", what="the saved message")
+    _until(lambda: status.inner_text() == "Changes save automatically.", timeout=6,
+           what="the footer to return to its usual text")
+    assert w.errors == []
