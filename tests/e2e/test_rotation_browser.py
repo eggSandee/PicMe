@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from conftest import LANDSCAPE, PORTRAIT, _exif_bytes, _make_image, make_config
+from conftest import LANDSCAPE, PORTRAIT, _exif_bytes, _make_image, editor_mode_init_js, make_config
 
 pytestmark = pytest.mark.e2e
 
@@ -78,8 +78,9 @@ def open_at(browser):
     """Opens a page in New York time with the fake clock installed at `at` before loading."""
     contexts = []
 
-    def _open(url: str, at: dt.datetime | None = None, init_scripts=()) -> PageWatcher:
+    def _open(url: str, at: dt.datetime | None = None, init_scripts=(), editor_mode="advanced") -> PageWatcher:
         ctx = browser.new_context(viewport=VIEWPORT, timezone_id=TZ)
+        ctx.add_init_script(editor_mode_init_js(editor_mode))
         contexts.append(ctx)
         page = ctx.new_page()
         watcher = PageWatcher(page)

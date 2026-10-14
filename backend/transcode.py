@@ -923,11 +923,11 @@ class Transcoder:
 
     # -- status --
 
-    def status(self, folders) -> dict:
+    def status(self, folders, enqueue: bool = True) -> dict:
         counts = {READY: 0, PENDING: 0, FAILED: 0, NO_FFMPEG: 0, LIVE_PHOTO: 0}
         pending = set()
         for folder in dict.fromkeys(f for f in folders if f):
-            for c in self.scan(folder):
+            for c in self.scan(folder, enqueue):
                 counts[c.state] += 1
                 if c.state == PENDING:
                     pending.add(c.path.resolve())

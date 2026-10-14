@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from conftest import LANDSCAPE, _exif_bytes, _make_image, make_config
+from conftest import LANDSCAPE, _exif_bytes, _make_image, editor_mode_init_js, make_config
 
 pytestmark = pytest.mark.e2e
 
@@ -72,11 +72,12 @@ def open_at(browser):
     """Opens a page; `touch` (a viewport) gives a mobile touch context, `at` installs a fake clock."""
     contexts = []
 
-    def _open(url: str, *, touch=False, at=None) -> PageWatcher:
+    def _open(url: str, *, touch=False, at=None, editor_mode="advanced") -> PageWatcher:
         if touch:
             ctx = browser.new_context(viewport=touch, has_touch=True, is_mobile=True, timezone_id=TZ)
         else:
             ctx = browser.new_context(viewport=VIEWPORT, timezone_id=TZ)
+        ctx.add_init_script(editor_mode_init_js(editor_mode))
         contexts.append(ctx)
         page = ctx.new_page()
         watcher = PageWatcher(page)
