@@ -908,6 +908,15 @@
       }
     }
 
+    async function folderHasMedia(folder, kind) {
+      try {
+        const data = await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder || '')}&kind=${kind}`);
+        return data.images.length > 0;
+      } catch (e) {
+        return false;
+      }
+    }
+
     // Config polling — apply changes live when config.json is updated by the editor
     let configHash = '';
     async function checkConfigUpdate() {
@@ -924,24 +933,38 @@
           return;
         }
 
-        // Slot mode, timer and group changes affect element setup and timers — reload too, as
-        // does a video slot's folder (its queue and decoders are set up per folder).
+        // Slot mode, timer and group changes affect element setup and timers — reload too.
         // Slots the current layout doesn't show are kept up to date below without a reload.
         const slotNeedsReload = (fresh.slots || []).some((s, i) => {
           const old = (config.slots || [])[i];
           return i < activeSlots.length && old && ((s.mode || 'photos') !== (old.mode || 'photos')
             || s.cycle_seconds !== old.cycle_seconds
-            || (s.group || null) !== (old.group || null)
-            || (s.mode === 'video' && slotFolder(s, fresh) !== slotFolder(old)));
+            || (s.group || null) !== (old.group || null));
         });
         if (slotNeedsReload) {
           window.location.reload();
           return;
         }
 
+        // A visible slot moved to another folder changes what's on screen only once that folder
+        // has media of the slot's kind — a missing folder (or a half-typed path) leaves the slot
+        // showing what it has. A video slot then reloads (its queue and decoders are set up per
+        // folder); a photo slot shows a photo from it below.
+        const movedSlots = new Set();
+        await Promise.all((fresh.slots || []).slice(0, activeSlots.length).map(async (s, i) => {
+          const old = (config.slots || [])[i];
+          const folder = slotFolder(s, fresh);
+          if (old && folder !== slotFolder(old) && await folderHasMedia(folder, s.mode === 'video' ? 'video' : 'photos')) {
+            movedSlots.add(i);
+          }
+        }));
+        if (activeSlots.some((s, i) => s.mode === 'video' && movedSlots.has(i))) {
+          window.location.reload();
+          return;
+        }
+
         // Everything else (colors, frame, metadata, audio, photo folders) — patch in place so
         // photos keep cycling
-        const oldFolders = activeSlots.map(s => slotFolder(s));
         const oldSlots = config.slots || [];
         Object.assign(config, fresh);
         config.slots = oldSlots;
@@ -966,8 +989,15 @@
           const path = slotState[slotCfg.id]?.currentPath;
           if (path) updateOverlay(slotCfg, path);
           // A photo slot moved to another folder shows a photo from it now, not at its next cycle
-          if (slotCfg.mode !== 'video' && slotFolder(slotCfg) !== oldFolders[i]) loadNextImage(slotCfg);
+          if (slotCfg.mode !== 'video' && movedSlots.has(i)) loadNextImage(slotCfg);
         });
+        // A retry for a folder no visible photo slot uses any more would only re-list it
+        for (const folder of Object.keys(photoRetryTimers)) {
+          if (!activeSlots.some(s => s.mode !== 'video' && slotFolder(s) === folder)) {
+            clearTimeout(photoRetryTimers[folder]);
+            delete photoRetryTimers[folder];
+          }
+        }
       } catch (e) { /* non-critical — try again next interval */ }
     }
 

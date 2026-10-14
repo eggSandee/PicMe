@@ -133,3 +133,54 @@ def test_typing_a_slot_folder_saves_on_blur(server, open_at, write_config, e2e_c
     assert len(saves) == 1
     assert _loads(dpage) == 1 and dpage.evaluate("window.srcChanges") == 1
     assert w.errors == [] and display.errors == []
+
+
+def test_a_missing_video_folder_saved_with_enter_does_not_reload_the_display(
+        server, open_at, write_config, e2e_config_path, folders):
+    cfg = write_config()
+    cfg["slots"][1] |= {"mode": "video", "use_global": {"source": False, "frame": True, "metadata": True}}
+    e2e_config_path.write_text(json.dumps(cfg, indent=2))
+    display = _open_display(open_at, server)
+    dpage = display.page
+    missing = folders["root"] + "/no-such-folder"
+
+    w = open_at(f"{server}/editor/")
+    w.page.locator("#collage-preview .preview-slot").nth(1).click()
+    field = w.page.locator("#slot-panel-body .path-row input")
+    field.fill(missing)
+    field.press("Enter")
+    _wait_saved(e2e_config_path, lambda c: c["slots"][1]["source_path"] == missing)
+
+    # The display takes the new config without reloading for a folder with no videos
+    _until(lambda: dpage.evaluate("config.slots[1].source_path") == missing, timeout=8,
+           what="the display to pick up the config")
+    dpage.wait_for_timeout(3500)
+    assert _loads(dpage) == 1
+    assert w.errors == [] and display.errors == []
+
+
+def test_a_missing_photo_folder_keeps_the_photo_and_leaves_no_retry_behind(
+        server, open_at, write_config, e2e_config_path, folders):
+    cfg = write_config()
+    e2e_config_path.write_text(json.dumps(cfg, indent=2))
+    display = _open_display(open_at, server)
+    dpage = display.page
+    shown = _src(dpage)
+    missing = folders["root"] + "/no-such-folder"
+
+    w = open_at(f"{server}/editor/")
+    field = w.page.locator("#g-source-path")
+    field.fill(missing)
+    field.press("Enter")
+    _until(lambda: dpage.evaluate("config.source_path") == missing, timeout=8,
+           what="the display to pick up the missing folder")
+    # Nothing to show there: the slot keeps its photo
+    assert _src(dpage) == shown and dpage.evaluate("window.srcChanges") == 0
+
+    field.fill(folders["red"])
+    field.press("Enter")
+    _until(lambda: dpage.evaluate("config.source_path") == folders["red"], timeout=8,
+           what="the display to pick up the red folder again")
+    assert dpage.evaluate("Object.keys(photoRetryTimers)") == []
+    assert _loads(dpage) == 1
+    assert w.errors == [] and display.errors == []
