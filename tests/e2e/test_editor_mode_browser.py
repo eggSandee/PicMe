@@ -215,6 +215,33 @@ def test_basic_frame_style_width_bump_is_not_an_advanced_setting(write_cfg, open
     assert w.errors == []
 
 
+@pytest.mark.parametrize("style", ["wood", "gold"])
+def test_basic_back_to_solid_undoes_the_frame_width_bump(write_cfg, open_editor, style):
+    write_cfg()
+    w = open_editor()
+    page = w.page
+    page.select_option("#g-frame-style", style)
+    _saved(write_cfg, lambda c: c["frame_defaults"]["frame_style"] == style and c["frame_defaults"]["frame_width"] > 8)
+    page.select_option("#g-frame-style", "solid")
+    cfg = _saved(write_cfg, lambda c: c["frame_defaults"]["frame_style"] == "solid")
+    assert cfg["frame_defaults"]["frame_width"] == 8
+    assert not page.locator("#advanced-hint").is_visible()
+    assert w.errors == []
+
+
+def test_back_to_solid_keeps_a_frame_width_changed_after_the_bump(write_cfg, open_editor):
+    write_cfg()
+    w = open_editor(editor_mode="advanced")
+    page = w.page
+    page.select_option("#g-frame-style", "wood")
+    page.fill("#g-frame-width", "40")
+    _saved(write_cfg, lambda c: c["frame_defaults"]["frame_style"] == "wood" and c["frame_defaults"]["frame_width"] == 40)
+    page.select_option("#g-frame-style", "solid")
+    cfg = _saved(write_cfg, lambda c: c["frame_defaults"]["frame_style"] == "solid")
+    assert cfg["frame_defaults"]["frame_width"] == 40
+    assert w.errors == []
+
+
 def test_hint_hidden_in_advanced_and_counts_only_values_that_differ(write_cfg, open_editor):
     write_cfg(date_format="iso")
     w = open_editor(editor_mode="advanced")
@@ -356,14 +383,77 @@ def test_basic_slot_folder_sets_and_clears_the_override(write_cfg, open_editor):
 
     other = str(write_cfg.root / "other")
     folder.fill(other)
+    folder.press("Enter")  # folders are saved when committed, not per keystroke
     cfg = _saved(write_cfg, lambda c: c["slots"][0]["use_global"]["source"] is False)
     assert cfg["slots"][0]["source_path"] == other
     assert not page.get_by_text("Same as the default folder.").is_visible()
 
     folder.fill(str(write_cfg.root / "photos"))
+    folder.press("Enter")
     cfg = _saved(write_cfg, lambda c: c["slots"][0]["use_global"]["source"] is True)
     assert cfg["slots"][0]["source_path"] is None
     assert page.get_by_text("Same as the default folder.").is_visible()
+    assert w.errors == []
+
+
+def test_basic_cleared_slot_folder_shows_the_default_again(write_cfg, open_editor):
+    other = str(write_cfg.root / "other")
+    write_cfg(slot_overrides={1: {"use_global": {"source": False, "metadata": True, "frame": True},
+                                  "source_path": other}})
+    w = open_editor()
+    page = w.page
+    page.locator(".preview-slot").nth(0).click()
+    folder = _slot_section(page, "Media Source").locator("input[type=text]")
+    assert folder.input_value() == other
+    folder.fill("")
+    folder.press("Enter")
+    cfg = _saved(write_cfg, lambda c: c["slots"][0]["use_global"]["source"] is True)
+    assert cfg["slots"][0]["source_path"] is None
+    assert folder.input_value() == str(write_cfg.root / "photos")  # as when first opened
+    assert page.get_by_text("Same as the default folder.").is_visible()
+    assert w.errors == []
+
+
+@pytest.mark.parametrize("suffix", ["/", "//", "/./"])
+def test_basic_slot_folder_with_a_trailing_slash_is_the_default(write_cfg, open_editor, suffix):
+    other = str(write_cfg.root / "other")
+    write_cfg(slot_overrides={1: {"use_global": {"source": False, "metadata": True, "frame": True},
+                                  "source_path": other}})
+    w = open_editor()
+    page = w.page
+    page.locator(".preview-slot").nth(0).click()
+    folder = _slot_section(page, "Media Source").locator("input[type=text]")
+    folder.fill(str(write_cfg.root / "photos") + suffix)
+    folder.press("Enter")
+    cfg = _saved(write_cfg, lambda c: c["slots"][0]["use_global"]["source"] is True)
+    assert cfg["slots"][0]["source_path"] is None
+    assert page.get_by_text("Same as the default folder.").is_visible()
+    assert w.errors == []
+
+
+@pytest.mark.parametrize("editor_mode", ["basic", "advanced"])
+def test_adopted_slot_folder_follows_a_new_default_folder(write_cfg, open_editor, editor_mode):
+    write_cfg()
+    w = open_editor(editor_mode=editor_mode)
+    page = w.page
+    page.locator(".preview-slot").nth(0).click()
+    folder = _slot_section(page, "Media Source").locator("input[type=text]")
+    assert folder.input_value() == str(write_cfg.root / "photos")
+
+    other = str(write_cfg.root / "other")
+    page.fill("#g-source-path", other)
+    page.press("#g-source-path", "Enter")
+    _saved(write_cfg, lambda c: c["source_path"] == other)
+    assert folder.input_value() == other  # not the old default
+
+    if editor_mode == "basic":
+        # Committing the box as shown keeps following the default (no pinned old path)
+        folder.fill(other + "/")
+        folder.press("Enter")
+        page.locator("#g-wall-color").evaluate("el => { el.value = '#123456'; el.dispatchEvent(new Event('input')); }")
+        cfg = _saved(write_cfg, lambda c: c["wall_color"] == "#123456")
+        assert cfg["slots"][0]["use_global"]["source"] is True and cfg["slots"][0]["source_path"] is None
+        assert folder.input_value() == other
     assert w.errors == []
 
 

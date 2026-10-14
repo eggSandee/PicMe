@@ -227,24 +227,26 @@ def image_metadata(path: str):
 
 
 @app.get("/api/images/list")
-def list_images_api(folder: str, kind: str = "photos"):
+def list_images_api(folder: str, kind: str = "photos", peek: bool = False):
     if kind != "video":
         images = list_media(folder, kind)
         return {"images": images, "count": len(images)}
     # Listing also queues clips that need converting, so a folder opened in the editor starts
     # converting. `pending` lets the editor tell "no videos" from "videos still converting".
+    # `peek` only looks (the editor's hint while a folder path is still being typed).
     path = Path(folder)
-    clips = transcode.transcoder.scan(path) if path.is_dir() else []
+    clips = transcode.transcoder.scan(path, enqueue=not peek) if path.is_dir() else []
     images = [str(c.path) for c in clips if c.state == transcode.READY]
     return {"images": images, "count": len(images),
             "pending": sum(c.state == transcode.PENDING for c in clips)}
 
 
 @app.get("/api/videos/status")
-def videos_status(folder: str = ""):
-    """Conversion progress for a folder's videos (or every video slot's folder)."""
+def videos_status(folder: str = "", peek: bool = False):
+    """Conversion progress for a folder's videos (or every video slot's folder). ``peek``
+    reports without queueing anything."""
     folders = [folder] if folder else video_folders(load_config())
-    return transcode.transcoder.status(folders)
+    return transcode.transcoder.status(folders, enqueue=not peek)
 
 
 @app.get("/api/image")

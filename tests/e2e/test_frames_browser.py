@@ -487,7 +487,8 @@ def test_editor_default_frame_style(write_cfg, open_display):
 
     page.select_option("#g-frame-style", "solid")
     cfg = _saved(write_cfg, lambda c: c["frame_defaults"].get("frame_style") == "solid")
-    assert cfg["frame_defaults"]["frame_width"] == 28  # only ever bumped up, never reset
+    assert cfg["frame_defaults"]["frame_width"] == 8  # our own bump is undone (the width wasn't changed)
+    assert page.input_value("#g-frame-width") == "8"
     assert page.is_enabled("#g-frame-color")
     assert all(p == "none" for p in page.evaluate(PREVIEW_IMAGES_JS))
     assert w.errors == []

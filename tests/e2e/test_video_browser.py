@@ -314,6 +314,35 @@ def test_editor_video_mode_controls(h264_browser, server, open_page, e2e_config_
     assert w.errors == []
 
 
+def test_typing_a_video_slot_folder_queues_no_conversion(server, open_page, e2e_config_path, video_lib, tmp_path):
+    if not HAS_LIBX265:
+        pytest.skip("ffmpeg without libx265")
+    # A folder whose clip needs converting, reached while typing but never committed
+    typed = tmp_path / "typed-iphone"
+    typed.mkdir()
+    make_clip(typed / "IMG_0900.MOV", codec="hevc", color="blue", size=(320, 180), duration=1)
+    cfg = write_config(e2e_config_path, video_lib["photos"], video_lib["videos"], video_slots={1})
+    cfg["slots"][0]["use_global"] = {"source": False, "metadata": True, "frame": True}
+    e2e_config_path.write_text(json.dumps(cfg, indent=2))
+
+    w = open_page(f"{server}/editor/")
+    page = w.page
+    checks = []
+    page.on("request", lambda r: ("/api/images/list" in r.url or "/api/videos/status" in r.url)
+            and str(typed).replace("/", "%2F") in r.url and checks.append(r.url))
+    page.locator("#collage-preview .preview-slot").first.click()
+    field = page.locator("#slot-panel-body .path-row input")
+    field.fill("")
+    field.type(str(typed), delay=20)
+    page.wait_for_timeout(4_000)  # the hint has checked the folder, and a queued clip would be converting
+    assert checks and all("peek=1" in u for u in checks), checks
+    status = page.evaluate("f => fetch('/api/videos/status?peek=1&folder=' + encodeURIComponent(f)).then(r => r.json())",
+                           str(typed))
+    assert (status["pending"], status["ready"], status["converting"]) == (1, 0, None), status
+    assert json.loads(e2e_config_path.read_text())["slots"][0]["source_path"] == str(video_lib["videos"])
+    assert w.errors == []
+
+
 VIDEO_STATUS = "#slot-panel-body >> text=/videos? ready/"
 
 
@@ -343,4 +372,29 @@ def test_iphone_hevc_clip_is_converted_and_plays_upright(h264_browser, server, o
     assert "IMG_0001.MOV" in info["src"], info
     assert info["h"] > info["w"] and info["ready"] >= 3, info
     assert not any("IMG_0002" in s for s in w.page.evaluate("window.__shown"))
+    assert w.errors == []
+
+
+def test_video_slot_reloads_once_for_a_folder_with_clips_but_not_for_one_without(
+        h264_browser, server, open_page, e2e_config_path, video_lib):
+    cfg = write_config(e2e_config_path, video_lib["photos"], video_lib["four"], video_slots={1}, loops=5)
+    w = open_display(open_page, server)
+    page = w.page
+    wait_video_slots_playing(page, 1)
+    page.evaluate("window.__marker = 1")
+
+    # A folder with no videos (e.g. a path still being typed): the slot keeps playing, no reload
+    cfg["slots"][0]["source_path"] = str(video_lib["photos"])
+    e2e_config_path.write_text(json.dumps(cfg, indent=2))
+    page.wait_for_function(f"() => config.slots[0].source_path === {json.dumps(str(video_lib['photos']))}",
+                           timeout=8_000)
+    assert page.evaluate("window.__marker") == 1
+    assert "four_" in page.evaluate(SLOTS_JS)[0]["src"]
+
+    # A folder with clips: one reload into it
+    cfg["slots"][0]["source_path"] = str(video_lib["videos"])
+    e2e_config_path.write_text(json.dumps(cfg, indent=2))
+    page.wait_for_function("() => window.__marker === undefined", timeout=8_000)
+    wait_video_slots_playing(page, 1)
+    assert "clip_" in page.evaluate(SLOTS_JS)[0]["src"]
     assert w.errors == []

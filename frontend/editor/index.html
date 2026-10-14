@@ -285,6 +285,13 @@
     .preview-slot:hover { border-color: var(--accent); background: #2a3a4a; }
     .preview-slot.selected { border-color: var(--slot-selected); background: #1e3a5a; color: var(--accent); }
 
+    /* Drag a slot onto another to swap them (slot-drag.js); a long press starts it on touch */
+    #collage-preview, .dormant-slot-btn { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    .preview-slot.drag-source, .dormant-slot-btn.drag-source { opacity: 0.4; }
+    .drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; }
+    .drag-ghost { z-index: 2000; opacity: 0.85; box-shadow: 0 8px 24px rgba(0,0,0,0.6); }
+    body.drag-active, body.drag-active * { cursor: grabbing !important; }
+
     /* ── Slot config panel ── */
     #slot-panel {
       background: var(--surface);
@@ -720,9 +727,9 @@
   <main id="main">
 
     <div id="preview-area">
-      <h2>Layout Preview — click a slot to configure it</h2>
+      <h2>Layout Preview — click a slot to configure it<span data-setting="slots.rearrange">, drag to swap</span></h2>
       <div id="collage-preview"></div>
-      <div id="rotation-slot-hint" hidden></div>
+      <div id="rotation-slot-hint" data-setting="rotation.slot_hint" hidden></div>
     </div>
 
     <div id="slot-panel">
@@ -734,7 +741,7 @@
 
   <!-- ── Footer ── -->
   <footer id="footer">
-    <span id="status-msg">Unsaved changes will not affect the display until you save.</span>
+    <span id="status-msg">Changes save automatically.</span>
     <div style="display:flex;gap:8px">
       <a class="btn btn-secondary" href="/display">← Display</a>
       <button class="btn btn-secondary" onclick="reloadConfig()">Discard changes</button>
@@ -746,6 +753,7 @@
 <script src="/display/layout-rotation.js"></script>
 <script src="/display/pill-size.js"></script>
 <script src="/assets/frames/frames.js"></script>
+<script src="/editor/slot-drag.js"></script>
 <script>
   const API = '';
   const META_FIELDS = [
@@ -762,7 +770,7 @@
   let config = null;
   let layouts = null;
   let selectedSlotId = null;
-  let _refreshGlobalVideoWarn = null; // set by renderSlotPanel for video slots on the global folder
+  let _followGlobalFolder = null; // set by renderSlotPanel for a slot that adopts the global folder
 
   async function fetchJSON(url) {
     const r = await fetch(url);
@@ -775,7 +783,7 @@
     el.textContent = msg;
     el.className = type;
     if (type === 'success') setTimeout(() => {
-      el.textContent = 'Unsaved changes will not affect the display until you save.';
+      el.textContent = 'Changes save automatically.';
       el.className = '';
     }, 3000);
   }
@@ -864,6 +872,7 @@
     'layout.picker':      { tier: 'basic',    label: 'Layout' },
     'rotation.enabled':   { tier: 'basic',    label: 'Rotate layout daily' },
     'rotation.status':    { tier: 'basic',    label: 'Rotation status' },
+    'rotation.slot_hint': { tier: 'basic',    label: 'Slots shown on some days (Edit slot N, drop targets)' },
     'rotation.layouts':   { tier: 'advanced', label: 'Layouts to rotate',
                             active: () => rotationOn() && config.layout_rotation.layouts.length > 0 },
     'rotation.change_at': { tier: 'advanced', label: 'Switch layout at',
@@ -895,6 +904,7 @@
     'videos':             { tier: 'advanced', label: 'Video settings',
                             active: () => (config.video_max_edge ?? 1920) !== 1920 || config.include_live_photos === true },
     'slots.reset_all':    { tier: 'advanced', label: 'Reset all slots' },
+    'slots.rearrange':    { tier: 'basic',    label: 'Drag slots to swap' },
     'slot.source':        { tier: 'basic',    label: 'Media folder' },
     'slot.source_adopt':  { tier: 'advanced', label: 'Media folder: use global' },
     'slot.mode':          { tier: 'basic',    label: 'Photos / video' },
@@ -1126,6 +1136,23 @@
     }
   }
 
+  // Swap everything but the slot number between slots idA and idB. Whole slots move, so frame,
+  // video and group settings stay consistent, and keys added later move too. A preview cell
+  // without a config.slots entry yet gets one first.
+  function swapSlotSettings(idA, idB) {
+    if (!Number.isInteger(idA) || !Number.isInteger(idB) || idA < 1 || idB < 1 || idA === idB) return false;
+    ensureSlotsFor(Math.max(idA, idB));
+    const slots = config.slots;
+    const index = id => { const i = slots.findIndex(s => s.id === id); return i >= 0 ? i : id - 1; };
+    const ia = index(idA), ib = index(idB);
+    if (!slots[ia] || !slots[ib]) return false;
+    const { id: _a, ...a } = slots[ia];
+    const { id: _b, ...b } = slots[ib];
+    slots[ia] = { id: slots[ia].id, ...structuredClone(b) };
+    slots[ib] = { id: slots[ib].id, ...structuredClone(a) };
+    return true;
+  }
+
   function ensureReachableSlots() {
     ensureSlotsFor(Math.max(0, ...reachableLayouts().map(l => l.slots.length)));
   }
@@ -1193,6 +1220,7 @@
         btn.type = 'button';
         btn.className = 'btn btn-secondary dormant-slot-btn';
         btn.dataset.slot = id;
+        btn.dataset.dragKey = id;  // drop a preview slot here to swap with this dormant slot
         btn.textContent = `Edit slot ${id}`;
         btn.onclick = () => selectSlot(id);
         p.appendChild(btn);
@@ -1310,6 +1338,7 @@
 
       const div = document.createElement('div');
       div.className = 'preview-slot' + (slotCfg.id === selectedSlotId ? ' selected' : '');
+      div.dataset.slot = div.dataset.dragKey = slotCfg.id ?? slotDef.id;
       div.style.gridArea  = slotDef.grid_area;
       div.style.padding   = `${frameCfg.mat_width ?? 16}px`;
       div.style.background = frameCfg.mat_color ?? '#000';
@@ -1386,6 +1415,19 @@
     return pillBar;
   }
 
+  // A slot dragged onto another swaps with it; the panel follows the settings it was showing
+  function onSlotDrop(from, to) {
+    const a = Number(from), b = Number(to);
+    if (!swapSlotSettings(a, b)) return;
+    if (selectedSlotId === a) selectedSlotId = b;
+    else if (selectedSlotId === b) selectedSlotId = a;
+    buildPreview();
+    refreshRotationUI();
+    renderSlotPanel();
+    setStatus(`Swapped slots ${a} and ${b}.`);
+    scheduleAutoSave(`Swapped slots ${a} and ${b} — saved.`);
+  }
+
   function selectSlot(id) {
     selectedSlotId = id;
     buildPreview();
@@ -1449,10 +1491,13 @@
     }
 
     // Wire global setting changes
-    document.getElementById('g-source-path').oninput   = e => { config.source_path = e.target.value; _refreshGlobalVideoWarn?.(); scheduleAutoSave(); };
+    // Folder paths are saved on change (blur/Enter), not per keystroke — a half-typed path would
+    // reach the display and the video converter. The "no videos" hint still follows the typing.
+    document.getElementById('g-source-path').oninput   = e => _followGlobalFolder?.(e.target.value);
+    document.getElementById('g-source-path').onchange  = e => { config.source_path = e.target.value; _followGlobalFolder?.(); scheduleAutoSave(); };
     document.getElementById('g-source-browse').onclick  = () => {
       const inp = document.getElementById('g-source-path');
-      openFolderBrowser(inp.value, path => { inp.value = path; config.source_path = path; _refreshGlobalVideoWarn?.(); scheduleAutoSave(); });
+      openFolderBrowser(inp.value, path => { inp.value = path; config.source_path = path; _followGlobalFolder?.(); scheduleAutoSave(); });
     };
     document.getElementById('g-wall-color').oninput    = e => { config.wall_color = e.target.value; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-date-format').onchange  = e => { config.date_format = e.target.value; scheduleAutoSave(); };
@@ -1481,11 +1526,20 @@
     document.getElementById('g-mat-color').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_color   = e.target.value; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-mat-width').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_width   = parseInt(e.target.value); buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-show-frame').onchange  = e => { ensureFrameDefaults(); config.frame_defaults.show_frame  = e.target.checked; buildPreview(); scheduleAutoSave(); };
+    // Like a time-of-day template: undo our own wood/gold width bump when going back to solid
+    // (unless the width was changed since), so Basic doesn't leave a hidden frame width behind
+    let bumpedWidth = null;
     document.getElementById('g-frame-style').onchange = e => {
       ensureFrameDefaults();
       const fd = config.frame_defaults;
       fd.frame_style = e.target.value;
-      fd.frame_width = widthForStyle(fd.frame_style, fd.frame_width);
+      if (!frameAsset(fd.frame_style) && bumpedWidth && fd.frame_width === bumpedWidth.to) {
+        fd.frame_width = bumpedWidth.from;
+        bumpedWidth = null;
+      }
+      const bumped = widthForStyle(fd.frame_style, fd.frame_width);
+      if (bumped !== fd.frame_width) bumpedWidth = { from: fd.frame_width, to: bumped };
+      fd.frame_width = bumped;
       document.getElementById('g-frame-width').value = fd.frame_width ?? 8;
       syncGlobalFrameColor();
       buildPreview();
@@ -1588,6 +1642,14 @@
 
   // ── Slot panel ──
 
+  // Folder paths compared as the same folder: no trailing slash, no doubled slashes or ./ segments
+  function normFolder(p) {
+    const raw = String(p ?? '').trim();
+    let s = raw.replace(/\/{2,}/g, '/').replace(/(^|\/)(\.\/)+/g, '$1').replace(/(.)\/\.$/, '$1');
+    if (s.length > 1) s = s.replace(/\/+$/, '');
+    return s || (raw ? '.' : '');
+  }
+
   function renderSlotPanel() {
     const title = document.getElementById('slot-panel-title');
     const body  = document.getElementById('slot-panel-body');
@@ -1601,6 +1663,7 @@
     const slotCfg = config.slots.find(s => s.id === selectedSlotId);
     if (!slotCfg) return;
     ensureUseGlobal(slotCfg);
+    _followGlobalFolder = null;
 
     title.textContent = `Slot ${selectedSlotId} settings`;
     body.innerHTML = '';
@@ -1624,7 +1687,7 @@
     }, { alwaysEditable: basic });
     tag(srcSec.adoptRow, 'slot.source_adopt');
     const effectiveSrc = sourceAdopted ? (config.source_path || '') : (slotCfg.source_path || '');
-    const srcOverridden = !sourceAdopted && !!slotCfg.source_path && slotCfg.source_path !== config.source_path;
+    const srcOverridden = !sourceAdopted && !!slotCfg.source_path && normFolder(slotCfg.source_path) !== normFolder(config.source_path);
     // Mode — always per-slot (photo cycling vs. video playback)
     const isVideo = slotCfg.mode === 'video';
     // Video slots: warn when the folder has nothing to play (outside the body so it stays readable when adopted)
@@ -1636,30 +1699,41 @@
     videoStatusHint.style.display = 'none';
     if (isVideo) checkFolderHasVideos(effectiveSrc, noVideosWarn, videoStatusHint);
     // Adopted source: re-check when the global folder changes
-    const watchGlobalFolder = adopted => {
-      _refreshGlobalVideoWarn = (isVideo && adopted)
-        ? () => checkFolderHasVideos(config.source_path || '', noVideosWarn, videoStatusHint)
-        : null;
+    // Adopted source: follow the default folder. While it's being typed only the "no videos" hint
+    // follows (peeking, so nothing starts converting); once committed the box shows the new default.
+    const followGlobalFolder = adopted => {
+      _followGlobalFolder = adopted ? typed => {
+        if (typed === undefined) pathInput.value = config.source_path || '';
+        if (slotCfg.mode === 'video') {
+          checkFolderHasVideos(typed ?? config.source_path ?? '', noVideosWarn, videoStatusHint, { peek: typed !== undefined });
+        }
+      } : null;
     };
-    watchGlobalFolder(sourceAdopted);
 
     const sameAsDefault = makeHint('Same as the default folder.');
-    srcSec.sectionBody.appendChild(tag(makePathField('Media folder', effectiveSrc, v => {
+    const pathField = tag(makePathField('Media folder', effectiveSrc, v => {
       let folder = v;
       if (basic) {
-        const adopt = !v.trim() || v.trim() === (config.source_path || '');
+        const adopt = !normFolder(v) || normFolder(v) === normFolder(config.source_path);
         slotCfg.use_global.source = adopt;
         slotCfg.source_path = adopt ? null : v.trim();
         folder = adopt ? (config.source_path || '') : v.trim();
+        pathInput.value = folder;  // a cleared box shows the default it follows again
         sameAsDefault.style.display = adopt ? '' : 'none';
-        watchGlobalFolder(adopt);
+        followGlobalFolder(adopt);
         buildPreview();  // the custom-settings dot
       } else {
         slotCfg.source_path = v;
       }
       if (slotCfg.mode === 'video') checkFolderHasVideos(folder, noVideosWarn, videoStatusHint);
       scheduleAutoSave();
-    }, srcOverridden), 'slot.source'));
+    }, srcOverridden, v => {
+      const folder = basic && !normFolder(v) ? config.source_path : v;
+      if (slotCfg.mode === 'video') checkFolderHasVideos(folder, noVideosWarn, videoStatusHint, { peek: true });
+    }), 'slot.source');
+    const pathInput = pathField.querySelector('input');
+    followGlobalFolder(sourceAdopted);
+    srcSec.sectionBody.appendChild(pathField);
     if (basic) {
       sameAsDefault.style.display = sourceAdopted ? '' : 'none';
       srcSec.sectionBody.appendChild(sameAsDefault);
@@ -1839,30 +1913,31 @@
     inner.appendChild(overrides);
   }
 
-  // Debounced so typing a path doesn't fire a request per keystroke
+  // Debounced so typing a path doesn't fire a request per keystroke. `peek` (a path still being
+  // typed) only looks: listing a folder normally queues its clips for conversion.
   let _videoCheckTimer = null;
-  function checkFolderHasVideos(folder, warnEl, statusEl) {
+  function checkFolderHasVideos(folder, warnEl, statusEl, { peek = false } = {}) {
     clearTimeout(_videoCheckTimer);
     _videoCheckTimer = setTimeout(async () => {
       let list = null;
       try {
-        list = await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder || '')}&kind=video`);
+        list = await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder || '')}&kind=video${peek ? '&peek=1' : ''}`);
       } catch (e) { /* unknown — don't warn */ }
       // Clips still converting aren't listed yet, so they don't count as "no videos"
       warnEl.style.display = list && list.count === 0 && !list.pending ? '' : 'none';
-      if (statusEl) watchVideoStatus(folder, statusEl);
+      if (statusEl) watchVideoStatus(folder, statusEl, peek);
     }, 300);
   }
 
   // Polls conversion progress every 5 s while clips are converting and the hint is on screen
   let _videoStatusTimer = null;
-  function watchVideoStatus(folder, el) {
+  function watchVideoStatus(folder, el, peek = false) {
     clearTimeout(_videoStatusTimer);
     const poll = async () => {
       if (!el.isConnected) return;  // slot panel re-rendered or closed
       let s;
       try {
-        s = await fetchJSON(`${API}/api/videos/status?folder=${encodeURIComponent(folder || '')}`);
+        s = await fetchJSON(`${API}/api/videos/status?folder=${encodeURIComponent(folder || '')}${peek ? '&peek=1' : ''}`);
       } catch (e) { el.style.display = 'none'; return; }
       if (!el.isConnected) return;
       const text = videoStatusText(s);
@@ -2065,7 +2140,8 @@
     document.addEventListener('keydown', esc);
   }
 
-  function makePathField(label, value, onChange, overridden = false) {
+  // `onChange` commits the path (on blur/Enter or a Browse pick); `onInput` is for live hints only
+  function makePathField(label, value, onChange, overridden = false, onInput = null) {
     const wrap = document.createElement('div');
     wrap.className = 'field';
     const lbl = document.createElement('label');
@@ -2081,13 +2157,15 @@
     const input = document.createElement('input');
     input.type = 'text';
     input.value = value;
-    input.oninput = () => onChange(input.value);
+    input.oninput = () => onInput?.(input.value);
+    input.onchange = () => onChange(input.value);
     const btn = document.createElement('button');
     btn.className = 'btn btn-secondary';
     btn.type = 'button';
     btn.textContent = 'Browse…';
     btn.onclick = () => openFolderBrowser(input.value, path => {
       input.value = path;
+      onInput?.(path);
       onChange(path);
     });
     row.append(input, btn);
@@ -2332,7 +2410,7 @@
 
   // ── Save / load ──
 
-  async function saveConfig() {
+  async function saveConfig(savedMsg = 'Saved.') {
     try {
       const r = await fetch(`${API}/api/config`, {
         method: 'POST',
@@ -2340,17 +2418,17 @@
         body: JSON.stringify(config),
       });
       if (!r.ok) throw new Error('Server error');
-      setStatus('Saved.', 'success');
+      setStatus(savedMsg, 'success');
     } catch (e) {
       setStatus('Save failed — is the backend running?', 'error');
     }
   }
 
   let _saveTimer = null;
-  function scheduleAutoSave() {
+  function scheduleAutoSave(savedMsg) {
     refreshAdvancedHint();  // every edit path comes through here
     clearTimeout(_saveTimer);
-    _saveTimer = setTimeout(saveConfig, 500);
+    _saveTimer = setTimeout(() => saveConfig(savedMsg), 500);
   }
 
   async function reloadConfig() {
@@ -2401,12 +2479,16 @@
     refreshRotationUI();
     renderSlotPanel();
     refreshAdvancedHint();
+    PicMeSlotDrag.attach([document.getElementById('collage-preview'), document.getElementById('rotation-slot-hint')], {
+      onDrop: onSlotDrop,
+      canDrop: (from, to) => from !== to && [from, to].every(k => /^[1-9][0-9]*$/.test(k)),
+    });
   }
 
   // Keep the Today badge and status line current when the editor stays open past change_at
   let _rotationUIKey = null;
   setInterval(() => {
-    if (!rotationOn() || document.activeElement?.id === 'g-rotation-change-at') return;
+    if (!rotationOn() || document.activeElement?.id === 'g-rotation-change-at' || PicMeSlotDrag.isDragging()) return;
     const now = new Date();
     const key = `${PicMeRotation.resolveLayout(config, layouts, now)?.id}|${now.toDateString()}`;
     if (key === _rotationUIKey) return;

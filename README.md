@@ -56,7 +56,7 @@ PicMe/
 - [x] Fullscreen browser display with configurable slot grid
 - [x] Independent per-slot cycling timers
 - [x] Slot grouping (define groups that cycle together)
-- [x] No duplicate photos across slots — shuffled per-folder queue ensures each image appears in at most one slot at a time
+- [x] No duplicate photos across slots — shuffled per-folder queue ensures a photo is never in two slots at once. When every slot ticks together and every photo is taken, a slot waits for another slot to finish its swap or keeps its current photo for that cycle; a photo repeats only when there are fewer usable photos than slots. (While a slot crossfades, its outgoing photo can still be fading out as another slot fades it in — that overlap is the crossfade, not a duplicate.)
 - [x] 3–5 built-in layout templates (e.g., 2x2, 3x2, asymmetric hero)
 - [x] Basic config file (auto-managed JSON)
 
@@ -105,7 +105,7 @@ PicMe/
 - [ ] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
 - [x] Daily layout rotation: layout selection (choose which layouts are eligible to rotate)
 - [x] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
-- [ ] Per-slot drag-to-reorder in the editor
+- [x] Per-slot drag-to-reorder in the editor
 - [x] Configurable metadata pill size and text size
 - [x] Basic / Advanced editor mode — Basic hides less-common settings so the editor stays approachable for users who don't need full configurability (see [Editor modes](#editor-modes))
 
@@ -461,6 +461,10 @@ Turn on **Rotate layout daily** in the editor's Layout section, then (in **Advan
 - **Video slots and groups:** a video slot plays only on days its position is visible, but its folder is still converted in the background so it's ready. A larger layout can show more video slots at once, so keep their number small. A group only cycles the slots that are visible that day, at the timer of its first visible slot.
 - **Old configs:** `"daily_layout_rotation": true` from earlier versions still works (all layouts, switching at midnight). The editor converts it to `layout_rotation` the next time it saves.
 
+#### Rearranging slots
+
+To move a slot's content to another position, drag it onto that slot in the editor's layout preview; the two slots swap all their settings (mode, folder, frame, metadata, timer, group, fill and video options). Slot numbers stay with the positions, so slot 1 is still `config.slots[0]`. On a phone or tablet, press and hold a slot for a moment, then drag; a quick swipe scrolls the page as usual. With daily rotation on, drop a slot on one of the **Edit slot N** buttons under the preview to swap it with a slot that only shows on some days (or drag the button onto the preview). Dragging back undoes a swap. The change saves automatically, and open displays pick it up within a few seconds: a swap that changes a visible slot's mode, timer, group or video folder reloads the display, anything else is applied in place.
+
 #### Editor modes
 
 The switch at the top of the editor's sidebar picks **Basic** or **Advanced**. Basic shows the settings most people change; Advanced shows everything.
@@ -480,7 +484,7 @@ Which settings each mode shows (the split lives in one table, `EDITOR_SETTINGS` 
 | **Time-of-Day, Videos** | — | The whole sections (templates, max video size, Live Photo clips) |
 | **Each slot** | Media folder, Photos / Video (and the "no videos" warning), Change every (seconds), Fit / Fill, Show metadata | Use global toggles, Group, Frame, the slot's own metadata settings, video loops and audio, conversion status |
 
-In Basic, a slot's media folder is always editable: typing a different folder gives the slot its own folder, and clearing it or typing the default folder makes it follow the default again.
+In Basic, a slot's media folder is always editable: typing a different folder gives the slot its own folder, and clearing it or typing the default folder (a trailing `/` makes no difference) makes it follow the default again. Like every folder box, it is saved when you press Enter, leave the box or pick a folder with **Browse…**, not while you type. A slot that follows the default shows the default folder, also right after the default changes. Picking Wood or Gold widens a thin frame to suit it; going back to Solid restores the previous width unless you changed it in between.
 
 **Show metadata.** The **Default Metadata** section and each slot's **Metadata Overlays** section open and close with a **Show metadata** switch (instantly if the computer is set to reduce motion):
 
@@ -560,6 +564,8 @@ Install the dev dependencies (`uv pip install -r requirements-dev.txt`), then fr
 ```
 
 The browser tests (`tests/e2e/`) drive a locally installed Chrome via Playwright and are skipped automatically if Chrome can't launch.
+
+To check for duplicate photos across slots, sample only each slot's decoded `img.visible` (or the display's `displayedPaths` claims), never both `<img>`s or anything with opacity > 0 — the outgoing image of a crossfade would count as a duplicate. See the comment above `SAMPLE_SLOTS` in `tests/e2e/test_browser.py`.
 
 ---
 

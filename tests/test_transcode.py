@@ -772,6 +772,20 @@ def test_api_lists_only_ready_clips_and_serves_converted_copy(client, lib, video
 
 
 @requires_libx265
+def test_api_peek_reports_without_queueing(client, lib, video_transcoder):
+    # The editor's "no videos" hint peeks while a folder path is typed: nothing may start converting
+    hevc = make_clip(lib / "IMG_0500.MOV", codec="hevc", duration=1)
+    r = client.get("/api/images/list", params={"folder": str(lib), "kind": "video", "peek": 1}).json()
+    assert r == {"images": [], "count": 0, "pending": 1}
+    status = client.get("/api/videos/status", params={"folder": str(lib), "peek": 1}).json()
+    assert (status["total"], status["pending"]) == (1, 1)
+    assert not video_transcoder._pending
+    # Without peek, listing queues it as before
+    client.get("/api/images/list", params={"folder": str(lib), "kind": "video"})
+    assert hevc.resolve() in video_transcoder._pending
+
+
+@requires_libx265
 def test_api_failed_clip_is_415(client, lib, video_transcoder):
     data = make_clip(lib / "tmp.mov", codec="hevc", faststart=True).read_bytes()
     (lib / "tmp.mov").unlink()

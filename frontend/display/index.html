@@ -402,7 +402,11 @@
     }
 
     // Shuffled queue per folder and media kind — ensures no file repeats until all are shown,
-    // and no two slots show the same photo or video at the same time.
+    // and no two slots show the same photo or video at the same time. A slot claims its next
+    // photo before loading it and releases the old one when it swaps, so when every slot ticks
+    // at once the free photos can run out; a slot then waits for another slot's swap to free one
+    // (see loadNextImage) rather than doubling up. Repeats only fill blank slots in a library
+    // with fewer usable photos than slots.
     const folderQueues = {};     // `${kind}:${folder}` -> { images, index }
     const queueLoads = {};       // `${kind}:${folder}` -> in-flight list request, shared by concurrent slots
     // Paths claimed by a slot (on screen or loading), with a claim count — a small library can
@@ -410,6 +414,9 @@
     const displayedPaths = new Map();
     // Photos and videos that failed to load or decode — skipped until their folder is retried
     const unplayablePaths = new Set();
+    // Slots waiting for a claim to be released, and photo loads that will release one when done
+    const releaseWaiters = new Set();
+    let photoLoadsInFlight = 0;
 
     function claimPath(path) {
       displayedPaths.set(path, (displayedPaths.get(path) || 0) + 1);
@@ -419,6 +426,16 @@
       const n = displayedPaths.get(path) || 0;
       if (n <= 1) displayedPaths.delete(path);
       else displayedPaths.set(path, n - 1);
+      for (const wake of [...releaseWaiters]) wake();
+    }
+
+    // Resolves on the next release, or after `ms` if none comes
+    function waitForRelease(ms) {
+      return new Promise(resolve => {
+        const wake = () => { clearTimeout(timer); releaseWaiters.delete(wake); resolve(); };
+        const timer = setTimeout(wake, ms);
+        releaseWaiters.add(wake);
+      });
     }
 
     function shuffle(arr) {
@@ -479,8 +496,8 @@
     // Per-slot state
     const slotState = {};
 
-    function slotFolder(slotCfg) {
-      return (slotCfg.use_global?.source !== false) ? (config.source_path || slotCfg.source_path) : slotCfg.source_path;
+    function slotFolder(slotCfg, cfg = config) {
+      return (slotCfg.use_global?.source !== false) ? (cfg.source_path || slotCfg.source_path) : slotCfg.source_path;
     }
 
     const PHOTO_RETRY_MS = 60000;  // empty folder / every photo failed — try again later
@@ -513,6 +530,7 @@
       const next    = state.activeImg === 'A' ? imgB : imgA;
       const url = imageUrl(path);
 
+      photoLoadsInFlight++;
       try {
         await new Promise((resolve, reject) => {
           // Ignore a late event from an earlier attempt's src
@@ -527,6 +545,7 @@
         unplayablePaths.add(path);
         return false;
       } finally {
+        photoLoadsInFlight--;
         next.onload = next.onerror = null;
       }
 
@@ -542,11 +561,17 @@
       return true;
     }
 
-    async function loadNextImage(slotCfg) {
+    // `folderChanged`: the slot just moved to another folder, so a load still in flight (from
+    // the old folder) is followed by one from the new folder rather than the next cycle tick
+    async function loadNextImage(slotCfg, folderChanged = false) {
       const state = slotState[slotCfg.id];
       const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+      if (!state || !slotEl) return;
       // A cycle tick while this slot is still working through failures waits for the next one
-      if (!state || !slotEl || state.photoLoading) return;
+      if (state.photoLoading) {
+        if (folderChanged) state.photoLoadPending = true;
+        return;
+      }
       state.photoLoading = true;
       const folder = slotFolder(slotCfg);
 
@@ -562,7 +587,17 @@
         // A photo that won't load is skipped and the next one tried straight away, so a corrupt
         // first pick doesn't leave the slot blank — at most one pass over the folder
         while (true) {
-          const nextPath = nextFromQueue(folder);
+          // A slot showing a photo never repeats one another slot holds: when every photo is
+          // claimed (all slots ticked at once), wait for a slot mid-swap to release its old
+          // photo, else keep this one for the tick. Blank slots repeat rather than stay empty.
+          const own = state.currentPath;
+          let nextPath = nextFromQueue(folder, 'photos', own);
+          const deadline = Date.now() + Math.min(5000, (slotCfg.cycle_seconds || 30) * 500);
+          while (own && nextPath === own && photoLoadsInFlight > 0 && Date.now() < deadline) {
+            await waitForRelease(deadline - Date.now());
+            nextPath = nextFromQueue(folder, 'photos', own);
+          }
+          if (own && nextPath === own) return;
           if (!nextPath) {
             // Empty folder, or every photo in it failed
             retryPhotoLater(folder);
@@ -582,6 +617,10 @@
         }
       } finally {
         state.photoLoading = false;
+        if (state.photoLoadPending) {
+          state.photoLoadPending = false;
+          loadNextImage(slotCfg);
+        }
       }
     }
 
@@ -908,6 +947,15 @@
       }
     }
 
+    async function folderHasMedia(folder, kind) {
+      try {
+        const data = await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder || '')}&kind=${kind}`);
+        return data.images.length > 0;
+      } catch (e) {
+        return false;
+      }
+    }
+
     // Config polling — apply changes live when config.json is updated by the editor
     let configHash = '';
     async function checkConfigUpdate() {
@@ -937,7 +985,25 @@
           return;
         }
 
-        // Everything else (colors, frame, metadata, audio) — patch in place so photos keep cycling
+        // A visible slot moved to another folder changes what's on screen only once that folder
+        // has media of the slot's kind — a missing folder (or a half-typed path) leaves the slot
+        // showing what it has. A video slot then reloads (its queue and decoders are set up per
+        // folder); a photo slot shows a photo from it below.
+        const movedSlots = new Set();
+        await Promise.all((fresh.slots || []).slice(0, activeSlots.length).map(async (s, i) => {
+          const old = (config.slots || [])[i];
+          const folder = slotFolder(s, fresh);
+          if (old && folder !== slotFolder(old) && await folderHasMedia(folder, s.mode === 'video' ? 'video' : 'photos')) {
+            movedSlots.add(i);
+          }
+        }));
+        if (activeSlots.some((s, i) => s.mode === 'video' && movedSlots.has(i))) {
+          window.location.reload();
+          return;
+        }
+
+        // Everything else (colors, frame, metadata, audio, photo folders) — patch in place so
+        // photos keep cycling
         const oldSlots = config.slots || [];
         Object.assign(config, fresh);
         config.slots = oldSlots;
@@ -945,15 +1011,31 @@
         for (const key of ['layout_rotation', 'daily_layout_rotation']) {
           if (!(key in fresh)) delete config[key];
         }
-        (fresh.slots || []).forEach((s, i) => { if (oldSlots[i]) Object.assign(oldSlots[i], s); });
+        // Replace each slot's settings, so a key the editor dropped (e.g. after swapping two
+        // slots) doesn't linger. In place: activeSlots holds these objects.
+        (fresh.slots || []).forEach((s, i) => {
+          const old = oldSlots[i];
+          if (!old) return;
+          for (const key of Object.keys(old)) if (!(key in s)) delete old[key];
+          Object.assign(old, s);
+        });
 
         // Re-apply wall color + frame (TOD template re-evaluated after config patch)
         applyTodStyles();
 
-        for (const slotCfg of activeSlots) {
+        activeSlots.forEach((slotCfg, i) => {
           if (slotCfg.mode === 'video') applyVideoAudio(slotCfg);
           const path = slotState[slotCfg.id]?.currentPath;
           if (path) updateOverlay(slotCfg, path);
+          // A photo slot moved to another folder shows a photo from it now, not at its next cycle
+          if (slotCfg.mode !== 'video' && movedSlots.has(i)) loadNextImage(slotCfg, true);
+        });
+        // A retry for a folder no visible photo slot uses any more would only re-list it
+        for (const folder of Object.keys(photoRetryTimers)) {
+          if (!activeSlots.some(s => s.mode !== 'video' && slotFolder(s) === folder)) {
+            clearTimeout(photoRetryTimers[folder]);
+            delete photoRetryTimers[folder];
+          }
         }
       } catch (e) { /* non-critical — try again next interval */ }
     }
