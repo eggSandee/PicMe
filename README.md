@@ -102,7 +102,7 @@ PicMe/
 - [x] Supported formats: MP4, MOV (browser-native playback)
 - [x] iPhone photos (HEIC/HEIF) — converted on the fly to JPEG so every browser can show them, with full metadata overlays
 - [x] iPhone HEVC/HDR videos converted to H.264 automatically in the background (needs ffmpeg)
-- [ ] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
+- [x] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
 - [x] Daily layout rotation: layout selection (choose which layouts are eligible to rotate)
 - [x] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
 - [x] Per-slot drag-to-reorder in the editor
