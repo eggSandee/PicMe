@@ -371,6 +371,64 @@
       gap: 2px 8px;
     }
 
+    /* ── Basic / Advanced editor mode (tiers come from EDITOR_SETTINGS) ── */
+    #app.mode-basic [data-tier="advanced"] { display: none !important; }
+
+    .mode-switch {
+      display: flex;
+      gap: 2px;
+      padding: 2px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .mode-switch button {
+      flex: 1;
+      padding: 5px 0;
+      border: none;
+      border-radius: 4px;
+      background: none;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .mode-switch button:hover { color: var(--text); }
+    .mode-switch button[aria-pressed="true"] { background: var(--accent); color: white; }
+
+    #advanced-hint { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.4; }
+    #advanced-hint[hidden] { display: none; }
+    #advanced-hint button {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--accent);
+      font-size: inherit;
+      cursor: pointer;
+    }
+    #advanced-hint button:hover { text-decoration: underline; }
+
+    /* "Show metadata" sections: grid rows animate 0fr → 1fr to the content's own height */
+    .collapsible {
+      display: grid;
+      grid-template-rows: 0fr;
+      opacity: 0;
+      visibility: hidden;  /* after collapsing, so hidden controls leave the tab order */
+      transition: grid-template-rows 220ms ease, opacity 220ms ease, visibility 0s linear 220ms;
+    }
+    .collapsible.open {
+      grid-template-rows: 1fr;
+      opacity: 1;
+      visibility: visible;
+      transition: grid-template-rows 220ms ease, opacity 220ms ease, visibility 0s linear 0s;
+    }
+    .collapsible > .collapsible-inner { overflow: hidden; min-height: 0; }
+    .collapsible > .collapsible-inner::before { content: ''; display: block; height: 8px; }
+    @media (prefers-reduced-motion: reduce) {
+      .collapsible, .collapsible.open { transition: none; }
+    }
+
     /* ── Footer ── */
     #status-msg {
       font-size: 13px;
@@ -489,16 +547,24 @@
   </style>
 </head>
 <body>
-<div id="app">
+<div id="app" class="mode-basic">
 
   <!-- ── Sidebar ── -->
   <aside id="sidebar">
 
     <div class="sidebar-section">
-      <h3>Layout</h3>
-      <div id="layout-picker"></div>
+      <div class="mode-switch" id="editor-mode" role="group" aria-label="Editor mode">
+        <button type="button" data-mode="basic" aria-pressed="true">Basic</button>
+        <button type="button" data-mode="advanced" aria-pressed="false">Advanced</button>
+      </div>
+      <p id="advanced-hint" hidden><span id="advanced-hint-text"></span> · <button type="button" id="advanced-hint-show">Show</button></p>
+    </div>
 
-      <div class="toggle-row" style="margin-top:10px">
+    <div class="sidebar-section">
+      <h3>Layout</h3>
+      <div id="layout-picker" data-setting="layout.picker"></div>
+
+      <div class="toggle-row" style="margin-top:10px" data-setting="rotation.enabled">
         <label>Rotate layout daily</label>
         <label class="toggle">
           <input type="checkbox" id="g-rotation-enabled" />
@@ -506,19 +572,19 @@
         </label>
       </div>
       <div id="rotation-options">
-        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 10px;">Tick the layouts to rotate through. The display shows one each day; clicking a layout still sets the base layout used when rotation is off.</p>
-        <div class="field">
+        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 10px;" data-setting="rotation.layouts">Tick the layouts to rotate through. The display shows one each day; clicking a layout still sets the base layout used when rotation is off.</p>
+        <div class="field" data-setting="rotation.change_at">
           <label>Switch layout at</label>
           <input type="time" id="g-rotation-change-at" />
         </div>
-        <p id="rotation-status"></p>
+        <p id="rotation-status" data-setting="rotation.status"></p>
       </div>
     </div>
 
     <div class="sidebar-section">
       <h3>Global Settings</h3>
 
-      <div class="field">
+      <div class="field" data-setting="global.source_path">
         <label>Default media folder</label>
         <div class="path-row">
           <input type="text" id="g-source-path" placeholder="photos" />
@@ -526,40 +592,17 @@
         </div>
       </div>
 
-      <div class="field">
+      <div class="field" data-setting="global.wall_color">
         <label>Wall color</label>
         <input type="color" id="g-wall-color" />
       </div>
 
-      <div class="field">
-        <label>Date format</label>
-        <select id="g-date-format">
-          <option value="long">Long — July 4, 2019</option>
-          <option value="medium">Medium — Jul 4, 2019</option>
-          <option value="short">Short — 7/4/2019</option>
-          <option value="iso">ISO — 2019-07-04</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label>Max metadata pills (0 = no limit)</label>
-        <input type="number" id="g-max-pills" min="0" max="10" />
-      </div>
-
-      <div class="toggle-row">
-        <label>Show all metadata</label>
-        <label class="toggle">
-          <input type="checkbox" id="g-show-metadata" />
-          <span class="toggle-track"></span>
-        </label>
-      </div>
-
-      <button class="btn btn-danger" style="width:100%;margin-top:14px;padding:7px 12px;" onclick="openResetAllModal()">
+      <button class="btn btn-danger" style="width:100%;margin-top:14px;padding:7px 12px;" onclick="openResetAllModal()" data-setting="slots.reset_all">
         Reset all slots to global
       </button>
     </div>
 
-    <div class="sidebar-section">
+    <div class="sidebar-section" data-setting="videos">
       <h3>Videos</h3>
 
       <div class="field">
@@ -585,17 +628,17 @@
     <div class="sidebar-section">
       <h3>Default Frame</h3>
 
-      <div class="field">
+      <div class="field" data-setting="frame.mat_color">
         <label>Mat color</label>
         <input type="color" id="g-mat-color" />
       </div>
 
-      <div class="field">
+      <div class="field" data-setting="frame.mat_width">
         <label>Mat width (px)</label>
         <input type="number" id="g-mat-width" min="0" max="80" />
       </div>
 
-      <div class="toggle-row" style="margin-bottom:8px">
+      <div class="toggle-row" style="margin-bottom:8px" data-setting="frame.show_frame">
         <label>Show frame border</label>
         <label class="toggle">
           <input type="checkbox" id="g-show-frame" />
@@ -603,24 +646,24 @@
         </label>
       </div>
 
-      <div class="field">
+      <div class="field" data-setting="frame.frame_style">
         <label>Frame style</label>
         <select id="g-frame-style"></select>
       </div>
 
-      <div class="field">
+      <div class="field" data-setting="frame.frame_color">
         <label>Frame color</label>
         <input type="color" id="g-frame-color" />
         <p id="g-frame-color-hint" style="display:none;font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;">Color applies to solid frames only.</p>
       </div>
 
-      <div class="field">
+      <div class="field" data-setting="frame.frame_width">
         <label>Frame width (px)</label>
         <input type="number" id="g-frame-width" min="0" max="80" />
       </div>
     </div>
 
-    <div class="sidebar-section">
+    <div class="sidebar-section" data-setting="time_of_day">
       <h3>Time-of-Day</h3>
       <div class="toggle-row" style="margin-bottom:10px;">
         <label>Enabled</label>
@@ -635,16 +678,40 @@
 
     <div class="sidebar-section">
       <h3>Default Metadata</h3>
-      <div class="field">
-        <label>Text size</label>
-        <select id="g-text-size"></select>
+      <div class="toggle-row" data-setting="metadata.show">
+        <label for="g-show-metadata">Show metadata</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-show-metadata" aria-controls="g-meta-body" />
+          <span class="toggle-track"></span>
+        </label>
       </div>
-      <div class="field">
-        <label>Pill size</label>
-        <select id="g-pill-size"></select>
+      <div id="g-meta-body" class="collapsible open">
+        <div class="collapsible-inner">
+          <div class="field" data-setting="metadata.sizes">
+            <label>Text size</label>
+            <select id="g-text-size"></select>
+          </div>
+          <div class="field" data-setting="metadata.sizes">
+            <label>Pill size</label>
+            <select id="g-pill-size"></select>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;" data-setting="metadata.sizes">Sizes scale with each slot. Small slots hide lower-priority pills (never the date), and text too long for its pill scrolls.</p>
+          <div id="g-meta-toggles" data-setting="metadata.fields"></div>
+          <div class="field" style="margin-top:12px" data-setting="metadata.date_format">
+            <label>Date format</label>
+            <select id="g-date-format">
+              <option value="long">Long — July 4, 2019</option>
+              <option value="medium">Medium — Jul 4, 2019</option>
+              <option value="short">Short — 7/4/2019</option>
+              <option value="iso">ISO — 2019-07-04</option>
+            </select>
+          </div>
+          <div class="field" data-setting="metadata.max_pills">
+            <label>Max metadata pills (0 = no limit)</label>
+            <input type="number" id="g-max-pills" min="0" max="10" />
+          </div>
+        </div>
       </div>
-      <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Sizes scale with each slot. Small slots hide lower-priority pills (never the date), and text too long for its pill scrolls.</p>
-      <div id="g-meta-toggles"></div>
     </div>
 
   </aside>
@@ -755,6 +822,191 @@
   function isMetaKeyOverridden(slotCfg, key) {
     return !!(slotCfg.metadata && key in slotCfg.metadata &&
               slotCfg.metadata[key] !== (config.metadata_defaults || {})[key]);
+  }
+
+  // Whether a slot puts any pill on screen (video slots only show the date)
+  function slotShowsMetadata(slotCfg) {
+    const em = getSlotMeta(slotCfg);
+    return slotCfg.mode === 'video' ? !!em.show_date : META_FIELDS.some(f => em[f.key]);
+  }
+
+  // A slot's "Show metadata" checkbox, using existing keys only. Off: every field off for this
+  // slot (sizes kept). On: inherit the default fields again — or the date, if they show nothing.
+  function setSlotMetadataShown(slotCfg, on) {
+    ensureUseGlobal(slotCfg);
+    // Keys saved while adopting the defaults never applied — don't let them start to
+    if (slotCfg.use_global.metadata !== false) slotCfg.metadata = {};
+    const meta = slotCfg.metadata = { ...(slotCfg.metadata || {}) };
+    if (!on) {
+      for (const { key } of META_FIELDS) meta[key] = false;
+      slotCfg.use_global.metadata = false;
+      return;
+    }
+    for (const { key } of META_FIELDS) delete meta[key];
+    slotCfg.use_global.metadata = Object.keys(meta).length === 0;  // sizes left: keep them
+    if (!slotShowsMetadata(slotCfg)) {
+      meta.show_date = true;
+      slotCfg.use_global.metadata = false;
+    }
+  }
+
+  function slotHasOwnMetadata(slotCfg) {
+    return slotCfg.use_global?.metadata === false &&
+           Object.keys(slotCfg.metadata || {}).some(k => isMetaKeyOverridden(slotCfg, k));
+  }
+
+  // ── Basic / Advanced editor mode ──
+  // The one place each setting's tier is decided. Controls carry data-setting="<id>"; Basic hides
+  // the advanced ones (a view preference only — config is never touched). active() / slotActive()
+  // say whether config holds a non-default value Basic is hiding (defaults: backend DEFAULT_CONFIG).
+
+  const EDITOR_SETTINGS = {
+    'layout.picker':      { tier: 'basic',    label: 'Layout' },
+    'rotation.enabled':   { tier: 'basic',    label: 'Rotate layout daily' },
+    'rotation.status':    { tier: 'basic',    label: 'Rotation status' },
+    'rotation.layouts':   { tier: 'advanced', label: 'Layouts to rotate',
+                            active: () => rotationOn() && config.layout_rotation.layouts.length > 0 },
+    'rotation.change_at': { tier: 'advanced', label: 'Switch layout at',
+                            active: () => rotationOn() && (config.layout_rotation.change_at || '04:00') !== '04:00' },
+    'global.source_path': { tier: 'basic',    label: 'Default media folder' },
+    'global.wall_color':  { tier: 'basic',    label: 'Wall color' },
+    'frame.mat_color':    { tier: 'basic',    label: 'Mat color' },
+    'frame.frame_style':  { tier: 'basic',    label: 'Frame style' },
+    'frame.mat_width':    { tier: 'advanced', label: 'Mat width',
+                            active: () => (getGlobalFrame().mat_width ?? 16) !== 16 },
+    'frame.show_frame':   { tier: 'advanced', label: 'Show frame border',
+                            active: () => getGlobalFrame().show_frame === false },
+    'frame.frame_color':  { tier: 'advanced', label: 'Frame color',
+                            active: () => !frameAsset(getGlobalFrame().frame_style) &&
+                                          (getGlobalFrame().frame_color ?? '#2c2318').toLowerCase() !== '#2c2318' },
+    // Wood and gold bump the width to their own default, so compare against that
+    'frame.frame_width':  { tier: 'advanced', label: 'Frame width',
+                            active: () => (getGlobalFrame().frame_width ?? 8) !==
+                                          (frameAsset(getGlobalFrame().frame_style)?.default_width ?? 8) },
+    'metadata.show':      { tier: 'basic',    label: 'Show metadata' },
+    'metadata.sizes':     { tier: 'basic',    label: 'Text and pill size' },
+    'metadata.fields':    { tier: 'basic',    label: 'Metadata fields' },
+    'metadata.date_format': { tier: 'advanced', label: 'Date format',
+                            active: () => (config.date_format || 'long') !== 'long' },
+    'metadata.max_pills': { tier: 'advanced', label: 'Max metadata pills',
+                            active: () => config.max_metadata_pills !== 3 },
+    'time_of_day':        { tier: 'advanced', label: 'Time-of-day colors',
+                            active: () => config.time_of_day?.enabled === true },
+    'videos':             { tier: 'advanced', label: 'Video settings',
+                            active: () => (config.video_max_edge ?? 1920) !== 1920 || config.include_live_photos === true },
+    'slots.reset_all':    { tier: 'advanced', label: 'Reset all slots' },
+    'slot.source':        { tier: 'basic',    label: 'Media folder' },
+    'slot.source_adopt':  { tier: 'advanced', label: 'Media folder: use global' },
+    'slot.mode':          { tier: 'basic',    label: 'Photos / video' },
+    'slot.no_videos_warn': { tier: 'basic',   label: 'No-videos warning' },
+    'slot.video_loops':   { tier: 'advanced', label: 'Video loops',
+                            slotActive: s => s.mode === 'video' && (s.video_loops ?? 2) !== 2 },
+    'slot.video_audio':   { tier: 'advanced', label: 'Video audio',
+                            slotActive: s => s.mode === 'video' && !!s.video_audio },
+    'slot.video_status':  { tier: 'advanced', label: 'Video status' },
+    'slot.cycle_seconds': { tier: 'basic',    label: 'Change every' },
+    'slot.group':         { tier: 'advanced', label: 'Group',
+                            slotActive: s => !!s.group },
+    'slot.fill_mode':     { tier: 'basic',    label: 'Fit / fill' },
+    'slot.opening_shape': { tier: 'basic',    label: 'Opening shape' },  // gallery mode (M4.5)
+    'slot.frame':         { tier: 'advanced', label: 'Frame',
+                            slotActive: s => s.use_global?.frame === false &&
+                                             Object.keys(s.frame || {}).some(k => isFrameKeyOverridden(s, k)) },
+    'slot.metadata.show': { tier: 'basic',    label: 'Show metadata' },
+    // Basic's own "Show metadata" off (every field off) isn't an advanced setting
+    'slot.metadata.overrides': { tier: 'advanced', label: 'Metadata',
+                            slotActive: s => slotShowsMetadata(s) && slotHasOwnMetadata(s) },
+  };
+
+  const EDITOR_MODE_KEY = 'picme.editorMode';
+  let editorMode = 'basic';
+  // localStorage throws in some private / embedded browsers: keep the choice for this page then
+  let _editorModeFallback = null;
+
+  function loadEditorMode() {
+    let stored = _editorModeFallback;
+    try { stored = localStorage.getItem(EDITOR_MODE_KEY) ?? stored; } catch (e) { /* unavailable */ }
+    return stored === 'advanced' ? 'advanced' : 'basic';
+  }
+
+  function saveEditorMode(mode) {
+    _editorModeFallback = mode;
+    try { localStorage.setItem(EDITOR_MODE_KEY, mode); } catch (e) { /* unavailable */ }
+  }
+
+  function isBasic() { return editorMode === 'basic'; }
+
+  // Unknown ids show in both modes, so a forgotten table entry can't hide a setting
+  const _warnedSettings = new Set();
+  function tierOf(id) {
+    const s = EDITOR_SETTINGS[id];
+    if (s) return s.tier;
+    if (!_warnedSettings.has(id)) { _warnedSettings.add(id); console.warn(`EDITOR_SETTINGS has no entry for "${id}"`); }
+    return 'basic';
+  }
+
+  function tag(el, id) {
+    el.dataset.setting = id;
+    el.dataset.tier = tierOf(id);
+    return el;
+  }
+
+  function applySettingTiers(root) {
+    root.querySelectorAll('[data-setting]').forEach(el => { el.dataset.tier = tierOf(el.dataset.setting); });
+  }
+
+  function applyEditorMode() {
+    document.getElementById('app').classList.toggle('mode-basic', isBasic());
+    for (const btn of document.querySelectorAll('#editor-mode button')) {
+      btn.setAttribute('aria-pressed', String(btn.dataset.mode === editorMode));
+    }
+  }
+
+  function setEditorMode(mode) {
+    editorMode = mode === 'advanced' ? 'advanced' : 'basic';
+    saveEditorMode(editorMode);
+    applyEditorMode();
+    if (!config) return;
+    renderSlotPanel();  // the slot folder and metadata summary differ in Basic
+    refreshAdvancedHint();
+  }
+
+  // Labels of the advanced settings config sets away from their defaults (every slot, dormant ones too)
+  function activeAdvancedSettings() {
+    const labels = [];
+    for (const s of Object.values(EDITOR_SETTINGS)) {
+      if (s.tier !== 'advanced') continue;
+      if (s.active?.()) labels.push(s.label);
+      if (s.slotActive) for (const slot of config.slots) if (s.slotActive(slot)) labels.push(`Slot ${slot.id}: ${s.label}`);
+    }
+    return labels;
+  }
+
+  function refreshAdvancedHint() {
+    const hint = document.getElementById('advanced-hint');
+    const labels = config ? activeAdvancedSettings() : [];
+    hint.hidden = !isBasic() || labels.length === 0;
+    document.getElementById('advanced-hint-text').textContent =
+      `${labels.length} advanced setting${labels.length === 1 ? '' : 's'} active`;
+    hint.title = labels.join('\n');
+  }
+
+  // Open or close a "Show metadata" section; without `animate` it snaps (first render, reload)
+  function setCollapsible(el, open, input, animate = true) {
+    if (!animate) el.style.transition = 'none';
+    el.classList.toggle('open', open);
+    if (input) input.setAttribute('aria-expanded', String(open));
+    if (!animate) { void el.offsetHeight; el.style.transition = ''; }
+  }
+
+  function makeCollapsible(id, open) {
+    const el = document.createElement('div');
+    el.id = id;
+    el.className = 'collapsible' + (open ? ' open' : '');
+    const inner = document.createElement('div');
+    inner.className = 'collapsible-inner';
+    el.appendChild(inner);
+    return { el, inner };
   }
 
   // ── Metadata pill size (sizing shared with the display: /display/pill-size.js) ──
@@ -998,7 +1250,7 @@
       thumb.append(grid, label);
 
       if (rotating) {
-        const pickRow = document.createElement('label');
+        const pickRow = tag(document.createElement('label'), 'rotation.layouts');
         pickRow.className = 'rotation-pick-row';
         pickRow.addEventListener('click', e => e.stopPropagation());  // ticking isn't selecting
         const cb = document.createElement('input');
@@ -1091,7 +1343,8 @@
       div.addEventListener('click', () => selectSlot(slotCfg.id ?? slotDef.id));
       preview.appendChild(div);
       frameBorderStyle(div, frameCfg);  // after appending: decorative widths fit the cell
-      if (config.show_metadata !== false) inner.appendChild(previewPills(slotCfg, div, preview));
+      // Like the display: no pills when the slot has no field on (its Show metadata is off)
+      if (config.show_metadata !== false && slotShowsMetadata(slotCfg)) inner.appendChild(previewPills(slotCfg, div, preview));
     }
   }
 
@@ -1150,7 +1403,9 @@
     document.getElementById('g-wall-color').value   = g.wall_color    || '#1a1a1a';
     document.getElementById('g-date-format').value  = g.date_format   || 'long';
     document.getElementById('g-max-pills').value    = g.max_metadata_pills ?? 0;
-    document.getElementById('g-show-metadata').checked  = g.show_metadata !== false;
+    const showMeta = document.getElementById('g-show-metadata');
+    showMeta.checked = g.show_metadata !== false;
+    setCollapsible(document.getElementById('g-meta-body'), showMeta.checked, showMeta, false);
     document.getElementById('g-mat-color').value    = fd.mat_color    || '#000000';
     document.getElementById('g-mat-width').value    = fd.mat_width    ?? 16;
     document.getElementById('g-show-frame').checked = fd.show_frame   !== false;
@@ -1188,6 +1443,8 @@
         if (!config.metadata_defaults) config.metadata_defaults = {};
         config.metadata_defaults[key] = checked;
         buildPreview(); // re-render pills
+        renderSlotPanel();  // a slot on the defaults may now show nothing (its Show metadata box)
+        refreshAdvancedHint();
       }));
     }
 
@@ -1204,7 +1461,14 @@
       config.max_metadata_pills = v > 0 ? v : null;
       scheduleAutoSave();
     };
-    document.getElementById('g-show-metadata').onchange  = e => { config.show_metadata = e.target.checked; buildPreview(); scheduleAutoSave(); };
+    // The display's kill switch: off hides every pill and keeps the metadata settings as they are
+    showMeta.onchange = e => {
+      config.show_metadata = e.target.checked;
+      setCollapsible(document.getElementById('g-meta-body'), e.target.checked, e.target);
+      buildPreview();
+      renderSlotPanel();  // each slot's Show metadata box is disabled while this is off
+      scheduleAutoSave();
+    };
     document.getElementById('g-rotation-enabled').onchange = e => { ensureRotation(); config.layout_rotation.enabled = e.target.checked; onRotationChanged(); };
     document.getElementById('g-rotation-change-at').onchange = e => {
       if (!e.target.value) return;
@@ -1311,6 +1575,7 @@
       document.body.removeChild(overlay);
       buildPreview();
       renderSlotPanel();
+      refreshAdvancedHint();
       setStatus('All slots reset to global settings.', '');
     };
 
@@ -1346,7 +1611,9 @@
     // ── Left column ──
     const left = document.createElement('div');
 
-    // Source — adoptable (media folder)
+    // Source — adoptable (media folder). Basic has no "Use global" toggle: the folder is always
+    // editable, and typing the default folder (or nothing) adopts it again.
+    const basic = isBasic();
     const sourceAdopted = slotCfg.use_global.source !== false;
     const srcSec = makeSectionWithAdopt('Media Source', sourceAdopted, adopted => {
       slotCfg.use_global.source = adopted;
@@ -1354,34 +1621,54 @@
       buildPreview();
       renderSlotPanel();
       scheduleAutoSave();
-    });
+    }, { alwaysEditable: basic });
+    tag(srcSec.adoptRow, 'slot.source_adopt');
     const effectiveSrc = sourceAdopted ? (config.source_path || '') : (slotCfg.source_path || '');
     const srcOverridden = !sourceAdopted && !!slotCfg.source_path && slotCfg.source_path !== config.source_path;
     // Mode — always per-slot (photo cycling vs. video playback)
     const isVideo = slotCfg.mode === 'video';
     // Video slots: warn when the folder has nothing to play (outside the body so it stays readable when adopted)
-    const noVideosWarn = makeHint('This folder has no videos (.mp4 / .mov / .m4v).');
+    const noVideosWarn = tag(makeHint('This folder has no videos (.mp4 / .mov / .m4v).'), 'slot.no_videos_warn');
     noVideosWarn.style.color = '#e0a030';
     noVideosWarn.style.display = 'none';
     // Conversion progress for iPhone (HEVC) clips, or how to install ffmpeg
-    const videoStatusHint = makeHint('');
+    const videoStatusHint = tag(makeHint(''), 'slot.video_status');
     videoStatusHint.style.display = 'none';
     if (isVideo) checkFolderHasVideos(effectiveSrc, noVideosWarn, videoStatusHint);
     // Adopted source: re-check when the global folder changes
-    _refreshGlobalVideoWarn = (isVideo && sourceAdopted)
-      ? () => checkFolderHasVideos(config.source_path || '', noVideosWarn, videoStatusHint)
-      : null;
+    const watchGlobalFolder = adopted => {
+      _refreshGlobalVideoWarn = (isVideo && adopted)
+        ? () => checkFolderHasVideos(config.source_path || '', noVideosWarn, videoStatusHint)
+        : null;
+    };
+    watchGlobalFolder(sourceAdopted);
 
-    srcSec.sectionBody.appendChild(makePathField('Media folder', effectiveSrc, v => {
-      slotCfg.source_path = v;
-      if (slotCfg.mode === 'video') checkFolderHasVideos(v, noVideosWarn, videoStatusHint);
+    const sameAsDefault = makeHint('Same as the default folder.');
+    srcSec.sectionBody.appendChild(tag(makePathField('Media folder', effectiveSrc, v => {
+      let folder = v;
+      if (basic) {
+        const adopt = !v.trim() || v.trim() === (config.source_path || '');
+        slotCfg.use_global.source = adopt;
+        slotCfg.source_path = adopt ? null : v.trim();
+        folder = adopt ? (config.source_path || '') : v.trim();
+        sameAsDefault.style.display = adopt ? '' : 'none';
+        watchGlobalFolder(adopt);
+        buildPreview();  // the custom-settings dot
+      } else {
+        slotCfg.source_path = v;
+      }
+      if (slotCfg.mode === 'video') checkFolderHasVideos(folder, noVideosWarn, videoStatusHint);
       scheduleAutoSave();
-    }, srcOverridden));
+    }, srcOverridden), 'slot.source'));
+    if (basic) {
+      sameAsDefault.style.display = sourceAdopted ? '' : 'none';
+      srcSec.sectionBody.appendChild(sameAsDefault);
+    }
     srcSec.el.appendChild(noVideosWarn);
     srcSec.el.appendChild(videoStatusHint);
     left.appendChild(srcSec.el);
 
-    const modeSection = makeSection('Mode');
+    const modeSection = tag(makeSection('Mode'), 'slot.mode');
     const modeSelect = makeSelect([['photos', 'Photos — cycle through images'], ['video', 'Video — play MP4 / MOV clips']], slotCfg.mode || 'photos');
     modeSelect.onchange = e => {
       slotCfg.mode = e.target.value;
@@ -1407,11 +1694,11 @@
         }
       };
       loopsField.style.marginTop = '8px';
-      modeSection.appendChild(loopsField);
-      modeSection.appendChild(makeToggleRow('Play audio', !!slotCfg.video_audio, v => { slotCfg.video_audio = v; scheduleAutoSave(); }));
-      modeSection.appendChild(makeHint('Muted by default. TV browsers may block sound until someone interacts with the display page. Folder should contain .mp4 / .mov files. iPhone (HEVC) clips are converted automatically in the background and join the rotation when ready.'));
+      modeSection.appendChild(tag(loopsField, 'slot.video_loops'));
+      modeSection.appendChild(tag(makeToggleRow('Play audio', !!slotCfg.video_audio, v => { slotCfg.video_audio = v; scheduleAutoSave(); }), 'slot.video_audio'));
+      modeSection.appendChild(tag(makeHint('Muted by default. TV browsers may block sound until someone interacts with the display page. Folder should contain .mp4 / .mov files. iPhone (HEVC) clips are converted automatically in the background and join the rotation when ready.'), 'slot.video_audio'));
       if (reachableLayouts().some(l => l.slots.length < slotCfg.id)) {
-        modeSection.appendChild(makeHint('On layouts with fewer slots this slot may be hidden; its folder still converts in the background.'));
+        modeSection.appendChild(tag(makeHint('On layouts with fewer slots this slot may be hidden; its folder still converts in the background.'), 'slot.video_status'));
       }
     }
     left.appendChild(modeSection);
@@ -1420,14 +1707,14 @@
     const schedSection = makeSection('Schedule');
     const schedBody = document.createElement('div');
     if (isVideo) schedBody.classList.add('section-disabled');
-    schedBody.appendChild(makeField('Cycle every (seconds)', 'number', slotCfg.cycle_seconds || 30, v => { slotCfg.cycle_seconds = parseInt(v); scheduleAutoSave(); }));
-    schedBody.appendChild(makeField('Group (optional letter, e.g. A)', 'text', slotCfg.group || '', v => { slotCfg.group = v || null; scheduleAutoSave(); }));
+    schedBody.appendChild(tag(makeField('Change every (seconds)', 'number', slotCfg.cycle_seconds || 30, v => { slotCfg.cycle_seconds = parseInt(v); scheduleAutoSave(); }), 'slot.cycle_seconds'));
+    schedBody.appendChild(tag(makeField('Group (optional letter, e.g. A)', 'text', slotCfg.group || '', v => { slotCfg.group = v || null; scheduleAutoSave(); }), 'slot.group'));
     schedSection.appendChild(schedBody);
-    if (isVideo) schedSection.appendChild(makeHint('Video slots advance after their loops finish.'));
+    if (isVideo) schedSection.appendChild(tag(makeHint('Video slots advance after their loops finish.'), 'slot.cycle_seconds'));
     left.appendChild(schedSection);
 
     // Fit — always per-slot (applies to photos and videos)
-    const fillSection = makeSection('Fit');
+    const fillSection = tag(makeSection('Fit'), 'slot.fill_mode');
     const fillSelect = makeSelect([['contain', `Fit — full ${isVideo ? 'video' : 'photo'}, letterboxed`], ['cover', 'Fill — crop to fit, no bars']], slotCfg.fill_mode || 'contain');
     fillSelect.onchange = e => { slotCfg.fill_mode = e.target.value; scheduleAutoSave(); };
     fillSection.appendChild(fillSelect);
@@ -1463,22 +1750,71 @@
     }
     frameSec.sectionBody.appendChild(frameColorField);
     frameSec.sectionBody.appendChild(makeField('Frame width (px)', 'number', ef.frame_width ?? 8, v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_width = clampFrameWidth(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_width')));
-    left.appendChild(frameSec.el);
+    left.appendChild(tag(frameSec.el, 'slot.frame'));
 
-    // ── Right column — Metadata (adoptable) ──
+    // ── Right column — Metadata: "Show metadata" opens the section; its overrides are Advanced ──
     const right = document.createElement('div');
+    const metaSec = makeSection('Metadata Overlays');
+    const globalOff = config.show_metadata === false;
+    const shown = !globalOff && slotShowsMetadata(slotCfg);
+    const metaBody = makeCollapsible('slot-meta-body', shown);
+    const showRow = tag(makeToggleRow('Show metadata', shown, on => {
+      setSlotMetadataShown(slotCfg, on);
+      fillSlotMetaBody(metaBody.inner, slotCfg, syncShown);
+      setCollapsible(metaBody.el, on, showInput);  // in place, not renderSlotPanel(), so it animates
+      buildPreview();
+      scheduleAutoSave();
+    }), 'slot.metadata.show');
+    const showInput = showRow.querySelector('input');
+    showInput.setAttribute('aria-controls', metaBody.el.id);
+    showInput.setAttribute('aria-expanded', String(shown));
+    showInput.disabled = globalOff;
+    // Advanced field toggles can turn the last pill off: close the section with them
+    function syncShown() {
+      if (globalOff || slotShowsMetadata(slotCfg) === showInput.checked) return;
+      showInput.checked = !showInput.checked;
+      setCollapsible(metaBody.el, showInput.checked, showInput);
+    }
+    metaSec.appendChild(showRow);
+    if (globalOff) metaSec.appendChild(makeHint('Metadata is off for every slot — turn on Show metadata in Default Metadata.'));
+    fillSlotMetaBody(metaBody.inner, slotCfg, syncShown);
+    metaSec.appendChild(metaBody.el);
+    if (isVideo) metaSec.appendChild(makeHint('Video slots show the date only (from the clip\'s recording date, when available).'));
+    right.appendChild(metaSec);
+
+    grid.append(left, right);
+    body.appendChild(grid);
+  }
+
+  // The slot's metadata body: Basic sums it up; Advanced has "Use global", sizes and fields
+  function fillSlotMetaBody(inner, slotCfg, onFieldChange) {
+    inner.innerHTML = '';
+    const em = getSlotMeta(slotCfg);
+    if (isBasic()) {
+      const fields = slotCfg.mode === 'video' ? (em.show_date ? ['Date'] : [])
+        : META_FIELDS.filter(f => em[f.key]).map(f => f.label);
+      inner.appendChild(makeHint(slotHasOwnMetadata(slotCfg)
+        ? `Shows ${fields.join(', ')}. This slot has its own metadata settings (Advanced).`
+        : `Shows ${fields.join(', ')} — set in Default Metadata.`));
+    }
+
     const metaAdopted = slotCfg.use_global.metadata !== false;
-    const metaSec = makeSectionWithAdopt('Metadata Overlays', metaAdopted, adopted => {
+    const overrides = tag(document.createElement('div'), 'slot.metadata.overrides');
+    const adopt = makeAdoptRow(metaAdopted, adopted => {
       slotCfg.use_global.metadata = adopted;
       if (adopted) slotCfg.metadata = {};
+      buildPreview();
       renderSlotPanel();
       scheduleAutoSave();
     });
+    adopt.row.style.cssText = 'justify-content:flex-end;margin-bottom:8px;';
+    const metaFields = document.createElement('div');
+    if (metaAdopted) metaFields.classList.add('section-disabled');
+    adopt.input.addEventListener('change', e => metaFields.classList.toggle('section-disabled', e.target.checked));
 
-    const em = getSlotMeta(slotCfg);
     const slotSizes = pillSizes(em);
     for (const [key, label, options] of [['text_size', 'Text size', TEXT_SIZE_OPTIONS], ['pill_size', 'Pill size', PILL_SIZE_OPTIONS]]) {
-      metaSec.sectionBody.appendChild(makeSelectField(label, options, slotSizes[key], v => {
+      metaFields.appendChild(makeSelectField(label, options, slotSizes[key], v => {
         if (!slotCfg.metadata) slotCfg.metadata = {};
         slotCfg.metadata[key] = v;
         buildPreview();
@@ -1494,15 +1830,13 @@
         if (!slotCfg.metadata) slotCfg.metadata = {};
         slotCfg.metadata[key] = checked;
         buildPreview();
+        onFieldChange();
         scheduleAutoSave();
       }, !metaAdopted && isMetaKeyOverridden(slotCfg, key)));
     }
-    metaSec.sectionBody.appendChild(metaGrid);
-    if (isVideo) metaSec.el.appendChild(makeHint('Video slots show the date only (from the clip\'s recording date, when available).'));
-    right.appendChild(metaSec.el);
-
-    grid.append(left, right);
-    body.appendChild(grid);
+    metaFields.appendChild(metaGrid);
+    overrides.append(adopt.row, metaFields);
+    inner.appendChild(overrides);
   }
 
   // Debounced so typing a path doesn't fire a request per keystroke
@@ -1870,7 +2204,27 @@
     return sec;
   }
 
-  function makeSectionWithAdopt(title, adopted, onAdoptChange) {
+  // The small "Use global" toggle
+  function makeAdoptRow(adopted, onChange) {
+    const row = document.createElement('div');
+    row.className = 'adopt-row';
+    const span = document.createElement('span');
+    span.textContent = 'Use global';
+    const toggleLbl = document.createElement('label');
+    toggleLbl.className = 'toggle toggle-sm';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = adopted;
+    input.onchange = e => onChange(e.target.checked);
+    const track = document.createElement('span');
+    track.className = 'toggle-track';
+    toggleLbl.append(input, track);
+    row.append(span, toggleLbl);
+    return { row, input };
+  }
+
+  // alwaysEditable: the body isn't greyed out while adopted (Basic's slot folder)
+  function makeSectionWithAdopt(title, adopted, onAdoptChange, { alwaysEditable = false } = {}) {
     const sec = document.createElement('div');
     sec.className = 'panel-section';
 
@@ -1881,34 +2235,19 @@
     const h = document.createElement('h4');
     h.textContent = title;
 
-    const adoptRow = document.createElement('div');
-    adoptRow.className = 'adopt-row';
-    const adoptSpan = document.createElement('span');
-    adoptSpan.textContent = 'Use global';
-    const toggleLbl = document.createElement('label');
-    toggleLbl.className = 'toggle toggle-sm';
-    const inp = document.createElement('input');
-    inp.type = 'checkbox';
-    inp.checked = adopted;
-    const track = document.createElement('span');
-    track.className = 'toggle-track';
-    toggleLbl.append(inp, track);
-    adoptRow.append(adoptSpan, toggleLbl);
-    header.append(h, adoptRow);
-    sec.appendChild(header);
-
     // Body — gets .section-disabled when adopted
     const bodyDiv = document.createElement('div');
-    if (adopted) bodyDiv.classList.add('section-disabled');
-    sec.appendChild(bodyDiv);
+    const disable = on => bodyDiv.classList.toggle('section-disabled', on && !alwaysEditable);
+    disable(adopted);
 
-    inp.onchange = e => {
-      const nowAdopted = e.target.checked;
-      bodyDiv.classList.toggle('section-disabled', nowAdopted);
+    const adopt = makeAdoptRow(adopted, nowAdopted => {
+      disable(nowAdopted);
       onAdoptChange(nowAdopted);
-    };
+    });
+    header.append(h, adopt.row);
+    sec.append(header, bodyDiv);
 
-    return { el: sec, sectionBody: bodyDiv };
+    return { el: sec, sectionBody: bodyDiv, adoptRow: adopt.row };
   }
 
   function makeField(label, type, value, onChange, overridden = false) {
@@ -2009,6 +2348,7 @@
 
   let _saveTimer = null;
   function scheduleAutoSave() {
+    refreshAdvancedHint();  // every edit path comes through here
     clearTimeout(_saveTimer);
     _saveTimer = setTimeout(saveConfig, 500);
   }
@@ -2029,6 +2369,7 @@
       buildPreview();
       refreshRotationUI();
       renderSlotPanel();
+      refreshAdvancedHint();
       setStatus('Changes discarded.', '');
     } catch (e) {
       setStatus('Could not reload config.', 'error');
@@ -2059,6 +2400,7 @@
     buildPreview();
     refreshRotationUI();
     renderSlotPanel();
+    refreshAdvancedHint();
   }
 
   // Keep the Today badge and status line current when the editor stays open past change_at
@@ -2072,6 +2414,13 @@
     buildLayoutPicker();
     refreshRotationUI();
   }, 60000);
+
+  // Before the first render, so Basic never flashes the advanced controls
+  editorMode = loadEditorMode();
+  applySettingTiers(document);
+  applyEditorMode();
+  for (const btn of document.querySelectorAll('#editor-mode button')) btn.onclick = () => setEditorMode(btn.dataset.mode);
+  document.getElementById('advanced-hint-show').onclick = () => setEditorMode('advanced');
 
   init();
 </script>
