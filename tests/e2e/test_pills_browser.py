@@ -16,7 +16,7 @@ import time
 
 import pytest
 
-from conftest import LANDSCAPE, _exif_bytes, _make_image, make_config
+from conftest import LANDSCAPE, _exif_bytes, _make_image, editor_mode_init_js, make_config
 from video_fixtures import FFMPEG, make_clip
 
 pytestmark = pytest.mark.e2e
@@ -102,8 +102,10 @@ def long_location(route):
 def open_display(browser, server):
     contexts = []
 
-    def _open(path="/display/", viewport=VIEWPORT, reduced_motion="no-preference", routes=()) -> PageWatcher:
+    def _open(path="/display/", viewport=VIEWPORT, reduced_motion="no-preference", routes=(),
+              editor_mode="advanced") -> PageWatcher:
         ctx = browser.new_context(viewport=viewport, device_scale_factor=1, reduced_motion=reduced_motion)
+        ctx.add_init_script(editor_mode_init_js(editor_mode))
         contexts.append(ctx)
         for pattern, handler in routes:
             ctx.route(pattern, handler)

@@ -19,7 +19,7 @@ import urllib.request
 import piexif
 import pytest
 
-from conftest import BACKEND_DIR, LANDSCAPE, PORTRAIT, _exif_bytes, _make_heic, _make_image, make_config
+from conftest import BACKEND_DIR, LANDSCAPE, PORTRAIT, _exif_bytes, _make_heic, _make_image, editor_mode_init_js, make_config
 
 pytestmark = pytest.mark.e2e
 
@@ -142,8 +142,9 @@ class PageWatcher:
 def open_page(browser):
     contexts = []
 
-    def _open(url: str) -> PageWatcher:
+    def _open(url: str, editor_mode: str | None = "advanced") -> PageWatcher:
         ctx = browser.new_context(viewport=VIEWPORT)
+        ctx.add_init_script(editor_mode_init_js(editor_mode))
         contexts.append(ctx)
         page = ctx.new_page()
         watcher = PageWatcher(page)

@@ -258,6 +258,16 @@ def config_path(tmp_path, monkeypatch) -> Path:
     return path
 
 
+def editor_mode_init_js(mode: str | None) -> str:
+    """Init script that picks the editor's Basic / Advanced mode before the page loads.
+
+    Editor tests pin Advanced, where every setting is visible; ``None`` leaves the browser's choice alone.
+    """
+    if mode is None:
+        return "// editor mode: the browser's own choice"
+    return f"try {{ localStorage.setItem('picme.editorMode', {json.dumps(mode)}) }} catch (e) {{}}"
+
+
 def make_config(folder: Path | str, layout: str = "classic-4", slots: int = 4, cycle_seconds: int = 30) -> dict:
     return {
         "layout": layout,

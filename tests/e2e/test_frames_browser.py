@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from PIL import Image, ImageChops, ImageStat
 
-from conftest import LANDSCAPE, PORTRAIT, REPO_ROOT, _exif_bytes, _make_heic, _make_image, make_config
+from conftest import LANDSCAPE, PORTRAIT, REPO_ROOT, _exif_bytes, _make_heic, _make_image, editor_mode_init_js, make_config
 from video_fixtures import FFMPEG, make_clip
 
 pytestmark = pytest.mark.e2e
@@ -107,8 +107,9 @@ MEDIA_READY_JS = """() => { const slots = [...document.querySelectorAll('.slot')
 def open_display(browser, server):
     contexts = []
 
-    def _open(path="/display/", viewport=VIEWPORT, at=None, tz="UTC", routes=()) -> PageWatcher:
+    def _open(path="/display/", viewport=VIEWPORT, at=None, tz="UTC", routes=(), editor_mode="advanced") -> PageWatcher:
         ctx = browser.new_context(viewport=viewport, device_scale_factor=1, timezone_id=tz)
+        ctx.add_init_script(editor_mode_init_js(editor_mode))
         contexts.append(ctx)
         for pattern, handler in routes:
             ctx.route(pattern, handler)
