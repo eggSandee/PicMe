@@ -106,7 +106,7 @@ PicMe/
 - [x] Daily layout rotation: layout selection (choose which layouts are eligible to rotate)
 - [x] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
 - [ ] Per-slot drag-to-reorder in the editor
-- [ ] Configurable metadata pill size and text size
+- [x] Configurable metadata pill size and text size
 - [ ] Basic / Advanced editor mode — Basic hides less-common settings so the editor stays approachable for users who don't need full configurability (exact parameter split TBD)
 
 ---
@@ -358,7 +358,9 @@ Top-level settings:
     "show_shutter_speed": false,
     "show_iso": false,
     "show_focal_length": false,
-    "show_people": false
+    "show_people": false,
+    "text_size": "medium",       // "small" | "medium" | "large" | "x-large" — scales with each slot (see Metadata pills below)
+    "pill_size": "medium"        // "small" | "medium" | "large" — padding around the text
   },
   "video_max_edge": 1920,        // long-edge cap for converted videos: 1280 | 1920 (default, 1080p) | 3840 | 0 = original size
   "include_live_photos": false,  // true = also play the short .MOV clips saved with Live Photos
@@ -377,7 +379,8 @@ Per-slot `metadata` and `frame` are both optional. If omitted, the slot inherits
   "id": 1,
   "source_path": "photos",
   "cycle_seconds": 30,
-  "metadata": { "show_camera": true },       // inherits everything else from metadata_defaults
+  "use_global": { "metadata": false },      // needed for the slot's own metadata settings to apply
+  "metadata": { "show_camera": true, "text_size": "large" },  // inherits everything else from metadata_defaults
   "frame": { "mat_color": "#ffffff", "frame_style": "gold" }  // white mat and a gold frame on this slot only; inherits frame_defaults for the rest
 }
 ```
@@ -409,6 +412,21 @@ Available metadata fields:
 | `show_focal_length` | Focal length, e.g. `50mm` |
 
 Non-date pills are shown in the table order above. If `max_metadata_pills` is set, only the first N enabled non-date fields that have data are shown — put your highest-priority fields first in your slot config.
+
+#### Metadata pills
+
+`text_size` and `pill_size` set how big the metadata pills are. Set them under **Default Metadata** in the editor, or per slot in the slot's **Metadata Overlays** section (turn **Use global** off first, as with the other metadata settings). Hand-edited values other than the ones below are treated as `"medium"`.
+
+- **`text_size`** scales with the slot, so the same setting looks right in a big slot and a small one. The text is 4% of the shorter side of the space inside the frame (at least 14 px and at most 32 px), multiplied by the preset: `small` 0.8, `medium` 1, `large` 1.25, `x-large` 1.5. The result is always between 12 px and 48 px. At 1920×1080, a classic-4 slot gets 20 px text with `medium`, about 13 mm tall on a 55" TV and comfortable from the couch.
+- **`pill_size`** sets the padding around the text, in proportion to the text: `small` is snug, `medium` matches the original look and `large` is roomier. Pills are always fully rounded.
+
+When a slot is too small for all its pills:
+
+- `max_metadata_pills` applies first, exactly as before.
+- If the pills are still too tall for the slot, the lowest-priority ones (the last in the table above) are hidden until the rest fit. The date is never hidden and always stays at the bottom. Hidden pills come back if the window gets bigger.
+- A pill whose text is too wide for the slot scrolls slowly (about 25 px a second) back and forth, pausing for 2 seconds at each end. Text is never cut off with "…". If the TV or computer is set to reduce motion, the text doesn't move and is clipped at the pill's edge instead.
+
+**Upgrading:** `medium` pills are larger than the fixed 12 px pills of earlier versions. Choose **Small** for something closer to the old look.
 
 To use a different photo folder (e.g. a folder elsewhere on your PC), set `source_path` to the full path:
 
