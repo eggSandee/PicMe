@@ -317,8 +317,8 @@ def restore_config(e2e_config_path):
     e2e_config_path.write_text(original)
 
 
-def _write_config(path, folder, cycle_seconds=30, **extra) -> dict:
-    cfg = make_config(folder, layout=LAYOUT, slots=SLOT_COUNT, cycle_seconds=cycle_seconds) | extra
+def _write_config(path, folder, cycle_seconds=30, layout=LAYOUT, slots=SLOT_COUNT, **extra) -> dict:
+    cfg = make_config(folder, layout=layout, slots=slots, cycle_seconds=cycle_seconds) | extra
     path.write_text(json.dumps(cfg, indent=2))
     return cfg
 
@@ -481,4 +481,87 @@ def test_blank_slot_retries_after_backoff_and_finds_new_photo(server, open_page,
     while time.monotonic() < deadline and None in _visible_files(page):
         page.wait_for_timeout(100)
     assert _visible_files(page) == ["added.jpg"] * SLOT_COUNT
+    assert _unexpected_errors(w) == []
+
+
+# --- No duplicate photos across slots ---
+#
+# How to measure "the same photo in two slots": each slot keeps two <img>s and crossfades
+# between them. The outgoing one keeps its src under .hidden and fades out over 0.8s, so a
+# sampler that reads both <img>s, or anything with opacity > 0, reports a "duplicate" whenever
+# another slot fades that photo in. That is a crossfade, not a duplicate. Sample only each
+# slot's img.visible that has decoded (complete && naturalWidth > 0), as _visible_files does,
+# or read the claims directly: displayedPaths (path -> number of slots holding it) and
+# slotState[id].currentPath. SAMPLE_SLOTS below does both from inside the page every 25ms, so
+# it also catches the short window while new photos are still loading.
+
+SAMPLE_SLOTS = """
+window.__samples = [];
+setInterval(() => {
+  try {
+    const claims = Math.max(0, ...displayedPaths.values());
+    const visible = [...document.querySelectorAll('.slot')].map(s => {
+      const img = s.querySelector('img.visible');
+      return img && img.complete && img.naturalWidth > 0 ? decodeURIComponent(img.src).split('/').pop() : null;
+    });
+    window.__samples.push({claims, visible});
+  } catch (e) { /* display script not loaded yet */ }
+}, 25);
+"""
+
+
+def _slow_images(route):
+    # Holds each photo for a moment, so every slot's load is still in flight when the others
+    # pick on the same cycle tick (as on a TV over Wi-Fi), instead of depending on timing luck
+    time.sleep(0.15)
+    route.continue_()
+
+
+def _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms, **extra):
+    for i in range(10):
+        _make_image(tmp_path / f"p{i}.jpg", fmt="JPEG", color=(25 * i, 255 - 25 * i, 120))
+    cfg = _write_config(restore_config, tmp_path, cycle_seconds=3, layout="classic-6", slots=6)
+    for s in cfg["slots"]:
+        s.update(extra)
+    restore_config.write_text(json.dumps(cfg, indent=2))
+    w = open_page("about:blank")
+    page = w.page
+    page.add_init_script(SAMPLE_SLOTS)
+    page.route("**/api/image?*", _slow_images)
+    page.goto(f"{server}/display/")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.slot img.visible').length === 6 && "
+        "[...document.querySelectorAll('.slot img.visible')].every(i => i.complete && i.naturalWidth > 0)",
+        timeout=10_000)
+    page.evaluate("window.__samples = []")
+    page.wait_for_timeout(run_ms)
+    samples = page.evaluate("window.__samples")
+    assert len(samples) > run_ms / 100
+    return w, samples
+
+
+def _assert_no_duplicates(samples, min_distinct):
+    claimed_twice = [s for s in samples if s["claims"] > 1]
+    shown_twice = [s["visible"] for s in samples
+                   if len([f for f in s["visible"] if f]) != len({f for f in s["visible"] if f})]
+    assert claimed_twice == [], f"{len(claimed_twice)}/{len(samples)} samples had a path claimed by 2 slots"
+    assert shown_twice == [], f"{len(shown_twice)}/{len(samples)} samples showed a photo twice: {shown_twice[:3]}"
+    # No slot is starved into keeping one photo forever
+    per_slot = [{s["visible"][i] for s in samples} - {None} for i in range(6)]
+    assert all(len(files) >= min_distinct for files in per_slot), per_slot
+
+
+def test_no_duplicate_photos_when_all_slots_tick_together(server, open_page, restore_config, tmp_path):
+    """QA regression: 6 slots, 10 photos, 3s cycle showed one photo in two slots for whole cycles.
+
+    Six slots ticking at once with only 4 free photos left the last two slots to repeat a
+    photo another slot was showing or switching to."""
+    w, samples = _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms=13_000)
+    _assert_no_duplicates(samples, min_distinct=3)
+    assert _unexpected_errors(w) == []
+
+
+def test_no_duplicate_photos_when_a_group_ticks_together(server, open_page, restore_config, tmp_path):
+    w, samples = _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms=7_000, group="a")
+    _assert_no_duplicates(samples, min_distinct=2)
     assert _unexpected_errors(w) == []
