@@ -479,8 +479,8 @@
     // Per-slot state
     const slotState = {};
 
-    function slotFolder(slotCfg) {
-      return (slotCfg.use_global?.source !== false) ? (config.source_path || slotCfg.source_path) : slotCfg.source_path;
+    function slotFolder(slotCfg, cfg = config) {
+      return (slotCfg.use_global?.source !== false) ? (cfg.source_path || slotCfg.source_path) : slotCfg.source_path;
     }
 
     const PHOTO_RETRY_MS = 60000;  // empty folder / every photo failed — try again later
@@ -924,20 +924,24 @@
           return;
         }
 
-        // Slot mode, timer and group changes affect element setup and timers — reload too.
+        // Slot mode, timer and group changes affect element setup and timers — reload too, as
+        // does a video slot's folder (its queue and decoders are set up per folder).
         // Slots the current layout doesn't show are kept up to date below without a reload.
         const slotNeedsReload = (fresh.slots || []).some((s, i) => {
           const old = (config.slots || [])[i];
           return i < activeSlots.length && old && ((s.mode || 'photos') !== (old.mode || 'photos')
             || s.cycle_seconds !== old.cycle_seconds
-            || (s.group || null) !== (old.group || null));
+            || (s.group || null) !== (old.group || null)
+            || (s.mode === 'video' && slotFolder(s, fresh) !== slotFolder(old)));
         });
         if (slotNeedsReload) {
           window.location.reload();
           return;
         }
 
-        // Everything else (colors, frame, metadata, audio) — patch in place so photos keep cycling
+        // Everything else (colors, frame, metadata, audio, photo folders) — patch in place so
+        // photos keep cycling
+        const oldFolders = activeSlots.map(s => slotFolder(s));
         const oldSlots = config.slots || [];
         Object.assign(config, fresh);
         config.slots = oldSlots;
@@ -945,16 +949,25 @@
         for (const key of ['layout_rotation', 'daily_layout_rotation']) {
           if (!(key in fresh)) delete config[key];
         }
-        (fresh.slots || []).forEach((s, i) => { if (oldSlots[i]) Object.assign(oldSlots[i], s); });
+        // Replace each slot's settings, so a key the editor dropped (e.g. after swapping two
+        // slots) doesn't linger. In place: activeSlots holds these objects.
+        (fresh.slots || []).forEach((s, i) => {
+          const old = oldSlots[i];
+          if (!old) return;
+          for (const key of Object.keys(old)) if (!(key in s)) delete old[key];
+          Object.assign(old, s);
+        });
 
         // Re-apply wall color + frame (TOD template re-evaluated after config patch)
         applyTodStyles();
 
-        for (const slotCfg of activeSlots) {
+        activeSlots.forEach((slotCfg, i) => {
           if (slotCfg.mode === 'video') applyVideoAudio(slotCfg);
           const path = slotState[slotCfg.id]?.currentPath;
           if (path) updateOverlay(slotCfg, path);
-        }
+          // A photo slot moved to another folder shows a photo from it now, not at its next cycle
+          if (slotCfg.mode !== 'video' && slotFolder(slotCfg) !== oldFolders[i]) loadNextImage(slotCfg);
+        });
       } catch (e) { /* non-critical — try again next interval */ }
     }
 
