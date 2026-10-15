@@ -401,14 +401,14 @@
       });
     }
 
-    // Shuffled queue per folder and media kind — ensures no file repeats until all are shown,
+    // Shuffled queue per source (folder + subfolders flag) and media kind — ensures no file repeats until all are shown,
     // and no two slots show the same photo or video at the same time. A slot claims its next
     // photo before loading it and releases the old one when it swaps, so when every slot ticks
     // at once the free photos can run out; a slot then waits for another slot's swap to free one
     // (see loadNextImage) rather than doubling up. Repeats only fill blank slots in a library
     // with fewer usable photos than slots.
-    const folderQueues = {};     // `${kind}:${folder}` -> { images, index }
-    const queueLoads = {};       // `${kind}:${folder}` -> in-flight list request, shared by concurrent slots
+    const folderQueues = {};     // `${kind}:${source.key}` -> { images, index }
+    const queueLoads = {};       // `${kind}:${source.key}` -> in-flight list request, shared by concurrent slots
     // Paths claimed by a slot (on screen or loading), with a claim count — a small library can
     // force a repeat, so one slot releasing a path must not free it while another still shows it
     const displayedPaths = new Map();
@@ -450,14 +450,18 @@
     // the server has converted them, so video queues are re-listed every pass and every 5 min.
     const VIDEO_RELIST_MS = 5 * 60 * 1000;
 
-    async function ensureQueue(folder, kind = 'photos') {
-      const key = `${kind}:${folder}`;
+    function listUrl(source, kind) {
+      return `${API}/api/images/list?folder=${encodeURIComponent(source.folder || '')}&kind=${kind}&recursive=${source.recursive ? 1 : 0}`;
+    }
+
+    async function ensureQueue(source, kind = 'photos') {
+      const key = `${kind}:${source.key}`;
       const q = folderQueues[key];
       const stale = q && kind === 'video' && (q.stale || Date.now() - q.loadedAt > VIDEO_RELIST_MS);
       if (q && !stale) return q;
       // Slots start concurrently — share one request so they all draw from the same shuffled queue
       if (!queueLoads[key]) {
-        queueLoads[key] = fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder)}&kind=${kind}`)
+        queueLoads[key] = fetchJSON(listUrl(source, kind))
           .then(data => {
             if (kind === 'video') {
               // Forget failures for this folder's files that are gone — other folders' entries
@@ -474,8 +478,8 @@
     }
 
     // `fallback` is returned instead of a repeat when every file is on screen or unplayable
-    function nextFromQueue(folder, kind = 'photos', fallback = null) {
-      const q = folderQueues[`${kind}:${folder}`];
+    function nextFromQueue(source, kind = 'photos', fallback = null) {
+      const q = folderQueues[`${kind}:${source.key}`];
       if (!q || q.images.length === 0) return null;
       // Walk through the queue to find an image not currently displayed
       for (let attempts = 0; attempts < q.images.length; attempts++) {
@@ -500,22 +504,37 @@
       return (slotCfg.use_global?.source !== false) ? (cfg.source_path || slotCfg.source_path) : slotCfg.source_path;
     }
 
+    // Whether the slot's folder includes its subfolders (same rule as the server's
+    // effective_subfolders): the global setting, unless the slot has its own folder and sets its own
+    function slotSubfolders(slotCfg, cfg = config) {
+      if (slotCfg.use_global?.source !== false || slotCfg.include_subfolders == null) return cfg.include_subfolders !== false;
+      return slotCfg.include_subfolders !== false;
+    }
+
+    // What a slot draws from. Queues, retries and "moved" checks key on folder and flag together,
+    // so toggling subfolders re-lists instead of drawing from the old queue.
+    function slotSource(slotCfg, cfg = config) {
+      const folder = slotFolder(slotCfg, cfg);
+      const recursive = slotSubfolders(slotCfg, cfg);
+      return { folder, recursive, key: `${recursive ? 'r' : 'f'}:${folder}` };
+    }
+
     const PHOTO_RETRY_MS = 60000;  // empty folder / every photo failed — try again later
-    const photoRetryTimers = {};   // folder -> pending retry
+    const photoRetryTimers = {};   // source key -> pending retry
 
     // Wait, then forget this folder's failures, re-list it and retry its blank slots, so added or
     // replaced files are picked up. Cycle ticks in the meantime find nothing to try, so a folder
     // of bad files can't spin. One timer per folder, so slots can't reset each other's retries.
-    function retryPhotoLater(folder) {
-      if (photoRetryTimers[folder]) return;  // already waiting — don't push the retry back
-      photoRetryTimers[folder] = setTimeout(() => {
-        delete photoRetryTimers[folder];
-        const key = `photos:${folder}`;
+    function retryPhotoLater(source) {
+      if (photoRetryTimers[source.key]) return;  // already waiting — don't push the retry back
+      photoRetryTimers[source.key] = setTimeout(() => {
+        delete photoRetryTimers[source.key];
+        const key = `photos:${source.key}`;
         for (const p of folderQueues[key]?.images || []) unplayablePaths.delete(p);
         delete folderQueues[key];
         // Slots already showing a photo just carry on with their cycle timers
         for (const s of activeSlots) {
-          if (s.mode !== 'video' && slotFolder(s) === folder && !slotState[s.id]?.currentPath) loadNextImage(s);
+          if (s.mode !== 'video' && slotSource(s).key === source.key && !slotState[s.id]?.currentPath) loadNextImage(s);
         }
       }, PHOTO_RETRY_MS);
     }
@@ -573,15 +592,15 @@
         return;
       }
       state.photoLoading = true;
-      const folder = slotFolder(slotCfg);
+      const source = slotSource(slotCfg);
 
       try {
         let queue;
         try {
-          queue = await ensureQueue(folder);
+          queue = await ensureQueue(source);
         } catch (e) {
           console.warn(`Slot ${slotCfg.id}: could not list photos`, e);
-          retryPhotoLater(folder);
+          retryPhotoLater(source);
           return;
         }
         // A photo that won't load is skipped and the next one tried straight away, so a corrupt
@@ -591,16 +610,16 @@
           // claimed (all slots ticked at once), wait for a slot mid-swap to release its old
           // photo, else keep this one for the tick. Blank slots repeat rather than stay empty.
           const own = state.currentPath;
-          let nextPath = nextFromQueue(folder, 'photos', own);
+          let nextPath = nextFromQueue(source, 'photos', own);
           const deadline = Date.now() + Math.min(5000, (slotCfg.cycle_seconds || 30) * 500);
           while (own && nextPath === own && photoLoadsInFlight > 0 && Date.now() < deadline) {
             await waitForRelease(deadline - Date.now());
-            nextPath = nextFromQueue(folder, 'photos', own);
+            nextPath = nextFromQueue(source, 'photos', own);
           }
           if (own && nextPath === own) return;
           if (!nextPath) {
             // Empty folder, or every photo in it failed
-            retryPhotoLater(folder);
+            retryPhotoLater(source);
             return;
           }
           if (await showImage(slotCfg, slotEl, nextPath)) {
@@ -611,7 +630,7 @@
           if (state.photoFailures >= queue.images.length) {
             console.warn(`Slot ${slotCfg.id}: no photos would load — retrying in ${PHOTO_RETRY_MS / 1000}s`);
             state.photoFailures = 0;
-            retryPhotoLater(folder);
+            retryPhotoLater(source);
             return;
           }
         }
@@ -680,11 +699,11 @@
       }, seconds * 1000);
     }
 
-    function retryVideoLater(slotCfg, folder) {
+    function retryVideoLater(slotCfg, source) {
       const state = slotState[slotCfg.id];
       clearVideoTimers(state);
       // Re-list and retry this folder's files so newly added or replaced ones are picked up
-      const key = `video:${folder}`;
+      const key = `video:${source.key}`;
       for (const p of folderQueues[key]?.images || []) unplayablePaths.delete(p);
       delete folderQueues[key];
       state.retryTimer = setTimeout(() => loadNextVideo(slotCfg), VIDEO_RETRY_MS);
@@ -715,24 +734,24 @@
 
       state.videoLoading = true;
       clearVideoTimers(state);
-      const folder = slotFolder(slotCfg);
+      const source = slotSource(slotCfg);
       let advanceAgain = false;
 
       try {
         let queue;
         try {
-          queue = await ensureQueue(folder, 'video');
+          queue = await ensureQueue(source, 'video');
         } catch (e) {
           console.warn(`Slot ${slotCfg.id}: could not list videos`, e);
-          retryVideoLater(slotCfg, folder);
+          retryVideoLater(slotCfg, source);
           return;
         }
         // Nothing else available → keep playing this slot's own video
         const ownPath = current.getAttribute('src') ? state.currentPath : null;
-        const nextPath = nextFromQueue(folder, 'video', ownPath);
+        const nextPath = nextFromQueue(source, 'video', ownPath);
         if (!nextPath) {
           // Empty folder — leave the mat showing and look again later
-          retryVideoLater(slotCfg, folder);
+          retryVideoLater(slotCfg, source);
           return;
         }
 
@@ -763,7 +782,7 @@
           if (state.videoFailures >= queue.images.length) {
             console.warn(`Slot ${slotCfg.id}: no playable videos — retrying in ${VIDEO_RETRY_MS / 1000}s`);
             state.videoFailures = 0;
-            retryVideoLater(slotCfg, folder);
+            retryVideoLater(slotCfg, source);
           } else {
             advanceAgain = true;
           }
@@ -947,9 +966,9 @@
       }
     }
 
-    async function folderHasMedia(folder, kind) {
+    async function folderHasMedia(source, kind) {
       try {
-        const data = await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder || '')}&kind=${kind}`);
+        const data = await fetchJSON(listUrl(source, kind));
         return data.images.length > 0;
       } catch (e) {
         return false;
@@ -985,15 +1004,15 @@
           return;
         }
 
-        // A visible slot moved to another folder changes what's on screen only once that folder
-        // has media of the slot's kind — a missing folder (or a half-typed path) leaves the slot
+        // A visible slot moved to another folder (or had subfolders toggled) changes what's on
+        // screen only once that source has media of the slot's kind — a missing folder (or a half-typed path) leaves the slot
         // showing what it has. A video slot then reloads (its queue and decoders are set up per
         // folder); a photo slot shows a photo from it below.
         const movedSlots = new Set();
         await Promise.all((fresh.slots || []).slice(0, activeSlots.length).map(async (s, i) => {
           const old = (config.slots || [])[i];
-          const folder = slotFolder(s, fresh);
-          if (old && folder !== slotFolder(old) && await folderHasMedia(folder, s.mode === 'video' ? 'video' : 'photos')) {
+          const source = slotSource(s, fresh);
+          if (old && source.key !== slotSource(old).key && await folderHasMedia(source, s.mode === 'video' ? 'video' : 'photos')) {
             movedSlots.add(i);
           }
         }));
@@ -1030,11 +1049,11 @@
           // A photo slot moved to another folder shows a photo from it now, not at its next cycle
           if (slotCfg.mode !== 'video' && movedSlots.has(i)) loadNextImage(slotCfg, true);
         });
-        // A retry for a folder no visible photo slot uses any more would only re-list it
-        for (const folder of Object.keys(photoRetryTimers)) {
-          if (!activeSlots.some(s => s.mode !== 'video' && slotFolder(s) === folder)) {
-            clearTimeout(photoRetryTimers[folder]);
-            delete photoRetryTimers[folder];
+        // A retry for a source no visible photo slot uses any more would only re-list it
+        for (const key of Object.keys(photoRetryTimers)) {
+          if (!activeSlots.some(s => s.mode !== 'video' && slotSource(s).key === key)) {
+            clearTimeout(photoRetryTimers[key]);
+            delete photoRetryTimers[key];
           }
         }
       } catch (e) { /* non-critical — try again next interval */ }

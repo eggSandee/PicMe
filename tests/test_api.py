@@ -89,7 +89,7 @@ def test_default_config_includes_subfolders():
     (True,  {"use_global": {"source": False}, "include_subfolders": False}, False),  # own folder
     (False, {"use_global": {"source": False}, "include_subfolders": True}, True),
     (False, {"use_global": {"source": False}}, False),                          # own folder, unset → global
-    (None,  {"use_global": {"source": False}, "include_subfolders": None}, True),
+    (False, {"use_global": {"source": False}, "include_subfolders": None}, False),  # null = unset
 ])
 def test_effective_subfolders(global_value, slot, expected):
     config = {} if global_value is None else {"include_subfolders": global_value}

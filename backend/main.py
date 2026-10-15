@@ -114,7 +114,7 @@ def effective_subfolders(slot: dict, config: dict) -> bool:
     slotSubfolders). A slot adopting the global folder follows the global setting; one with its
     own folder may set its own, else follows the global setting too."""
     adopted = (slot.get("use_global") or {}).get("source") is not False
-    if adopted or "include_subfolders" not in slot:
+    if adopted or slot.get("include_subfolders") is None:
         return config.get("include_subfolders", True) is not False
     return slot["include_subfolders"] is not False
 

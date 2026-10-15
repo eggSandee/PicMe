@@ -33,7 +33,8 @@ log = logging.getLogger(__name__)
 
 DEFAULT_MAX_DEPTH = 32
 DEFAULT_MAX_FILES = 100_000
-FRESH_S = 10.0         # a result checked this recently is returned without any stat
+FRESH_S = 2.0          # a result checked this recently is returned without any stat (bursts:
+                       # several slots, the editor's hint and its status poll)
 MAX_AGE_S = 300.0      # older than this → full rewalk (lazy directory mtimes on SMB/NFS)
 RACY_S = 2.0           # a directory modified this close to its scan is rescanned next time
                        # (coarse mtimes: a file added in the same tick wouldn't bump it)
