@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+import media_index
 from cache import cache_subdir
 from heic import HEIC_EXTENSIONS
 from metadata.video import VideoSniff, sniff_video
@@ -397,6 +398,15 @@ def build_command(ffmpeg: str, src: Path, dst: Path, p: Probe, caps: Capabilitie
 
 # --- Live Photos ---
 
+SCAN_EXTENSIONS = frozenset(VIDEO_EXTENSIONS | LIVE_PHOTO_STILL_EXTENSIONS)
+
+
+def walk_videos(folder: str | Path, recursive: bool = True) -> media_index.Walk:
+    """Videos and the stills that may pair with them as Live Photos, in ``folder`` and
+    (``recursive``) its subfolders."""
+    return media_index.walk(folder, recursive, extensions=SCAN_EXTENSIONS)
+
+
 def is_live_photo_companion(path: Path, still_stems: set[str], sniff: VideoSniff | None) -> bool:
     """The short .MOV an iPhone saves next to a Live Photo's HEIC/JPG (same name, ~1.5–3 s).
     A long clip that happens to share a name with a photo is a real video."""
@@ -570,15 +580,18 @@ class Transcoder:
 
     # -- classification --
 
-    def scan(self, folder: str | Path, enqueue: bool | list = True) -> list[Clip]:
-        """Every video in ``folder`` with its state; queues the ones that need converting
-        (or, given a list, appends ``(source, duration)`` to it for ``enqueue_many``)."""
-        try:
-            files = [f for f in Path(folder).iterdir() if not f.name.startswith(".") and f.is_file()]
-        except OSError:
-            return []
-        still_stems = {f.stem.lower() for f in files if f.suffix.lower() in LIVE_PHOTO_STILL_EXTENSIONS}
-        return [self._classify(f, still_stems, enqueue) for f in files if f.suffix.lower() in VIDEO_EXTENSIONS]
+    def scan(self, folder: str | Path, enqueue: bool | list = True, recursive: bool = True) -> list[Clip]:
+        """Every video in ``folder`` (and, if ``recursive``, its subfolders) with its state;
+        queues the ones that need converting (or, given a list, appends ``(source, duration)``
+        to it for ``enqueue_many``)."""
+        files = [Path(f) for f in walk_videos(folder, recursive).files]
+        # A Live Photo's clip sits next to its still: pair by name within each folder only
+        still_stems: dict[Path, set[str]] = {}
+        for f in files:
+            if f.suffix.lower() in LIVE_PHOTO_STILL_EXTENSIONS:
+                still_stems.setdefault(f.parent, set()).add(f.stem.lower())
+        return [self._classify(f, still_stems.get(f.parent, set()), enqueue)
+                for f in files if f.suffix.lower() in VIDEO_EXTENSIONS]
 
     def clip(self, path: str | Path) -> Clip:
         """State of one video (for /api/video), queueing it if needed. A hidden Live Photo
@@ -654,16 +667,16 @@ class Transcoder:
             self._cond.notify()
 
     def enqueue_folders(self, folders) -> None:
-        """Scan folders in the background (listing many files shouldn't block a request),
-        queueing what they need converted in one batch once the scan is done."""
-        folders = [f for f in dict.fromkeys(folders) if f]
+        """Scan ``(folder, recursive)`` pairs in the background (listing many files shouldn't
+        block a request), queueing what they need converted in one batch once the scan is done."""
+        folders = _folder_pairs(folders)
         if not folders:
             return
 
         def scan_all() -> None:
             batch: list[tuple[Path, float]] = []
-            for f in folders:
-                self.scan(f, enqueue=batch)
+            for f, recursive in folders:
+                self.scan(f, enqueue=batch, recursive=recursive)
             self.enqueue_many(batch)
 
         threading.Thread(target=scan_all, name="picme-video-scan", daemon=True).start()
@@ -924,10 +937,11 @@ class Transcoder:
     # -- status --
 
     def status(self, folders, enqueue: bool = True) -> dict:
+        """Counts over ``(folder, recursive)`` pairs."""
         counts = {READY: 0, PENDING: 0, FAILED: 0, NO_FFMPEG: 0, LIVE_PHOTO: 0}
         pending = set()
-        for folder in dict.fromkeys(f for f in folders if f):
-            for c in self.scan(folder, enqueue):
+        for folder, recursive in _folder_pairs(folders):
+            for c in self.scan(folder, enqueue, recursive):
                 counts[c.state] += 1
                 if c.state == PENDING:
                     pending.add(c.path.resolve())
@@ -948,6 +962,12 @@ class Transcoder:
         if not ffmpeg:
             result["hint"] = f"ffmpeg isn't installed, so iPhone (HEVC) videos are skipped. Install it with {INSTALL_HINT}."
         return result
+
+
+def _folder_pairs(folders) -> list[tuple[str | Path, bool]]:
+    """Deduped ``(folder, recursive)`` pairs; a bare folder means recursive."""
+    pairs = (f if isinstance(f, tuple) else (f, True) for f in folders)
+    return [(f, bool(r)) for f, r in dict.fromkeys(pairs) if f]
 
 
 transcoder = Transcoder()

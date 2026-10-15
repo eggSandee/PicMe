@@ -108,6 +108,7 @@ PicMe/
 - [x] Per-slot drag-to-reorder in the editor
 - [x] Configurable metadata pill size and text size
 - [x] Basic / Advanced editor mode — Basic hides less-common settings so the editor stays approachable for users who don't need full configurability (see [Editor modes](#editor-modes))
+- [x] Media folders include their subfolders (opt-out globally or per slot; see [Subfolders](#subfolders))
 
 ---
 
@@ -177,6 +178,7 @@ Each slot supports the following settings:
   "mode": "photos",            // "photos" or "video"
   "source": "local",           // "local", "google_photos", "amazon", "icloud", "network"
   "source_path": "/Photos/Vacations",
+  "include_subfolders": false, // Only for a slot with its own folder: overrides the global setting (optional)
   "cycle_seconds": 60,         // How often this slot advances (seconds)
   "group": "A",                // Slots in the same group cycle together (optional)
   "metadata": {
@@ -364,6 +366,7 @@ Top-level settings:
   },
   "video_max_edge": 1920,        // long-edge cap for converted videos: 1280 | 1920 (default, 1080p) | 3840 | 0 = original size
   "include_live_photos": false,  // true = also play the short .MOV clips saved with Live Photos
+  "include_subfolders": true,    // media folders include their subfolders (see Subfolders below); false = top level only
   "layout_rotation": {           // show a different layout each day (see Daily layout rotation below)
     "enabled": false,
     "layouts": [],               // layout ids to rotate through; [] = every layout
@@ -434,6 +437,16 @@ To use a different photo folder (e.g. a folder elsewhere on your PC), set `sourc
 "source_path": "C:/Users/yourname/Pictures/Vacations"
 ```
 
+#### Subfolders
+
+A media folder includes the photos and videos in its subfolders too, however deeply nested (trips, years, albums). Slots shuffle through all of them as one list, with the same no-repeat and no-duplicate rules as before.
+
+- **Turning it off.** In **Advanced** mode, turn off **Include subfolders** under the default media folder (`"include_subfolders": false`) to use only the files directly in the folder. A slot with its own folder (**Use global** off in its Media Source section) can set its own **Include subfolders** (`include_subfolders` in the slot). Slots that follow the default folder follow the global setting. The display switches within a few seconds of the change.
+- **What's skipped.** Hidden files and folders (names starting with `.`, including macOS `._` files) are skipped. So are NAS and system folders such as `@eaDir`, `#recycle`, `$RECYCLE.BIN` and `System Volume Information`, and macOS packages: the Photos and Lightroom libraries, apps, and any folder with `Contents/Info.plist`. Pointing PicMe at `~/Pictures` never reads inside `Photos Library.photoslibrary`.
+- **Links.** Symlinked folders (and Windows junctions) are not followed, so a link can't loop or pull in another tree. Symlinked files are shown as before.
+- **Very large folders.** Listings stop after 100,000 photos/videos (`"media_max_files"`) or 32 folder levels (`"media_max_depth"`). Both are top-level settings in `config.json`, not shown in the editor. When a limit is hit the server logs a warning, and a video slot's editor panel says only part of the folder is used. The same files are used each time (folders in name order).
+- **New files.** Folder listings are cached and re-checked cheaply: one check per folder, not per file. A folder of 50,000 photos lists in well under a second. New files are seen the next time a slot re-lists its folder (videos every few minutes). On some network drives, which report changes lazily, this can take up to 5 minutes. Saving in the editor always re-lists.
+
 #### Frames
 
 Each slot has a mat (`mat_color`, `mat_width`) around the photo or video and a frame around the mat. The mat always shows: the photo sits inside it, cropped there in **Fill** mode and letterboxed there in **Fit** mode.
@@ -478,11 +491,11 @@ Which settings each mode shows (the split lives in one table, `EDITOR_SETTINGS` 
 | | Basic | Advanced adds |
 |---|---|---|
 | **Layout** | Layout picker, Rotate layout daily (and today's rotation status) | Which layouts rotate, Switch layout at |
-| **Global** | Default media folder, Wall color | Reset all slots to global |
+| **Global** | Default media folder, Wall color | Include subfolders, Reset all slots to global |
 | **Frame** | Mat color, Frame style | Mat width, Show frame border, Frame color, Frame width |
 | **Metadata** | Show metadata; Text size, Pill size and the fields (Date, Location, Camera…) | Date format, Max metadata pills |
 | **Time-of-Day, Videos** | — | The whole sections (templates, max video size, Live Photo clips) |
-| **Each slot** | Media folder, Photos / Video (and the "no videos" warning), Change every (seconds), Fit / Fill, Show metadata | Use global toggles, Group, Frame, the slot's own metadata settings, video loops and audio, conversion status |
+| **Each slot** | Media folder, Photos / Video (and the "no videos" warning), Change every (seconds), Fit / Fill, Show metadata | Use global toggles, Include subfolders, Group, Frame, the slot's own metadata settings, video loops and audio, conversion status |
 
 In Basic, a slot's media folder is always editable: typing a different folder gives the slot its own folder, and clearing it or typing the default folder (a trailing `/` makes no difference) makes it follow the default again. Like every folder box, it is saved when you press Enter, leave the box or pick a folder with **Browse…**, not while you type. A slot that follows the default shows the default folder, also right after the default changes. Picking Wood or Gold widens a thin frame to suit it; going back to Solid restores the previous width unless you changed it in between.
 
@@ -522,9 +535,9 @@ iPhones record video in HEVC (H.265), usually 10-bit HDR, which Chrome and most 
 - **Which clips are converted:** anything that isn't plain 8-bit H.264 — HEVC, HDR (HLG / Dolby Vision), ProRes, uncommon audio (e.g. iPhone 16 spatial audio) — plus H.264 clips larger than `video_max_edge`. Ordinary H.264 clips are streamed untouched.
 - **Look:** HDR (HLG, PQ, Dolby Vision) is tone-mapped to standard range so clips don't look dark, flat or washed out, and portrait clips stay upright. PicMe generates a tone-mapping lookup table (BT.2100 → SDR with highlight roll-off) into its cache and applies it with ffmpeg's `lut3d` filter, which every ffmpeg build has. On a Mac, decoding and encoding use the GPU (VideoToolbox); SDR clips are converted entirely on the GPU.
 - **Size:** converted clips are scaled down to `video_max_edge` (default 1920, i.e. 1080p; set in the editor under *Videos → Max video size*). Several 4K videos at once overwhelm most TV decoders. Clips are never scaled up, and frame rates above 60 fps (slo-mo) are capped at 60.
-- **Background, one at a time:** conversion starts when PicMe starts (for every video slot's folder) and whenever a folder is opened in the editor or saved. It runs one clip at a time at low priority, shortest first. Until a clip is ready it's left out of the rotation; the display picks it up within a few minutes without a reload. The editor shows progress for the selected video slot, e.g. *"12 of 40 videos ready — converting IMG_1234.MOV (45%)"*.
+- **Background, one at a time:** conversion starts when PicMe starts (for every video slot's folder, including its subfolders unless they're turned off) and whenever a folder is opened in the editor or saved. It runs one clip at a time at low priority, shortest first. Until a clip is ready it's left out of the rotation; the display picks it up within a few minutes without a reload. The editor shows progress for the selected video slot, e.g. *"12 of 40 videos ready — converting IMG_1234.MOV (45%)"*.
 - **Cache:** converted copies are stored next to the HEIC cache, in a `video` folder (`~/Library/Caches/PicMe/video` on macOS, `%LOCALAPPDATA%\PicMe\Cache\video` on Windows, `~/.cache/picme/video` on Linux, or `$PICME_CACHE_DIR/video`). Your originals are only ever read, and nothing is written into your video folders. Expect roughly 45 MB per minute of 1080p video. Copies whose original is deleted or edited are cleaned up at startup. The folder is safe to delete; it's rebuilt as needed.
-- **Live Photos:** the 2–3 second `.MOV` an iPhone saves with each Live Photo would flicker by in a video slot, so a `.MOV`/`.MP4` of 4 seconds or less with the same name as a HEIC/JPEG in the same folder is hidden. A longer clip that happens to share a photo's name is still shown. Turn on *Include Live Photo clips* in the editor (`include_live_photos`) to show them anyway.
+- **Live Photos:** the 2–3 second `.MOV` an iPhone saves with each Live Photo would flicker by in a video slot, so a `.MOV`/`.MP4` of 4 seconds or less with the same name as a HEIC/JPEG in the same folder is hidden (a photo with that name in another subfolder doesn't count). A longer clip that happens to share a photo's name is still shown. Turn on *Include Live Photo clips* in the editor (`include_live_photos`) to show them anyway.
 - **A clip that can't be converted** (e.g. a damaged file) is skipped, and the editor counts it. Replacing or editing the file retries it.
 
 **Installing ffmpeg.** PicMe looks for `ffmpeg` and `ffprobe` on your `PATH`, then in Homebrew's folders (`/opt/homebrew/bin`, `/usr/local/bin`), so it's found even when PicMe is started at login.
