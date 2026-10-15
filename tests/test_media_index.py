@@ -286,3 +286,4 @@ def test_large_tree_walk_time(tmp_path, capsys):
         print(f"\n50k files / 1,010 folders: cold walk {t1 - t0:.2f}s, warm revalidation {t2 - t1:.3f}s")
     assert len(cold.files) == 50_000 and warm is cold
     assert t1 - t0 < 3 and t2 - t1 < 0.2
+

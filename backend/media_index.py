@@ -240,11 +240,15 @@ def walk(root: str | Path, recursive: bool = True, *, extensions, max_depth: int
 
 
 def _prune(now: float) -> None:
-    stale = [k for k, r in _results.items() if now - r.used_at > UNUSED_S]
-    if not stale:
-        return
-    for k in stale:
-        del _results[k]
-    live = {id(d) for r in _results.values() for d in r.dirs}
-    for path in [p for p, d in _dirs.items() if id(d) not in live]:
-        del _dirs[path]
+    # Walks of other folders add to _dirs/_results meanwhile (under their own locks): iterate
+    # over snapshots, which list() takes without letting another thread in
+    with _locks_guard:
+        stale = [k for k, r in list(_results.items()) if now - r.used_at > UNUSED_S]
+        if not stale:
+            return
+        for k in stale:
+            _results.pop(k, None)
+            _locks.pop(k, None)
+        live = {id(d) for r in list(_results.values()) for d in r.dirs}
+        for path in [p for p, d in list(_dirs.items()) if id(d) not in live]:
+            _dirs.pop(path, None)
