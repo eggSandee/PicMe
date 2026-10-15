@@ -1,0 +1,18 @@
+{
+  "id": "gallery-salon",
+  "name": "Gallery Salon",
+  "description": "One frame and mat, salon-style: mixed sizes, a heart, a circle, a hexagon",
+  "gallery": true,
+  "slots": [
+    { "id": 1, "grid_area": "1 / 1 / 5 / 4" },
+    { "id": 2, "grid_area": "1 / 4 / 3 / 6", "shape": "heart" },
+    { "id": 3, "grid_area": "1 / 6 / 3 / 9" },
+    { "id": 4, "grid_area": "3 / 4 / 5 / 7", "shape": "rounded" },
+    { "id": 5, "grid_area": "3 / 7 / 5 / 9", "shape": "circle" },
+    { "id": 6, "grid_area": "5 / 1 / 7 / 4" },
+    { "id": 7, "grid_area": "5 / 4 / 7 / 7" },
+    { "id": 8, "grid_area": "5 / 7 / 7 / 9", "shape": "hexagon" }
+  ],
+  "grid_template_columns": "1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr",
+  "grid_template_rows": "1fr 1fr 1fr 1fr 1fr 1fr"
+}

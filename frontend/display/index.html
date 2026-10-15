@@ -155,6 +155,8 @@
   <script src="/display/layout-rotation.js"></script>
   <script src="/display/pill-size.js"></script>
   <script src="/assets/frames/frames.js"></script>
+  <script src="/display/shapes.js"></script>
+  <script src="/display/gallery.js"></script>
   <script>
     const API = '';  // same origin
 
@@ -162,6 +164,8 @@
     let layouts = null;
     let activeSlots = [];
     let activeLayoutId = null;  // the layout on screen (today's pick when rotation is on)
+    let activeLayout = null;
+    let activeMode = 'slots';   // 'gallery': one frame and mat, slots are openings (gallery.js)
 
     async function fetchJSON(url) {
       const r = await fetch(url);
@@ -176,9 +180,52 @@
       setTimeout(() => { el.style.display = 'none'; }, 6000);
     }
 
+    // A slot's media and pill overlay — the same for a separate-frame slot and a gallery opening
+    function makeSlotMedia() {
+      // Mat/frame wrapper — provides the matte border and optional outer frame
+      const matFrame = document.createElement('div');
+      matFrame.className = 'mat-frame';
+
+      // Two img elements for crossfade, inside the mat
+      const imgA = document.createElement('img');
+      const imgB = document.createElement('img');
+      imgA.className = 'visible';
+      imgB.className = 'hidden';
+      matFrame.append(imgA, imgB);
+
+      // Two video elements for video-mode slots, crossfaded the same way.
+      // No `loop` attribute — loops are counted manually in the `ended` handler.
+      const vidA = document.createElement('video');
+      const vidB = document.createElement('video');
+      for (const v of [vidA, vidB]) {
+        v.muted = true;
+        v.playsInline = true;
+        v.setAttribute('playsinline', '');
+        v.preload = 'auto';
+      }
+      vidA.className = 'visible';
+      vidB.className = 'hidden';
+      matFrame.append(vidA, vidB);
+
+      // Metadata overlay sits above the mat, anchored to the slot.
+      // Pills are created dynamically in updateOverlay so hidden fields take no space.
+      const overlay = document.createElement('div');
+      overlay.className = 'slot-overlay';
+
+      return { matFrame, overlay };
+    }
+
     function applyLayout(layout, slotCount) {
       const collage = document.getElementById('collage');
       collage.dataset.layout = layout.id;
+      collage.dataset.mode = activeMode;
+
+      // Gallery mat: one frame and mat, each slot an opening (same #slot-N / .mat-frame DOM)
+      if (activeMode === 'gallery') {
+        PicMeGallery.build(collage, layout, slotCount, { makeSlot: makeSlotMedia });
+        return;
+      }
+
       collage.style.gridTemplateColumns = layout.grid_template_columns;
       collage.style.gridTemplateRows = layout.grid_template_rows;
 
@@ -189,37 +236,7 @@
         div.className = 'slot';
         div.id = `slot-${slotDef.id}`;
         div.style.gridArea = slotDef.grid_area;
-
-        // Mat/frame wrapper — provides the matte border and optional outer frame
-        const matFrame = document.createElement('div');
-        matFrame.className = 'mat-frame';
-
-        // Two img elements for crossfade, inside the mat
-        const imgA = document.createElement('img');
-        const imgB = document.createElement('img');
-        imgA.className = 'visible';
-        imgB.className = 'hidden';
-        matFrame.append(imgA, imgB);
-
-        // Two video elements for video-mode slots, crossfaded the same way.
-        // No `loop` attribute — loops are counted manually in the `ended` handler.
-        const vidA = document.createElement('video');
-        const vidB = document.createElement('video');
-        for (const v of [vidA, vidB]) {
-          v.muted = true;
-          v.playsInline = true;
-          v.setAttribute('playsinline', '');
-          v.preload = 'auto';
-        }
-        vidA.className = 'visible';
-        vidB.className = 'hidden';
-        matFrame.append(vidA, vidB);
-
-        // Metadata overlay sits above the mat, anchored to the slot.
-        // Pills are created dynamically in updateOverlay so hidden fields take no space.
-        const overlay = document.createElement('div');
-        overlay.className = 'slot-overlay';
-
+        const { matFrame, overlay } = makeSlotMedia();
         div.append(matFrame, overlay);
         collage.appendChild(div);
       }
@@ -257,10 +274,24 @@
 
     function applyTodStyles() {
       const tod = getTimeOfDayTemplate();
-      document.getElementById('collage').style.background = tod?.wall_color ?? config.wall_color ?? '#1a1a1a';
-      for (const slotCfg of activeSlots) {
-        const slotEl = document.getElementById(`slot-${slotCfg.id}`);
-        if (slotEl) applyFrameStyle(slotEl, slotCfg);
+      const collage = document.getElementById('collage');
+      collage.style.background = tod?.wall_color ?? config.wall_color ?? '#1a1a1a';
+      if (activeMode === 'gallery') {
+        // One frame and mat for the whole display (time of day changes their colours only);
+        // per-slot frame settings apply on separate-frame layouts
+        const openings = PicMeGallery.applyStyles(collage, PicMeGallery.resolveGallery(config, tod), activeLayout, activeSlots);
+        for (const slotCfg of activeSlots) {
+          const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+          if (!slotEl) continue;
+          applyFit(slotEl, slotCfg);
+          // Pills are sized for the part of the opening they may sit in
+          applyPillStyle(slotEl, slotCfg, openings[slotCfg.id]?.safe);
+        }
+      } else {
+        for (const slotCfg of activeSlots) {
+          const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+          if (slotEl) applyFrameStyle(slotEl, slotCfg);
+        }
       }
       lastTodPeriod = getTodPeriodName();
     }
@@ -312,11 +343,16 @@
         slotEl.style.removeProperty('--pill-inset');
       }
 
-      const fit = slotCfg.fill_mode === 'cover' ? 'cover' : 'contain';
-      matFrame.querySelectorAll('img, video').forEach(el => el.style.objectFit = fit);
+      applyFit(slotEl, slotCfg);
 
       // Pill size depends on the space inside the frame, so it follows every frame change
       applyPillStyle(slotEl, slotCfg);
+    }
+
+    // Fit (contain, letterboxed) or Fill (cover, cropped) — per slot, in either mode
+    function applyFit(slotEl, slotCfg) {
+      const fit = slotCfg.fill_mode === 'cover' ? 'cover' : 'contain';
+      slotEl.querySelectorAll('.mat-frame img, .mat-frame video').forEach(el => el.style.objectFit = fit);
     }
 
     // ── Metadata pill size (README → Metadata pills) ──
@@ -333,12 +369,13 @@
     }
 
     // Set the slot's pill tokens for the space inside its frame, then re-fit its pills.
-    // Without pill-size.js the CSS fallbacks apply.
-    function applyPillStyle(slotEl, slotCfg) {
+    // `box` ({w, h}): the area the pills sit in when it isn't the whole slot (a gallery
+    // opening's safe rect). Without pill-size.js the CSS fallbacks apply.
+    function applyPillStyle(slotEl, slotCfg, box) {
       if (window.PicMePills) {
         const inset = pillInset(slotEl);
-        const w = Math.max(0, slotEl.clientWidth - 2 * inset);
-        const h = Math.max(0, slotEl.clientHeight - 2 * inset);
+        const w = Math.max(0, (box ? box.w : slotEl.clientWidth) - 2 * inset);
+        const h = Math.max(0, (box ? box.h : slotEl.clientHeight) - 2 * inset);
         const tokens = PicMePills.tokens(PicMePills.resolve(effectiveMeta(slotCfg)), w, h);
         for (const [name, value] of Object.entries(tokens)) slotEl.style.setProperty(name, value);
       }
@@ -990,6 +1027,11 @@
           window.location.reload();
           return;
         }
+        // So does switching the layout between separate frames and a gallery mat
+        if (window.PicMeGallery && PicMeGallery.effectiveMode(fresh, activeLayout) !== activeMode) {
+          window.location.reload();
+          return;
+        }
 
         // Slot mode, timer and group changes affect element setup and timers — reload too.
         // Slots the current layout doesn't show are kept up to date below without a reload.
@@ -1026,8 +1068,8 @@
         const oldSlots = config.slots || [];
         Object.assign(config, fresh);
         config.slots = oldSlots;
-        // checkRotation() reads these, so a removed key must not linger
-        for (const key of ['layout_rotation', 'daily_layout_rotation']) {
+        // checkRotation() and the gallery read these, so a removed key must not linger
+        for (const key of ['layout_rotation', 'daily_layout_rotation', 'gallery', 'layout_modes']) {
           if (!(key in fresh)) delete config[key];
         }
         // Replace each slot's settings, so a key the editor dropped (e.g. after swapping two
@@ -1134,6 +1176,8 @@
       const layout = PicMeRotation.resolveLayout(config, layouts);
       if (!layout) { showError('No layouts found.'); return; }
       activeLayoutId = layout.id;
+      activeLayout = layout;
+      activeMode = window.PicMeGallery ? PicMeGallery.effectiveMode(config, layout) : 'slots';
 
       // Pad config.slots up to the layout's slot count using slot 1's config as a template
       const slotTemplate = config.slots[0] || { mode: 'photos', source: 'local', source_path: 'photos', cycle_seconds: 30 };
@@ -1174,7 +1218,7 @@
       }, 30000);
     }
 
-    // Decorative frame widths and pill sizes depend on slot size, so re-fit them after a resize
+    // Decorative frame widths, gallery openings and pill sizes depend on size, so re-fit them after a resize
     let resizeTimer = null;
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);

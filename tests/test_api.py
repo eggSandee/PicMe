@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 import main
-from conftest import EXIF_DATE_ISO, LAYOUTS_DIR, make_config
+from conftest import EXIF_DATE_ISO, LAYOUTS_DIR, REPO_ROOT, make_config
 
 
 # --- /api/config ---
@@ -79,6 +80,27 @@ def test_video_folders_include_dormant_slots(tmp_path):
 
 def test_default_config_includes_subfolders():
     assert main.default_config()["include_subfolders"] is True
+
+
+def _gallery_js_defaults() -> dict:
+    """GALLERY_DEFAULTS as written in frontend/display/gallery.js."""
+    text = (REPO_ROOT / "frontend" / "display" / "gallery.js").read_text(encoding="utf-8")
+    body = text.split("const GALLERY_DEFAULTS = {", 1)[1].split("};", 1)[0]
+    values = {}
+    for key, raw in re.findall(r"^\s*(\w+): ([^,]+),", body, re.M):
+        if raw in ("true", "false"):
+            values[key] = raw == "true"
+        else:
+            values[key] = raw.strip("'") if raw.startswith("'") else int(raw)
+    return values
+
+
+def test_default_config_has_gallery_settings_matching_the_renderer():
+    """A first run writes the gallery block the display falls back to for older configs."""
+    cfg = main.default_config()
+    assert cfg["layout_modes"] == {}
+    assert cfg["gallery"] == _gallery_js_defaults()
+    assert cfg["gallery"]["frame_style"] in ("solid", "wood", "gold")
 
 
 @pytest.mark.parametrize("global_value, slot, expected", [

@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 import media_index
 import transcode
+from layouts import load_layouts
 from heic import HEIC_EXTENSIONS, HeicConversionError, get_converted, is_heic
 from metadata.exif import get_metadata
 from metadata.video import get_video_metadata
@@ -85,6 +86,22 @@ DEFAULT_CONFIG = {
     },
     # Daily layout rotation (README → Daily layout rotation); an empty list means every layout
     "layout_rotation": {"enabled": False, "layouts": [], "change_at": "04:00"},
+    # Gallery mat (README → Gallery mat): one frame and mat, slots are openings. Used by gallery
+    # layouts and any layout layout_modes switches to "gallery"; px at 1920x1080
+    "gallery": {
+        "mat_color": "#f4f1ea",
+        "outer_margin": 64,
+        "gutter": 28,
+        "wall_margin": 12,
+        "bevel": True,
+        "bevel_width": 4,
+        "bevel_color": "#fbfaf6",
+        "show_frame": True,
+        "frame_style": "wood",
+        "frame_color": "#2c2318",
+        "frame_width": 48,
+    },
+    "layout_modes": {},  # layout id -> "gallery" | "slots", overriding the layout's own mode
     "source_path": "photos",  # relative to the server's cwd — run.sh / run.bat start in the repo root
     "include_subfolders": True,  # media folders include their subfolders (README → Subfolders)
     "slots": [
@@ -211,10 +228,7 @@ def browse_directory(path: str = ""):
 
 @app.get("/api/layouts")
 def get_layouts():
-    layouts = []
-    for f in sorted(LAYOUTS_PATH.glob("*.json")):
-        layouts.append(json.loads(f.read_text()))
-    return layouts
+    return load_layouts(LAYOUTS_PATH)  # invalid files are skipped with a warning
 
 
 @app.get("/api/images/random")

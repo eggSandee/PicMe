@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from conftest import LANDSCAPE, PORTRAIT, _exif_bytes, _make_image, editor_mode_init_js, make_config
+from conftest import LANDSCAPE, LAYOUTS_DIR, PORTRAIT, _exif_bytes, _make_image, editor_mode_init_js, make_config
 
 pytestmark = pytest.mark.e2e
 
@@ -33,7 +33,14 @@ from test_browser import VIEWPORT, PageWatcher, browser, fresh_install, server  
 
 TZ = "America/New_York"
 TWO = ["classic-4", "classic-6"]
-SLOT_COUNTS = {"classic-4": 4, "classic-6": 6, "hero-center": 5, "hero-left": 5, "landscape-strip": 3}
+# Every layout in /api/layouts order (file name order), with its slot count
+SLOT_COUNTS = {p.stem: len(json.loads(p.read_text())["slots"]) for p in sorted(LAYOUTS_DIR.glob("*.json"))}
+ALL = list(SLOT_COUNTS)
+
+
+def all_on(day: int) -> str:
+    """The layout an "every layout" rotation shows on rotation day `day` (days since 1970-01-01)."""
+    return ALL[day % len(ALL)]
 
 
 def local(y, mo, d, h=12, mi=0, s=0) -> dt.datetime:
@@ -191,9 +198,10 @@ def test_resolver_eligible_list_rules(resolver):
     assert resolver(rot(["classic-6", "classic-4", "classic-6"]), 2026, 10, 13) == "classic-6"
     assert resolver(rot(["classic-6", "classic-4"]), 2026, 10, 14) == "classic-4"
     # Empty list means every layout
-    assert resolver(rot([]), 2026, 10, 12) == "hero-left"        # 20738 % 5 = 3
-    assert resolver(rot([]), 2026, 10, 13) == "landscape-strip"  # 20739 % 5 = 4
-    assert resolver(rot([]), 2026, 10, 14) == "classic-4"        # 20740 % 5 = 0
+    assert resolver(rot([]), 2026, 10, 12) == all_on(20738)
+    assert resolver(rot([]), 2026, 10, 13) == all_on(20739)
+    assert resolver(rot([]), 2026, 10, 14) == all_on(20740)
+    assert len({all_on(d) for d in range(20738, 20738 + len(ALL))}) == len(ALL)  # each layout in turn
     # One eligible layout is shown every day; none valid falls back to the base layout
     assert resolver(rot(["hero-left"]), 2026, 10, 13) == "hero-left"
     assert resolver(rot(["hero-left"]), 2026, 10, 14) == "hero-left"
@@ -214,9 +222,9 @@ def test_resolver_disabled_empty_and_garbage_configs(resolver):
 
 def test_resolver_legacy_flag_rotates_all_layouts_at_midnight(resolver):
     legacy = {"layout": "hero-center", "daily_layout_rotation": True}
-    assert resolver(legacy, 2026, 10, 12, 23, 59) == "hero-left"
-    assert resolver(legacy, 2026, 10, 13, 0, 0) == "landscape-strip"
-    assert resolver(legacy, 2026, 10, 13, 3, 0) == "landscape-strip"
+    assert resolver(legacy, 2026, 10, 12, 23, 59) == all_on(20738)
+    assert resolver(legacy, 2026, 10, 13, 0, 0) == all_on(20739)
+    assert resolver(legacy, 2026, 10, 13, 3, 0) == all_on(20739)
     # layout_rotation wins over the legacy flag when both are present
     both = legacy | {"layout_rotation": {"enabled": False, "layouts": [], "change_at": "04:00"}}
     assert resolver(both, 2026, 10, 13) == "hero-center"
@@ -299,10 +307,10 @@ def test_display_legacy_flag_rotates_all_layouts_at_midnight(server, open_at, ro
     rotation_config(layouts=None, slots=4, daily_layout_rotation=True)
     w = open_at(f"{server}/display/", at=local(2026, 10, 12, 23, 59, 30))
     page = w.page
-    # Hand-written 4-slot config: the 5-slot day pads from slot 1 (old code picked classic-4 by day-of-year)
-    _wait_for_layout(page, "hero-left")
+    # Hand-written 4-slot config: bigger layouts pad from slot 1 (old code picked classic-4 by day-of-year)
+    _wait_for_layout(page, all_on(20738))
     page.clock.run_for(60_000)
-    _wait_for_layout(page, "landscape-strip")
+    _wait_for_layout(page, all_on(20739))
     assert w.errors == []
 
 
@@ -439,8 +447,8 @@ def test_editor_rotation_controls(server, open_at, rotation_config):
     assert page.evaluate(PICKS_JS) == {k: True for k in SLOT_COUNTS}
     saved = _saved(path, lambda c: c["layout_rotation"]["enabled"] is True)
     assert saved["layout_rotation"]["layouts"] == []  # all ticked is stored as "all"
-    # Slots 5-6 now exist for the 6-slot layout: photo slots on the global settings
-    assert len(saved["slots"]) == 6
+    # Slots up to the biggest layout now exist: photo slots on the global settings
+    assert len(saved["slots"]) == max(SLOT_COUNTS.values())
     for slot in saved["slots"][4:]:
         assert slot["mode"] == "photos"
         assert slot["use_global"] == {"source": True, "metadata": True, "frame": True}
@@ -448,7 +456,7 @@ def test_editor_rotation_controls(server, open_at, rotation_config):
         assert slot["cycle_seconds"] == 300
     assert saved["slots"][0]["mode"] == "video"
 
-    for lid in ("hero-center", "hero-left", "landscape-strip"):
+    for lid in (l for l in ALL if l not in TWO):
         _click(page, f".rotation-pick[data-id={lid}]")
     saved = _saved(path, lambda c: c["layout_rotation"]["layouts"] == TWO)
     assert saved["layout"] == "classic-4"  # ticking isn't selecting the base layout
@@ -535,14 +543,14 @@ def test_editor_migrates_legacy_flag(server, open_at, rotation_config):
     assert page.locator("#g-rotation-enabled").is_checked()
     assert page.evaluate(PICKS_JS) == {k: True for k in SLOT_COUNTS}
     assert page.locator("#g-rotation-change-at").input_value() == "00:00"
-    assert page.locator(".layout-thumb:has(.today-badge)").get_attribute("data-id") == "landscape-strip"
+    assert page.locator(".layout-thumb:has(.today-badge)").get_attribute("data-id") == all_on(20739)
 
     page.locator("#g-wall-color").evaluate(
         "el => { el.value = '#336699'; el.dispatchEvent(new Event('input', { bubbles: true })); }")
     saved = _saved(path, lambda c: c.get("wall_color") == "#336699")
     assert "daily_layout_rotation" not in saved
     assert saved["layout_rotation"] == {"enabled": True, "layouts": [], "change_at": "00:00"}
-    assert len(saved["slots"]) == 6
+    assert len(saved["slots"]) == max(SLOT_COUNTS.values())
     assert w.errors == []
 
 
