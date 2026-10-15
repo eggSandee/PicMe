@@ -502,6 +502,13 @@ def test_switching_a_layout_to_gallery_reloads_and_colours_patch_in_place(write_
     _until(page, "() => getComputedStyle(document.querySelector('.gallery-mat')).backgroundColor === 'rgb(255, 160, 0)'", timeout=8)
     assert page.evaluate("window.__marker") == 2  # patched, not reloaded
     assert near(pixel(shot(page), 12 + 40 + 32, 540), (255, 160, 0))
+    # A slot's shape changes in place too, and dropping it goes back to the layout's own
+    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, gallery={"mat_color": "#ffa000"},
+              slot_overrides={1: {"shape": "heart"}})
+    _until(page, "() => document.getElementById('slot-1').dataset.shape === 'heart'", timeout=8)
+    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, gallery={"mat_color": "#ffa000"})
+    _until(page, "() => document.getElementById('slot-1').dataset.shape === 'rect'", timeout=8)
+    assert page.evaluate("window.__marker") == 2
     # And back to separate frames: reload again
     write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "slots"})
     _until(page, "() => document.querySelector('#collage') && !document.getElementById('collage').classList.contains('gallery') && document.querySelectorAll('.slot').length === 4", timeout=8)
