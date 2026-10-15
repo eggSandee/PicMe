@@ -273,6 +273,19 @@ def test_images_list_reports_truncation(client, nested_library):
     assert r["count"] == 2 and r["truncated"] is True
 
 
+def test_images_list_reports_depth_cap_as_truncated(client, tmp_path):
+    deep = tmp_path / "root" / "a" / "b"
+    deep.mkdir(parents=True)
+    (tmp_path / "root" / "top.jpg").write_bytes(b"x")
+    (deep / "deep.jpg").write_bytes(b"x")
+    (deep / "deep.mp4").write_bytes(b"x")
+    main.media_index.configure({"media_max_depth": 1})
+    r = client.get("/api/images/list", params={"folder": str(tmp_path / "root")}).json()
+    assert r["images"] == [str(tmp_path / "root" / "top.jpg")] and r["truncated"] is True
+    r = client.get("/api/images/list", params={"folder": str(tmp_path / "root"), "kind": "video", "peek": "1"}).json()
+    assert r["truncated"] is True
+
+
 def test_images_random_picks_from_subfolders(client, tmp_path):
     nested = tmp_path / "root" / "2024" / "album"
     nested.mkdir(parents=True)

@@ -239,11 +239,13 @@ def image_metadata(path: str):
 
 @app.get("/api/images/list")
 def list_images_api(folder: str, kind: str = "photos", peek: bool = False, recursive: bool = True):
-    """``truncated``: the folder holds more than media_max_files, so only the first are listed."""
+    """``truncated``: only part of the folder is listed — it holds more than media_max_files, or
+    has folders nested deeper than media_max_depth."""
     path = Path(folder)
     if kind != "video":
         images = list_media(folder, kind, recursive)
-        truncated = bool(images) and media_index.walk(path, recursive, extensions=SUPPORTED_EXTENSIONS).truncated
+        walk = media_index.walk(path, recursive, extensions=SUPPORTED_EXTENSIONS)
+        truncated = walk.truncated or walk.depth_capped
         return {"images": images, "count": len(images), "truncated": truncated}
     # Listing also queues clips that need converting, so a folder opened in the editor starts
     # converting. `pending` lets the editor tell "no videos" from "videos still converting".
@@ -253,7 +255,11 @@ def list_images_api(folder: str, kind: str = "photos", peek: bool = False, recur
     images = [str(c.path) for c in clips if c.state == transcode.READY]
     return {"images": images, "count": len(images),
             "pending": sum(c.state == transcode.PENDING for c in clips),
-            "truncated": is_dir and transcode.walk_videos(path, recursive).truncated}
+            "truncated": is_dir and _partial(transcode.walk_videos(path, recursive))}
+
+
+def _partial(walk: media_index.Walk) -> bool:
+    return walk.truncated or walk.depth_capped
 
 
 @app.get("/api/videos/status")
