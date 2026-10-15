@@ -112,6 +112,20 @@ PicMe/
 
 ---
 
+### Milestone 4.5 — Gallery Mat
+*Goal: One big frame around the whole display, with the photos in openings cut into a single mat — some larger than others, some in fun shapes.*
+
+- [x] Gallery mat mode: one outer frame (solid, wood or gold) and one mat; slots become openings separated only by mat (see [Gallery mat](#gallery-mat))
+- [x] Mat colour, margin around the openings and gutter between them; optional bevel-cut edge on each opening
+- [x] Six gallery layouts with asymmetric openings and preset shapes (`gallery-12`, `-feature`, `-mosaic`, `-cameo`, `-arches`, `-salon`)
+- [x] Opening shapes: rectangle, rounded, oval, circle, arch, hexagon, heart — per layout, and per slot in the editor
+- [x] Any layout can use separate frames or a gallery mat; daily rotation can mix both
+- [x] Editor: Frames switch, Gallery Mat settings, shape picker, and a preview drawn by the display's own renderer
+- [x] Layout files are checked when loaded; an invalid file is skipped instead of breaking the display
+- [ ] Later: custom opening sizes (a geometry editor), the `custom` layout, a scalloped frame style
+
+---
+
 ### Milestone 5 — Google Photos Integration
 *Goal: Pull photos directly from a user's Google Photos library.*
 
@@ -377,7 +391,21 @@ Top-level settings:
     "enabled": false,
     "layouts": [],               // layout ids to rotate through; [] = every layout
     "change_at": "04:00"         // local time on the display when the next day's layout appears
-  }
+  },
+  "gallery": {                   // one frame and mat for gallery-mat layouts (see Gallery mat below); px at 1920x1080
+    "mat_color": "#f4f1ea",
+    "outer_margin": 64,          // mat between the frame and the openings (0–120)
+    "gutter": 28,                // mat between neighbouring openings (0–80)
+    "wall_margin": 12,           // wall around the frame (0–64)
+    "bevel": true,               // a light bevel-cut edge around each opening
+    "bevel_width": 4,            // (0–16)
+    "bevel_color": "#fbfaf6",
+    "show_frame": true,
+    "frame_style": "wood",       // "solid" | "wood" | "gold"
+    "frame_color": "#2c2318",    // solid frames only
+    "frame_width": 48            // (0–160)
+  },
+  "layout_modes": {}             // layout id -> "gallery" | "slots", e.g. { "classic-4": "gallery" }
 }
 ```
 
@@ -390,7 +418,8 @@ Per-slot `metadata` and `frame` are both optional. If omitted, the slot inherits
   "cycle_seconds": 30,
   "use_global": { "metadata": false },      // needed for the slot's own metadata settings to apply
   "metadata": { "show_camera": true, "text_size": "large" },  // inherits everything else from metadata_defaults
-  "frame": { "mat_color": "#ffffff", "frame_style": "gold" }  // white mat and a gold frame on this slot only; inherits frame_defaults for the rest
+  "frame": { "mat_color": "#ffffff", "frame_style": "gold" },  // white mat and a gold frame on this slot only; inherits frame_defaults for the rest
+  "shape": "heart"                           // this position's opening shape on gallery-mat layouts (see Gallery mat below)
 }
 ```
 
@@ -468,6 +497,21 @@ Each slot has a mat (`mat_color`, `mat_width`) around the photo or video and a f
 
 `.gitignore` ignores `*.png` to keep photos out of the repo, with an exception for `frontend/assets/frames/`.
 
+#### Gallery mat
+
+Instead of a frame around every slot, a layout can show **one frame around the whole display and one mat** filling it, with each slot an opening cut into the mat — like a multi-photo frame from a shop. The openings are separated only by mat.
+
+- **Which layouts.** The `gallery-*` layouts are designed for it: some openings are bigger than others, and some have shapes. Any other layout can use it too: pick the layout and set **Frames** (under the layout picker) to **Gallery mat**, which saves `"layout_modes": { "classic-4": "gallery" }`. **Separate** sets a gallery layout back to a frame per slot (empty cells then show the wall, and shapes are ignored). With daily rotation on, Advanced mode adds a **Mat** chip on each layout, so a rotation can mix gallery-mat days and separate-frame days.
+- **Mat and frame.** The **Gallery Mat** section in the editor (or `"gallery"` in `config.json`) sets the mat colour, the frame style (solid, wood or gold — the same frames as slots), and in Advanced mode the frame colour and width, the mat around the openings (`outer_margin`), the mat between openings (`gutter`), the wall around the frame (`wall_margin`) and the bevel. Sizes are px on a 1920×1080 screen. On a smaller screen the margins, gutter and frame shrink so the openings keep most of the space (margin up to 12%, gutter 8%, frame a sixth of the shortest side).
+- **Bevel.** Each opening gets a thin light edge, like the slanted cut of real mat board, lit from the top left, and the mat casts a soft shadow onto the photo. Turn it off with **Bevelled openings** (`"bevel": false`).
+- **Shapes.** `rect` (default), `rounded`, `ellipse` (oval), `circle`, `arch`, `hexagon` and `heart`. A gallery layout can give an opening a shape; pick **Opening shape** in a slot's settings to change it (`"shape"` in the slot), or **Layout default** to go back. Circles, hexagons and hearts keep their proportions and sit centred in their space; arches are never much wider than tall. The photo or video fills the shape; **Fill** usually looks best, since **Fit** keeps the whole photo inside the shape's box and the corners outside the shape are hidden.
+- **Shapes stay with the position.** The shape is the hole in the mat, not part of the photo, so dragging slots to swap them moves their photos and settings but not the shapes (see [Rearranging slots](#rearranging-slots)). **Reset all slots** leaves shapes alone too.
+- **Pills.** Metadata pills sit inside the shape, and are sized and fitted to the part of it they can use — a small heart shows fewer pills (never dropping the date), and long text scrolls inside the shape as on any slot.
+- **Time of day.** Day and night periods change the gallery's mat colour, frame colour and frame style; widths stay as set in the Gallery Mat section.
+- **Per-slot frames.** A slot's own Frame settings apply on separate-frame layouts and are ignored on gallery-mat days (there is one mat). Fit / Fill applies in both.
+- **Videos in shapes.** Video slots work in any opening. Rectangles are never clipped; a shaped video opening is, which a TV may draw less efficiently — prefer rectangles for video on older TVs. As with any layout, keep the number of video slots small (`gallery-12` has 12 openings).
+- **Custom layouts.** Layout files are checked when the server loads them (fr-only tracks, 1–12 slots numbered in order, no overlaps, every cell covered unless `"gallery": true`, known shapes); a file that fails is skipped with a warning in the server log rather than breaking the display. Custom opening sizes and the `custom` layout are planned for later.
+
 #### Daily layout rotation
 
 Turn on **Rotate layout daily** in the editor's Layout section, then (in **Advanced** mode) tick the layouts to rotate through. In Basic mode every layout rotates, unless Advanced has narrowed the list. The display shows one of them each day:
@@ -478,11 +522,12 @@ Turn on **Rotate layout daily** in the editor's Layout section, then (in **Advan
 - **Base layout:** clicking a layout still sets `layout`, which is shown when rotation is off and is the layout the editor preview shows.
 - **Slots:** slot *N* is always the same slot on every layout. A layout with fewer slots shows slots 1 to its slot count; the rest are kept with their settings and come back on days with a bigger layout. When rotation is on, the editor creates slots up to the biggest ticked layout (as photo slots using the global settings) and lists the extra slots under the preview so you can edit them.
 - **Video slots and groups:** a video slot plays only on days its position is visible, but its folder is still converted in the background so it's ready. A larger layout can show more video slots at once, so keep their number small. A group only cycles the slots that are visible that day, at the timer of its first visible slot.
+- **Gallery mat days:** a rotation can mix gallery-mat and separate-frame layouts; each day uses that layout's Frames setting (see [Gallery mat](#gallery-mat)). Rotating through every layout (`"layouts": []`) includes the gallery layouts.
 - **Old configs:** `"daily_layout_rotation": true` from earlier versions still works (all layouts, switching at midnight). The editor converts it to `layout_rotation` the next time it saves.
 
 #### Rearranging slots
 
-To move a slot's content to another position, drag it onto that slot in the editor's layout preview; the two slots swap all their settings (mode, folder, frame, metadata, timer, group, fill and video options). Slot numbers stay with the positions, so slot 1 is still `config.slots[0]`. On a phone or tablet, press and hold a slot for a moment, then drag; a quick swipe scrolls the page as usual. With daily rotation on, drop a slot on one of the **Edit slot N** buttons under the preview to swap it with a slot that only shows on some days (or drag the button onto the preview). Dragging back undoes a swap. The change saves automatically, and open displays pick it up within a few seconds: a swap that changes a visible slot's mode, timer, group or video folder reloads the display, anything else is applied in place.
+To move a slot's content to another position, drag it onto that slot in the editor's layout preview; the two slots swap all their settings (mode, folder, frame, metadata, timer, group, fill and video options). Slot numbers stay with the positions, so slot 1 is still `config.slots[0]`. So do gallery-mat opening shapes: a heart-shaped opening stays a heart and shows whatever is dragged into it. On a phone or tablet, press and hold a slot for a moment, then drag; a quick swipe scrolls the page as usual. With daily rotation on, drop a slot on one of the **Edit slot N** buttons under the preview to swap it with a slot that only shows on some days (or drag the button onto the preview). Dragging back undoes a swap. The change saves automatically, and open displays pick it up within a few seconds: a swap that changes a visible slot's mode, timer, group or video folder reloads the display, anything else is applied in place.
 
 #### Editor modes
 
@@ -496,12 +541,13 @@ Which settings each mode shows (the split lives in one table, `EDITOR_SETTINGS` 
 
 | | Basic | Advanced adds |
 |---|---|---|
-| **Layout** | Layout picker, Rotate layout daily (and today's rotation status) | Which layouts rotate, Switch layout at |
+| **Layout** | Layout picker, Frames (Separate / Gallery mat), Rotate layout daily (and today's rotation status) | Which layouts rotate, Switch layout at, Mat chips (frames per rotated layout) |
 | **Global** | Default media folder, Wall color | Include subfolders, Reset all slots to global |
 | **Frame** | Mat color, Frame style | Mat width, Show frame border, Frame color, Frame width |
+| **Gallery Mat** | Mat color, Frame style | Show frame, Frame color, Frame width, mat around and between the openings, wall around the frame, bevel |
 | **Metadata** | Show metadata; Text size, Pill size and the fields (Date, Location, Camera…) | Date format, Max metadata pills |
 | **Time-of-Day, Videos** | — | The whole sections (templates, max video size, Live Photo clips) |
-| **Each slot** | Media folder, Photos / Video (and the "no videos" warning), Change every (seconds), Fit / Fill, Show metadata | Use global toggles, Include subfolders, Group, Frame, the slot's own metadata settings, video loops and audio, conversion status |
+| **Each slot** | Media folder, Photos / Video (and the "no videos" warning), Change every (seconds), Fit / Fill, Opening shape, Show metadata | Use global toggles, Include subfolders, Group, Frame, the slot's own metadata settings, video loops and audio, conversion status |
 
 In Basic, a slot's media folder is always editable: typing a different folder gives the slot its own folder, and clearing it or typing the default folder (a trailing `/` makes no difference) makes it follow the default again. Like every folder box, it is saved when you press Enter, leave the box or pick a folder with **Browse…**, not while you type. A slot that follows the default shows the default folder, also right after the default changes. Picking Wood or Gold widens a thin frame to suit it; going back to Solid restores the previous width unless you changed it in between.
 
