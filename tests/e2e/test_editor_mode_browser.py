@@ -27,7 +27,7 @@ SHOW_KEYS = list(FIELDS_OFF)
 
 # Controls each mode must show or hide in the sidebar
 ADVANCED_SIDEBAR = ["#g-frame-width", "#g-mat-width", ".toggle-row:has(#g-show-frame)", "#g-frame-color", "#tod-configure-btn",
-                    "#g-video-max-edge", ".toggle-row:has(#g-include-live-photos)", "#g-date-format", "#g-max-pills",
+                    "#g-video-max-edge", ".toggle-row:has(#g-include-live-photos)", ".toggle-row:has(#g-include-subfolders)", "#g-date-format", "#g-max-pills",
                     "#g-rotation-change-at"]
 BASIC_SIDEBAR = ["#g-wall-color", "#g-frame-style", "#g-mat-color", "#g-text-size", "#g-pill-size",
                  "#g-source-path", "#layout-picker", "#g-meta-toggles"]
@@ -239,6 +239,53 @@ def test_back_to_solid_keeps_a_frame_width_changed_after_the_bump(write_cfg, ope
     page.select_option("#g-frame-style", "solid")
     cfg = _saved(write_cfg, lambda c: c["frame_defaults"]["frame_style"] == "solid")
     assert cfg["frame_defaults"]["frame_width"] == 40
+    assert w.errors == []
+
+
+def _slot_subfolders(page):
+    return _slot_section(page, "Media Source").locator(".toggle-row").filter(has_text="Include subfolders")
+
+
+def test_include_subfolders_is_advanced_and_counted_when_off(write_cfg, open_editor):
+    other = str(write_cfg.root / "other")
+    write_cfg(include_subfolders=False,
+              slot_overrides={3: {"use_global": {"source": False}, "source_path": other, "include_subfolders": False}})
+    w = open_editor()
+    page = w.page
+    assert page.locator("#advanced-hint").get_attribute("title").split("\n") == [
+        "Include subfolders", "Slot 3: Include subfolders"]
+    assert not _visible(page, ".toggle-row:has(#g-include-subfolders)")
+    page.locator(".preview-slot").nth(2).click()
+    assert not _slot_subfolders(page).is_visible()
+
+    page.locator('#editor-mode button[data-mode="advanced"]').click()
+    assert not page.locator("#g-include-subfolders").is_checked()
+    page.locator(".preview-slot").nth(2).click()
+    toggle = _slot_subfolders(page)
+    assert not toggle.locator("input").is_checked()
+    toggle.locator(".toggle").click()
+    cfg = _saved(write_cfg, lambda c: c["slots"][2].get("include_subfolders") is True)
+    assert cfg["include_subfolders"] is False   # only this slot changed
+
+    # A slot on the default folder shows the global value, disabled; the global toggle updates it
+    page.locator(".preview-slot").nth(0).click()
+    assert _slot_section(page, "Media Source").locator(".section-disabled").count() == 1
+    assert not _slot_subfolders(page).locator("input").is_checked()
+    page.locator(".toggle-row:has(#g-include-subfolders) .toggle").click()
+    _saved(write_cfg, lambda c: c["include_subfolders"] is True)
+    assert _slot_subfolders(page).locator("input").is_checked()
+    assert w.errors == []
+
+
+def test_reset_all_clears_per_slot_subfolders(write_cfg, open_editor):
+    write_cfg(slot_overrides={2: {"use_global": {"source": False}, "source_path": str(write_cfg.root / "other"),
+                                  "include_subfolders": False}})
+    w = open_editor(editor_mode="advanced")
+    page = w.page
+    page.locator('[data-setting="slots.reset_all"]').click()
+    page.get_by_role("button", name="Reset All Slots", exact=True).click()
+    # Reset all edits the editor's config (saved with the next change)
+    assert page.evaluate("() => [config.slots[1].use_global.source, 'include_subfolders' in config.slots[1]]") == [True, False]
     assert w.errors == []
 
 

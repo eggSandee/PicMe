@@ -103,7 +103,7 @@ class VideoSniff:
 
 _VISUAL_SAMPLE_ENTRY_LEN = 78  # fixed fields before a visual sample entry's child boxes
 _sniff_cache: dict[tuple[str, int, int], VideoSniff | None] = {}
-_SNIFF_CACHE_MAX = 4096
+_SNIFF_CACHE_MAX = 50_000   # recursive video folders can hold thousands of clips
 
 
 def _read_at(f, offset: int, n: int) -> bytes:
@@ -199,6 +199,9 @@ def sniff_video(path: str | Path) -> VideoSniff | None:
     except (OSError, IndexError, struct.error, UnicodeDecodeError):
         result = None
     if len(_sniff_cache) >= _SNIFF_CACHE_MAX:
-        _sniff_cache.clear()
+        # Drop the oldest half (dicts keep insertion order), so one large folder doesn't
+        # make every clip be re-read on the next listing
+        for old in list(_sniff_cache)[:_SNIFF_CACHE_MAX // 2]:
+            del _sniff_cache[old]
     _sniff_cache[key] = result
     return result

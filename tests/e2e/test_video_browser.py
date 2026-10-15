@@ -241,7 +241,7 @@ def test_show_metadata_false_clears_video_date_pill(h264_browser, server, open_p
 
 
 LOOPS_INPUT = "#slot-panel-body .field:has(label:text-is('Play each video (times)')) input"
-NO_VIDEOS = "#slot-panel-body >> text=This folder has no videos"
+NO_VIDEOS = "#slot-panel-body >> text=/This folder.* has no videos/"
 
 
 def test_relisting_another_folder_keeps_this_folders_failures(h264_browser, server, open_page, e2e_config_path,
@@ -253,9 +253,10 @@ def test_relisting_another_folder_keeps_this_folders_failures(h264_browser, serv
     page.wait_for_function("() => [...unplayablePaths].some(p => p.endsWith('corrupt.mp4'))", timeout=15_000)
     # Another folder's queue is re-listed (a second video slot, or the 5-minute refresh)
     still_marked = page.evaluate("""async folder => {
-        await ensureQueue(folder, 'video');
-        folderQueues[`video:${folder}`].stale = true;
-        await ensureQueue(folder, 'video');
+        const source = { folder, recursive: true, key: `r:${folder}` };
+        await ensureQueue(source, 'video');
+        folderQueues[`video:${source.key}`].stale = true;
+        await ensureQueue(source, 'video');
         return [...unplayablePaths].some(p => p.endsWith('corrupt.mp4'));
     }""", str(video_lib["videos"]))
     assert still_marked
@@ -311,6 +312,30 @@ def test_editor_video_mode_controls(h264_browser, server, open_page, e2e_config_
     page.locator("#slot-panel-body select:has(option[value='video'])").select_option("photos")
     assert saved_slot1("mode", "photos")
     assert page.locator(LOOPS_INPUT).count() == 0
+    assert w.errors == []
+
+
+def test_editor_no_videos_hint_counts_subfolders(h264_browser, server, open_page, e2e_config_path, video_lib, tmp_path):
+    # A video slot on its own folder whose only clip sits in a subfolder
+    own = tmp_path / "own"
+    (own / "2024").mkdir(parents=True)
+    (own / "2024" / "clip.mp4").write_bytes((video_lib["mixed"] / "good.mp4").read_bytes())
+    cfg = write_config(e2e_config_path, video_lib["photos"], own, video_slots={1})
+    cfg["slots"][0]["use_global"] = {"source": False, "metadata": True, "frame": True}
+    e2e_config_path.write_text(json.dumps(cfg, indent=2))
+
+    w = open_page(f"{server}/editor/")
+    page = w.page
+    page.locator("#collage-preview .preview-slot").first.click()
+    page.wait_for_timeout(800)   # past the 300 ms check debounce
+    assert not page.locator(NO_VIDEOS).is_visible()
+    # Without subfolders the folder has nothing to play
+    page.locator("#slot-panel-body .toggle-row").filter(has_text="Include subfolders").locator(".toggle").click()
+    page.locator("#slot-panel-body >> text=This folder has no videos").wait_for(state="visible", timeout=5_000)
+    deadline = time.monotonic() + 5
+    while json.loads(e2e_config_path.read_text())["slots"][0].get("include_subfolders") is not False:
+        assert time.monotonic() < deadline, "include_subfolders never saved"
+        time.sleep(0.1)
     assert w.errors == []
 
 

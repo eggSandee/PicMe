@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+import media_index
 import transcode
 from heic import HEIC_EXTENSIONS, HeicConversionError, get_converted, is_heic
 from metadata.exif import get_metadata
@@ -29,6 +30,7 @@ def start_transcoder() -> None:
     except (OSError, ValueError) as e:
         logging.getLogger(__name__).warning("Could not read config to queue videos: %s", e)
         config = {}
+    media_index.configure(config)
     transcode.transcoder.configure(config)
     if os.environ.get("PICME_TRANSCODE_AUTOSTART", "1") == "0":
         return  # tests drive the transcoder themselves
@@ -84,6 +86,7 @@ DEFAULT_CONFIG = {
     # Daily layout rotation (README → Daily layout rotation); an empty list means every layout
     "layout_rotation": {"enabled": False, "layouts": [], "change_at": "04:00"},
     "source_path": "photos",  # relative to the server's cwd — run.sh / run.bat start in the repo root
+    "include_subfolders": True,  # media folders include their subfolders (README → Subfolders)
     "slots": [
         {"id": i, "mode": "photos", "source": "local", "source_path": "photos", "cycle_seconds": 30}
         for i in range(1, 5)
@@ -106,8 +109,18 @@ def save_config(config: dict) -> None:
     CONFIG_PATH.write_text(json.dumps(config, indent=2))
 
 
-def video_folders(config: dict) -> list[str]:
-    """Effective folders of video-mode slots (same rule as the display's slotFolder)."""
+def effective_subfolders(slot: dict, config: dict) -> bool:
+    """Whether a slot's folder includes its subfolders (same rule as the display's
+    slotSubfolders). A slot adopting the global folder follows the global setting; one with its
+    own folder may set its own, else follows the global setting too."""
+    adopted = (slot.get("use_global") or {}).get("source") is not False
+    if adopted or slot.get("include_subfolders") is None:
+        return config.get("include_subfolders", True) is not False
+    return slot["include_subfolders"] is not False
+
+
+def video_folders(config: dict) -> list[tuple[str, bool]]:
+    """``(folder, include_subfolders)`` of video-mode slots (same rule as the display's slotFolder)."""
     folders = []
     for slot in config.get("slots") or []:
         if slot.get("mode") != "video":
@@ -115,12 +128,13 @@ def video_folders(config: dict) -> list[str]:
         adopted = (slot.get("use_global") or {}).get("source") is not False
         folder = (config.get("source_path") or slot.get("source_path")) if adopted else slot.get("source_path")
         if folder:
-            folders.append(folder)
+            folders.append((folder, effective_subfolders(slot, config)))
     return folders
 
 
 def refresh_transcoder(config: dict) -> None:
-    """Apply video settings and queue every video slot's folder for conversion."""
+    """Apply video and listing settings and queue every video slot's folder for conversion."""
+    media_index.configure(config)
     transcode.transcoder.configure(config)
     transcode.transcoder.enqueue_folders(video_folders(config))
 
@@ -130,7 +144,8 @@ VIDEO_EXTENSIONS = transcode.VIDEO_EXTENSIONS
 MEDIA_KINDS = {"photos": SUPPORTED_EXTENSIONS, "video": VIDEO_EXTENSIONS}
 
 
-def list_media(folder: str, kind: str = "photos") -> list[str]:
+def list_media(folder: str, kind: str = "photos", recursive: bool = True) -> list[str]:
+    """Media in ``folder`` and (``recursive``) its subfolders — see media_index for what's skipped."""
     extensions = MEDIA_KINDS.get(kind)
     if extensions is None:
         raise HTTPException(status_code=400, detail=f"Unknown kind: {kind}")
@@ -139,13 +154,8 @@ def list_media(folder: str, kind: str = "photos") -> list[str]:
         return []
     if kind == "video":
         # Only clips the browser can play now: as-is H.264, or an already-converted copy
-        return [str(c.path) for c in transcode.transcoder.scan(path) if c.state == transcode.READY]
-    return [
-        str(f)
-        for f in path.iterdir()
-        # Skip dotfiles — macOS AppleDouble files (._clip.mov) match the extension but aren't playable
-        if f.suffix.lower() in extensions and not f.name.startswith(".") and f.is_file()
-    ]
+        return [str(c.path) for c in transcode.transcoder.scan(path, recursive=recursive) if c.state == transcode.READY]
+    return list(media_index.walk(path, recursive, extensions=extensions).files)
 
 
 def resolve_media_file(path: str, extensions: set[str], label: str) -> Path:
@@ -178,6 +188,7 @@ def get_config():
 @app.post("/api/config")
 def set_config(config: dict):
     save_config(config)
+    media_index.invalidate()  # a just-added folder or a toggled include_subfolders lists afresh
     refresh_transcoder(config)
     return {"ok": True}
 
@@ -207,9 +218,9 @@ def get_layouts():
 
 
 @app.get("/api/images/random")
-def random_image(folder: str, kind: str = "photos"):
+def random_image(folder: str, kind: str = "photos", recursive: bool = True):
     """Return a random image (or video, with kind=video) file path from the given folder."""
-    images = list_media(folder, kind)
+    images = list_media(folder, kind, recursive)
     if not images:
         raise HTTPException(status_code=404, detail="No images found in folder")
     return {"path": random.choice(images)}
@@ -227,25 +238,35 @@ def image_metadata(path: str):
 
 
 @app.get("/api/images/list")
-def list_images_api(folder: str, kind: str = "photos", peek: bool = False):
+def list_images_api(folder: str, kind: str = "photos", peek: bool = False, recursive: bool = True):
+    """``truncated``: only part of the folder is listed — it holds more than media_max_files, or
+    has folders nested deeper than media_max_depth."""
+    path = Path(folder)
     if kind != "video":
-        images = list_media(folder, kind)
-        return {"images": images, "count": len(images)}
+        images = list_media(folder, kind, recursive)
+        walk = media_index.walk(path, recursive, extensions=SUPPORTED_EXTENSIONS)
+        truncated = walk.truncated or walk.depth_capped
+        return {"images": images, "count": len(images), "truncated": truncated}
     # Listing also queues clips that need converting, so a folder opened in the editor starts
     # converting. `pending` lets the editor tell "no videos" from "videos still converting".
     # `peek` only looks (the editor's hint while a folder path is still being typed).
-    path = Path(folder)
-    clips = transcode.transcoder.scan(path, enqueue=not peek) if path.is_dir() else []
+    is_dir = path.is_dir()
+    clips = transcode.transcoder.scan(path, enqueue=not peek, recursive=recursive) if is_dir else []
     images = [str(c.path) for c in clips if c.state == transcode.READY]
     return {"images": images, "count": len(images),
-            "pending": sum(c.state == transcode.PENDING for c in clips)}
+            "pending": sum(c.state == transcode.PENDING for c in clips),
+            "truncated": is_dir and _partial(transcode.walk_videos(path, recursive))}
+
+
+def _partial(walk: media_index.Walk) -> bool:
+    return walk.truncated or walk.depth_capped
 
 
 @app.get("/api/videos/status")
-def videos_status(folder: str = "", peek: bool = False):
+def videos_status(folder: str = "", peek: bool = False, recursive: bool = True):
     """Conversion progress for a folder's videos (or every video slot's folder). ``peek``
     reports without queueing anything."""
-    folders = [folder] if folder else video_folders(load_config())
+    folders = [(folder, recursive)] if folder else video_folders(load_config())
     return transcode.transcoder.status(folders, enqueue=not peek)
 
 

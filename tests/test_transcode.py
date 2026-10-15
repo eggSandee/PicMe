@@ -751,7 +751,7 @@ def test_api_lists_only_ready_clips_and_serves_converted_copy(client, lib, video
     (lib / "IMG_0401.HEIC").write_bytes(b"x")
 
     r = client.get("/api/images/list", params={"folder": str(lib), "kind": "video"}).json()
-    assert r == {"images": [str(h264)], "count": 1, "pending": 1}
+    assert r == {"images": [str(h264)], "count": 1, "pending": 1, "truncated": False}
     assert client.get("/api/video", params={"path": str(hevc)}).status_code == 409
 
     status = client.get("/api/videos/status", params={"folder": str(lib)}).json()
@@ -776,7 +776,7 @@ def test_api_peek_reports_without_queueing(client, lib, video_transcoder):
     # The editor's "no videos" hint peeks while a folder path is typed: nothing may start converting
     hevc = make_clip(lib / "IMG_0500.MOV", codec="hevc", duration=1)
     r = client.get("/api/images/list", params={"folder": str(lib), "kind": "video", "peek": 1}).json()
-    assert r == {"images": [], "count": 0, "pending": 1}
+    assert r == {"images": [], "count": 0, "pending": 1, "truncated": False}
     status = client.get("/api/videos/status", params={"folder": str(lib), "peek": 1}).json()
     assert (status["total"], status["pending"]) == (1, 1)
     assert not video_transcoder._pending
@@ -829,7 +829,7 @@ def test_api_without_ffmpeg(client, lib, monkeypatch):
     h264 = make_clip(lib / "plain.mp4")
     hevc = make_clip(lib / "IMG_0500.MOV", codec="hevc")
     r = client.get("/api/images/list", params={"folder": str(lib), "kind": "video"}).json()
-    assert r == {"images": [str(h264)], "count": 1, "pending": 0}
+    assert r == {"images": [str(h264)], "count": 1, "pending": 0, "truncated": False}
     assert client.get("/api/video", params={"path": str(h264)}).status_code == 200
     assert client.get("/api/video", params={"path": str(hevc)}).status_code == 415
     status = client.get("/api/videos/status", params={"folder": str(lib)}).json()
@@ -959,3 +959,125 @@ def test_symlink_named_mov_to_text_file_still_rejected(client, lib):
     link = lib / "link.mov"
     link.symlink_to(secret)
     assert client.get("/api/video", params={"path": str(link)}).status_code == 400
+
+
+# --- Subfolders ---
+
+@pytest.fixture
+def fake_sniff(monkeypatch, video_transcoder):
+    """.mp4 sniffs as plain H.264 (ready as-is), anything else as a 2 s HEVC clip that needs
+    converting — classification without ffmpeg doing any work."""
+    def sniff(path):
+        if Path(path).suffix.lower() == ".mp4":
+            return _sniff(width=160, height=120, duration_s=1.0)
+        return _sniff(codec="hvc1", width=160, height=120, duration_s=2.0)
+
+    monkeypatch.setattr(transcode, "sniff_video", sniff)
+    monkeypatch.setattr(video_transcoder, "tools", lambda: ("ffmpeg", "ffprobe"))
+
+
+def _put(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"x")
+    return path
+
+
+@pytest.fixture
+def nested_videos(lib) -> dict[str, Path]:
+    return {
+        "top": _put(lib / "top.mp4"),
+        "trip_ready": _put(lib / "2024" / "trip" / "beach.mp4"),
+        "trip_hevc": _put(lib / "2024" / "trip" / "IMG_3.MOV"),
+        "deep_hevc": _put(lib / "2024" / "trip" / "day2" / "IMG_4.MOV"),
+        "bundle": _put(lib / "Library.photoslibrary" / "originals" / "IMG_9.MOV"),
+    }
+
+
+def _wait_for_pending(t: transcode.Transcoder, n: int) -> set[str]:
+    deadline = time.monotonic() + 10
+    while len(t._pending) < n and time.monotonic() < deadline:
+        time.sleep(0.02)
+    time.sleep(0.05)   # and nothing more arrives
+    return {p.name for p in t._pending}
+
+
+def test_scan_includes_subfolders(fake_sniff, video_transcoder, lib, nested_videos):
+    states = {c.path: c.state for c in video_transcoder.scan(lib, enqueue=False)}
+    assert states == {nested_videos["top"]: transcode.READY, nested_videos["trip_ready"]: transcode.READY,
+                      nested_videos["trip_hevc"]: transcode.PENDING, nested_videos["deep_hevc"]: transcode.PENDING}
+    assert {c.path for c in video_transcoder.scan(lib, enqueue=False, recursive=False)} == {nested_videos["top"]}
+    assert not video_transcoder._pending
+
+
+def test_live_photo_pairs_only_within_a_folder(fake_sniff, video_transcoder, lib):
+    _put(lib / "trip" / "IMG_1.MOV")
+    _put(lib / "trip" / "IMG_1.HEIC")
+    _put(lib / "trip" / "IMG_2.MOV")
+    _put(lib / "other" / "IMG_2.HEIC")     # same name, different folder: not its Live Photo
+    _put(lib / "IMG_2.JPG")                # nor is one in the parent folder
+    states = {c.path.relative_to(lib).as_posix(): c.state for c in video_transcoder.scan(lib, enqueue=False)}
+    assert states == {"trip/IMG_1.MOV": transcode.LIVE_PHOTO, "trip/IMG_2.MOV": transcode.PENDING}
+    # /api/video's single-clip check agrees with the listing
+    assert video_transcoder.clip(lib / "trip" / "IMG_2.MOV").state == transcode.PENDING
+    assert video_transcoder.clip(lib / "trip" / "IMG_1.MOV").state == transcode.LIVE_PHOTO
+
+
+def test_enqueue_folders_queues_nested_clips(fake_sniff, video_transcoder, lib, nested_videos):
+    video_transcoder.enqueue_folders([(str(lib), True)])
+    assert _wait_for_pending(video_transcoder, 2) == {"IMG_3.MOV", "IMG_4.MOV"}
+
+
+def test_enqueue_folders_without_subfolders(fake_sniff, video_transcoder, lib, nested_videos):
+    _put(lib / "IMG_0.MOV")
+    video_transcoder.enqueue_folders([(str(lib), False)])
+    assert _wait_for_pending(video_transcoder, 1) == {"IMG_0.MOV"}
+
+
+def test_config_save_queues_by_each_slots_subfolders_flag(fake_sniff, client, video_transcoder, tmp_path):
+    a, b = tmp_path / "a", tmp_path / "b"
+    _put(a / "sub" / "A1.MOV")
+    _put(b / "sub" / "B1.MOV")
+    _put(b / "B0.MOV")
+    config = {
+        "source_path": str(a), "include_subfolders": True,
+        "slots": [{"id": 1, "mode": "video"},
+                  {"id": 2, "mode": "video", "source_path": str(b), "use_global": {"source": False},
+                   "include_subfolders": False}],
+    }
+    assert client.post("/api/config", json=config).status_code == 200
+    assert _wait_for_pending(video_transcoder, 2) == {"A1.MOV", "B0.MOV"}
+
+
+def test_api_video_list_peek_and_status_cover_subfolders(fake_sniff, client, video_transcoder, lib, nested_videos):
+    params = {"folder": str(lib), "kind": "video", "peek": 1}
+    r = client.get("/api/images/list", params=params).json()
+    assert sorted(r["images"]) == sorted([str(nested_videos["top"]), str(nested_videos["trip_ready"])])
+    assert r["pending"] == 2
+    status = client.get("/api/videos/status", params={"folder": str(lib), "peek": 1}).json()
+    assert (status["total"], status["ready"], status["pending"]) == (4, 2, 2)
+    assert not video_transcoder._pending    # peeking queues nothing, nested clips included
+
+    flat = client.get("/api/images/list", params={**params, "recursive": 0}).json()
+    assert (flat["images"], flat["pending"]) == ([str(nested_videos["top"])], 0)
+    assert client.get("/api/videos/status", params={"folder": str(lib), "peek": 1, "recursive": 0}).json()["total"] == 1
+
+    client.get("/api/images/list", params={"folder": str(lib), "kind": "video"})
+    assert {p.name for p in video_transcoder._pending} == {"IMG_3.MOV", "IMG_4.MOV"}
+
+
+def test_videos_status_without_folder_uses_slot_flags(fake_sniff, client, config_path, video_transcoder, lib, nested_videos):
+    config_path.write_text(json.dumps({"source_path": str(lib), "include_subfolders": False,
+                                       "slots": [{"id": 1, "mode": "video"}]}))
+    assert client.get("/api/videos/status", params={"peek": 1}).json()["total"] == 1
+    config_path.write_text(json.dumps({"source_path": str(lib), "slots": [{"id": 1, "mode": "video"}]}))
+    assert client.get("/api/videos/status", params={"peek": 1}).json()["total"] == 4
+
+
+def test_sniff_cache_evicts_oldest_half_not_everything(tmp_path, monkeypatch):
+    from metadata import video as video_meta
+    monkeypatch.setattr(video_meta, "_SNIFF_CACHE_MAX", 4)
+    monkeypatch.setattr(video_meta, "_sniff_cache", {})
+    paths = [_put(tmp_path / f"{i}.mp4") for i in range(5)]
+    for p in paths:
+        sniff_video(p)
+    assert [k[0] for k in video_meta._sniff_cache] == [str(p) for p in paths[2:]]
