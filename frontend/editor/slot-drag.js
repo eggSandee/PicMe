@@ -168,6 +168,7 @@
 
   window.PicMeSlotDrag = {
     attach,
+    defaultGhost,
     isDragging: () => !!state?.started,
   };
 })();

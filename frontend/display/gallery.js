@@ -130,7 +130,8 @@
 
   // Replace `container`'s contents with the frame, the mat and an opening per slot.
   // makeSlot(slotDef) returns { matFrame, overlay } (the overlay is optional).
-  function build(container, layout, slotCount, { makeSlot }) {
+  // ids: false leaves out the #slot-N ids (the editor draws several copies of a layout).
+  function build(container, layout, slotCount, { makeSlot, ids = true }) {
     ensureStyles(container.ownerDocument);
     container.classList.add('gallery');
     container.innerHTML = '';
@@ -144,7 +145,8 @@
       const slotDef = layout.slots[i];
       const opening = document.createElement('div');
       opening.className = 'slot opening';
-      opening.id = `slot-${slotDef.id}`;
+      opening.dataset.slotId = slotDef.id;
+      if (ids) opening.id = `slot-${slotDef.id}`;
       opening.style.gridArea = slotDef.grid_area;
       const box = document.createElement('div');
       box.className = 'opening-box';
@@ -239,7 +241,7 @@
     const S = window.PicMeShapes;
     const result = {};
     for (const opening of root.querySelectorAll('.opening')) {
-      const id = Number(opening.id.replace('slot-', ''));
+      const id = Number(opening.dataset.slotId);
       const shape = S.has(shapes[id]) ? shapes[id] : 'rect';
       const def = S.get(shape);
       const box = S.box(shape, opening.clientWidth, opening.clientHeight);
