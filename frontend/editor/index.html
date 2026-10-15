@@ -599,6 +599,14 @@
         </div>
       </div>
 
+      <div class="toggle-row" data-setting="global.include_subfolders">
+        <label>Include subfolders</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-include-subfolders" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+
       <div class="field" data-setting="global.wall_color">
         <label>Wall color</label>
         <input type="color" id="g-wall-color" />
@@ -806,6 +814,13 @@
     };
   }
 
+  // Same rule as the display's slotSubfolders / the server's effective_subfolders: a slot on the
+  // default folder follows the global setting; one with its own folder may set its own
+  function slotSubfolders(slotCfg) {
+    if (slotCfg.use_global?.source !== false || slotCfg.include_subfolders == null) return config.include_subfolders !== false;
+    return slotCfg.include_subfolders !== false;
+  }
+
   function getSlotFrame(slotCfg) {
     if (slotCfg.use_global?.frame !== false) return getGlobalFrame();
     return { ...getGlobalFrame(), ...(slotCfg.frame || {}) };
@@ -878,6 +893,8 @@
     'rotation.change_at': { tier: 'advanced', label: 'Switch layout at',
                             active: () => rotationOn() && (config.layout_rotation.change_at || '04:00') !== '04:00' },
     'global.source_path': { tier: 'basic',    label: 'Default media folder' },
+    'global.include_subfolders': { tier: 'advanced', label: 'Include subfolders',
+                            active: () => config.include_subfolders === false },
     'global.wall_color':  { tier: 'basic',    label: 'Wall color' },
     'frame.mat_color':    { tier: 'basic',    label: 'Mat color' },
     'frame.frame_style':  { tier: 'basic',    label: 'Frame style' },
@@ -907,6 +924,8 @@
     'slots.rearrange':    { tier: 'basic',    label: 'Drag slots to swap' },
     'slot.source':        { tier: 'basic',    label: 'Media folder' },
     'slot.source_adopt':  { tier: 'advanced', label: 'Media folder: use global' },
+    'slot.include_subfolders': { tier: 'advanced', label: 'Include subfolders',
+                            slotActive: s => s.use_global?.source === false && s.include_subfolders === false },
     'slot.mode':          { tier: 'basic',    label: 'Photos / video' },
     'slot.no_videos_warn': { tier: 'basic',   label: 'No-videos warning' },
     'slot.video_loops':   { tier: 'advanced', label: 'Video loops',
@@ -1460,6 +1479,7 @@
     syncGlobalFrameColor();
     document.getElementById('g-video-max-edge').value = String(g.video_max_edge ?? 1920);
     document.getElementById('g-include-live-photos').checked = g.include_live_photos === true;
+    document.getElementById('g-include-subfolders').checked = g.include_subfolders !== false;
 
     // Global pill and text size
     const sizes = pillSizes(md);
@@ -1523,6 +1543,8 @@
     };
     document.getElementById('g-video-max-edge').onchange = e => { config.video_max_edge = parseInt(e.target.value); scheduleAutoSave(); };
     document.getElementById('g-include-live-photos').onchange = e => { config.include_live_photos = e.target.checked; scheduleAutoSave(); };
+    // Slots on the default folder follow it: re-render so the open slot shows the new value
+    document.getElementById('g-include-subfolders').onchange = e => { config.include_subfolders = e.target.checked; renderSlotPanel(); scheduleAutoSave(); };
     document.getElementById('g-mat-color').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_color   = e.target.value; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-mat-width').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_width   = parseInt(e.target.value); buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-show-frame').onchange  = e => { ensureFrameDefaults(); config.frame_defaults.show_frame  = e.target.checked; buildPreview(); scheduleAutoSave(); };
@@ -1621,6 +1643,7 @@
         slot.frame       = {};
         slot.metadata    = {};
         slot.source_path = null;
+        delete slot.include_subfolders;
         if (cb.checked) {
           slot.cycle_seconds = 30;
           slot.group = null;
@@ -1691,13 +1714,15 @@
     // Mode — always per-slot (photo cycling vs. video playback)
     const isVideo = slotCfg.mode === 'video';
     // Video slots: warn when the folder has nothing to play (outside the body so it stays readable when adopted)
-    const noVideosWarn = tag(makeHint('This folder has no videos (.mp4 / .mov / .m4v).'), 'slot.no_videos_warn');
+    const noVideosWarn = tag(makeHint(''), 'slot.no_videos_warn');
     noVideosWarn.style.color = '#e0a030';
     noVideosWarn.style.display = 'none';
     // Conversion progress for iPhone (HEVC) clips, or how to install ffmpeg
     const videoStatusHint = tag(makeHint(''), 'slot.video_status');
     videoStatusHint.style.display = 'none';
-    if (isVideo) checkFolderHasVideos(effectiveSrc, noVideosWarn, videoStatusHint);
+    const checkVideos = (folder, opts = {}) =>
+      checkFolderHasVideos(folder, noVideosWarn, videoStatusHint, { ...opts, recursive: slotSubfolders(slotCfg) });
+    if (isVideo) checkVideos(effectiveSrc);
     // Adopted source: re-check when the global folder changes
     // Adopted source: follow the default folder. While it's being typed only the "no videos" hint
     // follows (peeking, so nothing starts converting); once committed the box shows the new default.
@@ -1705,7 +1730,7 @@
       _followGlobalFolder = adopted ? typed => {
         if (typed === undefined) pathInput.value = config.source_path || '';
         if (slotCfg.mode === 'video') {
-          checkFolderHasVideos(typed ?? config.source_path ?? '', noVideosWarn, videoStatusHint, { peek: typed !== undefined });
+          checkVideos(typed ?? config.source_path ?? '', { peek: typed !== undefined });
         }
       } : null;
     };
@@ -1725,11 +1750,11 @@
       } else {
         slotCfg.source_path = v;
       }
-      if (slotCfg.mode === 'video') checkFolderHasVideos(folder, noVideosWarn, videoStatusHint);
+      if (slotCfg.mode === 'video') checkVideos(folder);
       scheduleAutoSave();
     }, srcOverridden, v => {
       const folder = basic && !normFolder(v) ? config.source_path : v;
-      if (slotCfg.mode === 'video') checkFolderHasVideos(folder, noVideosWarn, videoStatusHint, { peek: true });
+      if (slotCfg.mode === 'video') checkVideos(folder, { peek: true });
     }), 'slot.source');
     const pathInput = pathField.querySelector('input');
     followGlobalFolder(sourceAdopted);
@@ -1738,6 +1763,15 @@
       sameAsDefault.style.display = sourceAdopted ? '' : 'none';
       srcSec.sectionBody.appendChild(sameAsDefault);
     }
+    // Shows the global setting while the folder is adopted (the body is disabled then); a slot
+    // with its own folder keeps its own value
+    const subfoldersOverridden = !sourceAdopted && slotCfg.include_subfolders != null &&
+                                 slotSubfolders(slotCfg) !== (config.include_subfolders !== false);
+    srcSec.sectionBody.appendChild(tag(makeToggleRow('Include subfolders', slotSubfolders(slotCfg), v => {
+      slotCfg.include_subfolders = v;
+      if (slotCfg.mode === 'video') checkVideos(sourceAdopted ? (config.source_path || '') : (slotCfg.source_path || ''));
+      scheduleAutoSave();
+    }, subfoldersOverridden), 'slot.include_subfolders'));
     srcSec.el.appendChild(noVideosWarn);
     srcSec.el.appendChild(videoStatusHint);
     left.appendChild(srcSec.el);
@@ -1916,28 +1950,33 @@
   // Debounced so typing a path doesn't fire a request per keystroke. `peek` (a path still being
   // typed) only looks: listing a folder normally queues its clips for conversion.
   let _videoCheckTimer = null;
-  function checkFolderHasVideos(folder, warnEl, statusEl, { peek = false } = {}) {
+  // `recursive`: the slot's folder includes its subfolders, so their clips count too.
+  function checkFolderHasVideos(folder, warnEl, statusEl, { peek = false, recursive = true } = {}) {
     clearTimeout(_videoCheckTimer);
     _videoCheckTimer = setTimeout(async () => {
       let list = null;
       try {
-        list = await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder || '')}&kind=video${peek ? '&peek=1' : ''}`);
+        list = await fetchJSON(`${API}/api/images/list?folder=${encodeURIComponent(folder || '')}&kind=video${peek ? '&peek=1' : ''}&recursive=${recursive ? 1 : 0}`);
       } catch (e) { /* unknown — don't warn */ }
       // Clips still converting aren't listed yet, so they don't count as "no videos"
-      warnEl.style.display = list && list.count === 0 && !list.pending ? '' : 'none';
-      if (statusEl) watchVideoStatus(folder, statusEl, peek);
+      const empty = list && list.count === 0 && !list.pending;
+      warnEl.textContent = empty
+        ? `This folder${recursive ? ' (and its subfolders)' : ''} has no videos (.mp4 / .mov / .m4v).`
+        : 'Very large folder — only part of it is used (see media_max_files in the README).';
+      warnEl.style.display = empty || list?.truncated ? '' : 'none';
+      if (statusEl) watchVideoStatus(folder, statusEl, peek, recursive);
     }, 300);
   }
 
   // Polls conversion progress every 5 s while clips are converting and the hint is on screen
   let _videoStatusTimer = null;
-  function watchVideoStatus(folder, el, peek = false) {
+  function watchVideoStatus(folder, el, peek = false, recursive = true) {
     clearTimeout(_videoStatusTimer);
     const poll = async () => {
       if (!el.isConnected) return;  // slot panel re-rendered or closed
       let s;
       try {
-        s = await fetchJSON(`${API}/api/videos/status?folder=${encodeURIComponent(folder || '')}${peek ? '&peek=1' : ''}`);
+        s = await fetchJSON(`${API}/api/videos/status?folder=${encodeURIComponent(folder || '')}${peek ? '&peek=1' : ''}&recursive=${recursive ? 1 : 0}`);
       } catch (e) { el.style.display = 'none'; return; }
       if (!el.isConnected) return;
       const text = videoStatusText(s);

@@ -20,6 +20,7 @@ import piexif
 import pytest
 
 from conftest import BACKEND_DIR, LANDSCAPE, PORTRAIT, _exif_bytes, _make_heic, _make_image, editor_mode_init_js, make_config
+import media_index  # backend/, on sys.path via conftest
 
 pytestmark = pytest.mark.e2e
 
@@ -463,7 +464,7 @@ def test_folder_of_only_bad_photos_does_not_spin(server, open_page, restore_conf
     assert len(w.image_requests) <= len(names) * SLOT_COUNT, w.image_requests
     assert page.evaluate("[...unplayablePaths].length") == len(names)
     # The blank slots wait on the folder's backoff timer
-    assert page.evaluate("folder => !!photoRetryTimers[folder]", str(tmp_path))
+    assert page.evaluate("folder => !!photoRetryTimers[`r:${folder}`]", str(tmp_path))  # keyed by source
     assert _visible_files(page) == [None] * SLOT_COUNT
     assert _unexpected_errors(w) == []
 
@@ -477,6 +478,9 @@ def test_blank_slot_retries_after_backoff_and_finds_new_photo(server, open_page,
     assert _visible_files(page) == [None] * SLOT_COUNT
 
     _make_image(tmp_path / "added.jpg", fmt="JPEG")
+    # The page's clock is faked but the server's isn't: wait out the server's listing cache
+    # (media_index.FRESH_S), which a real 60 s backoff always outlasts
+    time.sleep(media_index.FRESH_S + 0.5)
     page.clock.run_for(61_000)  # past the 60s backoff: re-list the folder and try again
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline and None in _visible_files(page):
