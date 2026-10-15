@@ -74,7 +74,35 @@ def test_video_folders_include_dormant_slots(tmp_path):
     """Slots past the base layout's count show on other rotation days, so their videos convert too."""
     cfg = make_config(tmp_path / "photos", layout="classic-4", slots=6)
     cfg["slots"][5] |= {"mode": "video", "source_path": str(tmp_path / "slot6"), "use_global": {"source": False}}
-    assert main.video_folders(cfg) == [str(tmp_path / "slot6")]
+    assert main.video_folders(cfg) == [(str(tmp_path / "slot6"), True)]
+
+
+def test_default_config_includes_subfolders():
+    assert main.default_config()["include_subfolders"] is True
+
+
+@pytest.mark.parametrize("global_value, slot, expected", [
+    (None,  {}, True),                                                          # missing key → on
+    (False, {}, False),
+    (False, {"include_subfolders": True}, False),                               # adopted: global wins
+    (True,  {"use_global": {"source": True}, "include_subfolders": False}, True),
+    (True,  {"use_global": {"source": False}, "include_subfolders": False}, False),  # own folder
+    (False, {"use_global": {"source": False}, "include_subfolders": True}, True),
+    (False, {"use_global": {"source": False}}, False),                          # own folder, unset → global
+    (None,  {"use_global": {"source": False}, "include_subfolders": None}, True),
+])
+def test_effective_subfolders(global_value, slot, expected):
+    config = {} if global_value is None else {"include_subfolders": global_value}
+    assert main.effective_subfolders(slot, config) is expected
+
+
+def test_video_folders_carry_each_slots_subfolders_flag(tmp_path):
+    cfg = make_config(tmp_path / "photos", slots=3)
+    cfg["include_subfolders"] = False
+    cfg["slots"][0] |= {"mode": "video"}
+    cfg["slots"][1] |= {"mode": "video", "source_path": "own", "use_global": {"source": False},
+                        "include_subfolders": True}
+    assert main.video_folders(cfg) == [(str(tmp_path / "photos"), False), ("own", True)]
 
 
 def test_default_config_is_not_shared():
@@ -171,20 +199,28 @@ def test_images_list_returns_supported_files_only(client, photo_library):
     assert "UPPER.JPG" in names                      # case-insensitive extension
     assert "notes.txt" not in names
     assert "jpeg_named.txt" not in names             # extension, not content, decides
-    assert "subdir" not in names
-    assert "nested.jpg" not in names                 # not recursive
+    assert "subdir" not in names                     # folders aren't images
+    assert str(photo_library.dir / "subdir" / "nested.jpg") in body["images"]   # subfolders included
+    assert body["truncated"] is False
+
+
+def test_images_list_without_subfolders(client, photo_library):
+    r = client.get("/api/images/list", params={"folder": str(photo_library.dir), "recursive": 0})
+    assert r.status_code == 200
+    assert sorted(r.json()["images"]) == photo_library.listed_top
+    assert "nested.jpg" not in {Path(p).name for p in r.json()["images"]}
 
 
 def test_images_list_empty_folder(client, photo_library):
     r = client.get("/api/images/list", params={"folder": str(photo_library.empty)})
     assert r.status_code == 200
-    assert r.json() == {"images": [], "count": 0}
+    assert r.json() == {"images": [], "count": 0, "truncated": False}
 
 
 def test_images_list_missing_folder(client, tmp_path):
     r = client.get("/api/images/list", params={"folder": str(tmp_path / "nope")})
     assert r.status_code == 200
-    assert r.json() == {"images": [], "count": 0}
+    assert r.json() == {"images": [], "count": 0, "truncated": False}
 
 
 def test_images_list_file_instead_of_folder(client, photo_library):
@@ -220,6 +256,61 @@ def test_images_random_returns_listed_image(client, photo_library):
         seen.add(r.json()["path"])
     assert seen <= set(photo_library.listed)
     assert len(seen) > 1
+
+
+# --- Subfolders (include_subfolders) ---
+
+def test_images_list_nested_library_skips_bundles_and_hidden(client, nested_library):
+    r = client.get("/api/images/list", params={"folder": str(nested_library.root)}).json()
+    assert sorted(r["images"]) == nested_library.included
+    r = client.get("/api/images/list", params={"folder": str(nested_library.root), "recursive": "false"}).json()
+    assert sorted(r["images"]) == nested_library.top
+
+
+def test_images_list_reports_truncation(client, nested_library):
+    main.media_index.configure({"media_max_files": 2})
+    r = client.get("/api/images/list", params={"folder": str(nested_library.root)}).json()
+    assert r["count"] == 2 and r["truncated"] is True
+
+
+def test_images_random_picks_from_subfolders(client, tmp_path):
+    nested = tmp_path / "root" / "2024" / "album"
+    nested.mkdir(parents=True)
+    (nested / "only.jpg").write_bytes(b"x")
+    r = client.get("/api/images/random", params={"folder": str(tmp_path / "root")})
+    assert r.status_code == 200 and r.json() == {"path": str(nested / "only.jpg")}
+    r = client.get("/api/images/random", params={"folder": str(tmp_path / "root"), "recursive": 0})
+    assert r.status_code == 404
+
+
+def test_nested_image_served_and_symlink_checks_still_apply(client, tmp_path, photo_library):
+    nested = tmp_path / "root" / "a" / "b"
+    nested.mkdir(parents=True)
+    img = nested / "photo.png"
+    img.write_bytes(photo_library.files["png"].read_bytes())
+    r = client.get("/api/image", params={"path": str(img)})
+    assert r.status_code == 200 and r.content == img.read_bytes()
+    secret = tmp_path / "secret.txt"
+    secret.write_text("private")
+    try:
+        (nested / "sneaky.jpg").symlink_to(secret)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    assert client.get("/api/image", params={"path": str(nested / "sneaky.jpg")}).status_code == 400
+
+
+def test_config_save_relists_folders_at_once(client, config_path, tmp_path):
+    folder = tmp_path / "pics"
+    folder.mkdir()
+    (folder / "a.jpg").write_bytes(b"x")
+    assert client.get("/api/images/list", params={"folder": str(folder)}).json()["count"] == 1
+    (folder / "sub").mkdir()
+    (folder / "sub" / "b.jpg").write_bytes(b"x")
+    # Within the cache's freshness window the listing is unchanged...
+    assert client.get("/api/images/list", params={"folder": str(folder)}).json()["count"] == 1
+    # ...but saving the config (a new folder, or include_subfolders toggled) lists afresh
+    assert client.post("/api/config", json=make_config(folder)).status_code == 200
+    assert client.get("/api/images/list", params={"folder": str(folder)}).json()["count"] == 2
 
 
 def test_images_random_unicode_folder(client, photo_library):

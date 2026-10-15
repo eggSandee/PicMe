@@ -23,6 +23,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 import heic  # noqa: E402  (registers the HEIF opener, so Image.save(format="HEIF") works)
 import main  # noqa: E402  (needs backend/ on sys.path)
+import media_index  # noqa: E402
 import transcode  # noqa: E402
 from metadata import exif as exif_module  # noqa: E402
 
@@ -185,14 +186,15 @@ def build_photo_library(root: Path) -> SimpleNamespace:
     notes.write_text("not an image")
     files["txt"] = notes
     files["jpeg_as_txt"] = _make_image(photos / "jpeg_named.txt", fmt="JPEG")
-    # Subdirectories are not images either
+    # Subfolders are listed too (include_subfolders, on by default)
     (photos / "subdir").mkdir(exist_ok=True)
     _make_image(photos / "subdir" / "nested.jpg", fmt="JPEG")
 
     odd_image = _make_image(odd / "café photo ü.jpg", fmt="JPEG", exif=_exif_bytes(date=True))
 
     supported = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif"}
-    listed = sorted(str(p) for p in photos.iterdir() if p.is_file() and p.suffix.lower() in supported)
+    listed_top = sorted(str(p) for p in photos.iterdir() if p.is_file() and p.suffix.lower() in supported)
+    listed = sorted(listed_top + [str(photos / "subdir" / "nested.jpg")])
     return SimpleNamespace(
         root=root,
         dir=photos,
@@ -201,6 +203,51 @@ def build_photo_library(root: Path) -> SimpleNamespace:
         odd_image=odd_image,
         files=files,
         listed=listed,  # what /api/images/list should return for ``dir`` (any order)
+        listed_top=listed_top,  # ... with recursive=0
+    )
+
+
+@pytest.fixture
+def nested_library(tmp_path) -> SimpleNamespace:
+    """A media folder with nested albums plus everything the recursive walk must skip.
+
+    ``included`` lists what a recursive listing of ``root`` returns; ``top`` without subfolders.
+    Symlinks are left out where the OS won't create them (``has_symlinks``).
+    """
+    root = tmp_path / "library"
+    outside = tmp_path / "outside"
+
+    def put(rel: str) -> Path:
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"x")   # listing only looks at names
+        return p
+
+    included = [put("a.jpg"), put("2023/trip/b.jpg"), put("2023/trip/deeper/c.heic"),
+                put("Trip 2023.07/h.jpg")]          # a dotted folder name is not a package
+    skipped = [
+        put(".hidden/d.jpg"), put("._e.jpg"), put(".DS_Store"), put("@eaDir/f.jpg"),
+        put("#recycle/r.jpg"), put("$RECYCLE.BIN/w.jpg"),
+        put("Photos Library.photoslibrary/originals/g.jpg"),
+        put("Thing.app/Contents/Info.plist"), put("Thing.app/x.jpg"),
+        put("Pkg/Contents/Info.plist"), put("Pkg/y.jpg"),   # a package with no known extension
+    ]
+    put("2023/notes.txt")
+    outside.mkdir()
+    (outside / "z.jpg").write_bytes(b"x")
+    has_symlinks = True
+    try:
+        (root / "loop").symlink_to(root, target_is_directory=True)
+        (root / "2023" / "trip" / "up").symlink_to(root / "2023", target_is_directory=True)
+        (root / "link_out").symlink_to(outside, target_is_directory=True)
+        (root / "file_link.jpg").symlink_to(root / "a.jpg")
+        included.append(root / "file_link.jpg")
+    except (OSError, NotImplementedError):   # Windows without developer mode
+        has_symlinks = False
+    return SimpleNamespace(
+        root=root, outside=outside, has_symlinks=has_symlinks, skipped=skipped,
+        included=sorted(str(p) for p in included),
+        top=sorted(str(p) for p in included if p.parent == root),
     )
 
 
@@ -236,6 +283,15 @@ def video_transcoder(monkeypatch) -> transcode.Transcoder:
     monkeypatch.setattr(transcode, "transcoder", t)
     yield t
     t.stop()
+
+
+@pytest.fixture(autouse=True)
+def fresh_media_index():
+    """Folder listings are cached for seconds (media_index.FRESH_S): start each test cold."""
+    media_index.invalidate()
+    media_index.configure({})
+    yield
+    media_index.invalidate()
 
 
 @pytest.fixture(autouse=True)
