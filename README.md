@@ -164,7 +164,13 @@ Templates define the slot grid. Each template has a name, a visual description, 
 | `hero-left` | 5 | Large slot left (2/3 width), 4 small slots right |
 | `hero-center` | 5 | Large slot center, 2 small top, 2 small bottom |
 | `landscape-strip` | 3 | One wide top slot, two equal bottom slots |
-| `custom` | 1–12 | User-defined via drag-and-drop in the editor |
+| `gallery-12` | 12 | Gallery mat: one frame and mat, 4×3 equal openings |
+| `gallery-feature` | 7 | Gallery mat: a large centre opening, four small, two wide below |
+| `gallery-mosaic` | 6 | Gallery mat: a tall opening left, five mixed sizes right |
+| `gallery-cameo` | 5 | Gallery mat: an arched centre opening between four ovals |
+| `gallery-arches` | 3 | Gallery mat: three arched openings in a row |
+| `gallery-salon` | 8 | Gallery mat, salon-style: mixed sizes, a heart, a circle, a hexagon |
+| `custom` | 1–12 | User-defined via drag-and-drop in the editor (planned — any layout that passes the layout check renders as separate frames or a gallery mat) |
 
 ---
 

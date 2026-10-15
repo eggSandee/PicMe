@@ -1,0 +1,15 @@
+{
+  "id": "gallery-cameo",
+  "name": "Gallery Cameo",
+  "description": "One frame and mat: an arched centre opening between four ovals",
+  "gallery": true,
+  "slots": [
+    { "id": 1, "grid_area": "1 / 1 / 2 / 2", "shape": "ellipse" },
+    { "id": 2, "grid_area": "1 / 2 / 3 / 3", "shape": "arch" },
+    { "id": 3, "grid_area": "1 / 3 / 2 / 4", "shape": "ellipse" },
+    { "id": 4, "grid_area": "2 / 1 / 3 / 2", "shape": "ellipse" },
+    { "id": 5, "grid_area": "2 / 3 / 3 / 4", "shape": "ellipse" }
+  ],
+  "grid_template_columns": "1fr 2fr 1fr",
+  "grid_template_rows": "1fr 1fr"
+}
