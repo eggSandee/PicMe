@@ -1,23 +1,42 @@
 from __future__ import annotations
 
 import datetime
+import functools
+import os
 from pathlib import Path
 
 import requests
 from PIL import Image
-from PIL.ExifTags import TAGS, GPSTAGS
+from PIL.ExifTags import IFD, TAGS, GPSTAGS
+
+import heic  # noqa: F401  (registers the HEIF opener so Image.open reads iPhone photos)
 
 # In-memory cache: GPS coords -> location string
 _geocode_cache: dict[tuple[float, float], str] = {}
 
 
+@functools.lru_cache(maxsize=64)
+def _read_exif(image_path: str, mtime_ns: int, size: int) -> dict:
+    # mtime/size are only part of the cache key, so an edited file is re-read
+    with Image.open(image_path) as img:
+        ex = img.getexif()
+        flat = {TAGS.get(k, k): v for k, v in ex.items()}
+        flat.update({TAGS.get(k, k): v for k, v in ex.get_ifd(IFD.Exif).items()})
+        # The base IFD only holds an offset under GPSInfo; replace it with the GPS IFD itself
+        gps = ex.get_ifd(IFD.GPSInfo)
+        if gps:
+            flat["GPSInfo"] = dict(gps)
+        else:
+            flat.pop("GPSInfo", None)
+        return flat
+
+
 def _get_exif(image_path: str) -> dict:
+    """EXIF as {tag_name: value}, with Exif-IFD tags merged in and GPSInfo as a dict.
+    Uses the public getexif() API so it works for HEIC/PNG/WebP, not just JPEG."""
     try:
-        img = Image.open(image_path)
-        raw = img._getexif()
-        if not raw:
-            return {}
-        return {TAGS.get(k, k): v for k, v in raw.items()}
+        st = os.stat(image_path)
+        return _read_exif(image_path, st.st_mtime_ns, st.st_size)
     except Exception:
         return {}
 
@@ -145,9 +164,10 @@ def extract_focal_length(image_path: str) -> str | None:
 
 
 def extract_megapixels(image_path: str) -> str | None:
+    # Always the original file (a HEIC's served copy is downscaled); opening reads only the header
     try:
-        img = Image.open(image_path)
-        mp = (img.width * img.height) / 1_000_000
+        with Image.open(image_path) as img:
+            mp = (img.width * img.height) / 1_000_000
         return f"{mp:.1f} MP"
     except Exception:
         return None

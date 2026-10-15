@@ -56,7 +56,7 @@ PicMe/
 - [x] Fullscreen browser display with configurable slot grid
 - [x] Independent per-slot cycling timers
 - [x] Slot grouping (define groups that cycle together)
-- [x] No duplicate photos across slots — shuffled per-folder queue ensures each image appears in at most one slot at a time
+- [x] No duplicate photos across slots — shuffled per-folder queue ensures a photo is never in two slots at once. When every slot ticks together and every photo is taken, a slot waits for another slot to finish its swap or keeps its current photo for that cycle; a photo repeats only when there are fewer usable photos than slots. (While a slot crossfades, its outgoing photo can still be fading out as another slot fades it in — that overlap is the crossfade, not a duplicate.)
 - [x] 3–5 built-in layout templates (e.g., 2x2, 3x2, asymmetric hero)
 - [x] Basic config file (auto-managed JSON)
 
@@ -96,16 +96,18 @@ PicMe/
 ### Milestone 4 — Video Slot Support
 *Goal: Any slot can play a video on loop instead of cycling photos.*
 
-- [ ] Per-slot mode toggle: photo cycling vs. video loop
-- [ ] Video plays muted by default (optional audio toggle)
-- [ ] Video loops for a configurable number of times before the slot advances
-- [ ] Supported formats: MP4, MOV (browser-native playback)
-- [ ] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
-- [ ] Daily layout rotation: layout selection (choose which layouts are eligible to rotate)
-- [ ] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
-- [ ] Per-slot drag-to-reorder in the editor
-- [ ] Configurable metadata pill size and text size
-- [ ] Basic / Advanced editor mode — Basic hides less-common settings so the editor stays approachable for users who don't need full configurability (exact parameter split TBD)
+- [x] Per-slot mode toggle: photo cycling vs. video loop
+- [x] Video plays muted by default (optional audio toggle)
+- [x] Video loops for a configurable number of times before the slot advances
+- [x] Supported formats: MP4, MOV (browser-native playback)
+- [x] iPhone photos (HEIC/HEIF) — converted on the fly to JPEG so every browser can show them, with full metadata overlays
+- [x] iPhone HEVC/HDR videos converted to H.264 automatically in the background (needs ffmpeg)
+- [x] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
+- [x] Daily layout rotation: layout selection (choose which layouts are eligible to rotate)
+- [x] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
+- [x] Per-slot drag-to-reorder in the editor
+- [x] Configurable metadata pill size and text size
+- [x] Basic / Advanced editor mode — Basic hides less-common settings so the editor stays approachable for users who don't need full configurability (see [Editor modes](#editor-modes))
 
 ---
 
@@ -188,9 +190,18 @@ Each slot supports the following settings:
     "show_focal_length": false,
     "show_people": false
   },
-  "video_loops": 2             // For video mode: how many loops before advancing
+  "video_loops": 2,            // For video mode: how many times each video plays before advancing
+  "video_audio": false         // For video mode: play sound (muted by default)
 }
 ```
+
+**Video slots** (`"mode": "video"`) play `.mp4`, `.mov` and `.m4v` files from the slot's media folder. Each video plays `video_loops` times, then the slot crossfades to the next video — using the same shuffled, no-duplicate queue as photos, so the same clip never plays in two slots at once. Notes:
+
+- Video slots ignore `cycle_seconds` and `group` — they advance when their loops finish, and group timers never cut a video off.
+- Only the date pill is shown, read from the clip's recording date (MP4/MOV `mvhd` creation time). Clips without a plausible date show no pill.
+- Browsers usually block autoplay with sound until someone interacts with the page. If sound is blocked, the video keeps playing muted.
+- iPhone (HEVC), HDR and ProRes clips are converted to H.264 in the background so every browser can play them. Until a clip is converted it's left out of the rotation. See **iPhone videos (HEVC)** below.
+- Each playing video uses a hardware decoder; on TVs keep the number of video slots small. Clips larger than `video_max_edge` (default 1080p) are scaled down for this reason.
 
 ---
 
@@ -202,6 +213,7 @@ Each slot supports the following settings:
 | Frontend display | Vanilla HTML/CSS/JS | No build step, runs on any browser including TVs |
 | Frontend editor | Vanilla HTML/CSS/JS | No build step, same as display — simpler to host and iterate |
 | Photo metadata | `Pillow` + `piexif` | EXIF extraction from local files |
+| iPhone photos | `pillow-heif` | Decodes HEIC/HEIF (prebuilt wheels bundle libheif) |
 | Geocoding | OpenStreetMap Nominatim | Free, no API key required |
 | Config storage | JSON file | Human-readable, no database needed for v1 |
 | Auth (Google) | OAuth 2.0 via `google-auth` | Standard library, well documented |
@@ -216,7 +228,9 @@ Each slot supports the following settings:
 |---|---|
 | **Python 3.13** | Download from [python.org](https://python.org/downloads) (Windows) or `brew install python@3.13` (macOS). |
 | **A modern browser** | Chrome, Edge, Firefox, or Safari. The display is designed for full-screen use on a TV browser. |
-| **Your photos** | JPEG, PNG, GIF, or WebP files in a folder on your machine. |
+| **Your photos** | JPEG, PNG, GIF, WebP, or HEIC/HEIF (iPhone) files in a folder on your machine. Extensions are matched case-insensitively (`IMG_1234.HEIC` works). |
+| **Videos (optional)** | MP4 or MOV files for video slots. H.264 clips play as-is. iPhone (HEVC/HDR) and ProRes clips are converted automatically, which needs ffmpeg (below). |
+| **ffmpeg (optional, recommended for iPhone videos)** | macOS: `brew install ffmpeg`. Windows: `winget install Gyan.FFmpeg`, then open a new terminal so `PATH` updates. Without ffmpeg PicMe runs normally, but iPhone videos are skipped. |
 
 ---
 
@@ -316,7 +330,7 @@ Example: if that returns `192.168.68.50`, open `http://192.168.68.50:8000/displa
 
 ### Configuration
 
-The file `config.json` in the project root controls which layout is used and how each slot behaves. It is created automatically with defaults on first run. You can edit it directly — changes take effect after restarting the server.
+The file `config.json` in the project root controls which layout is used and how each slot behaves. It is created automatically with defaults on first run — the first time the display or editor is opened — using the classic-4 layout with every slot showing the `photos` folder. You can edit it directly: open displays re-read it every 3 seconds and apply changes on their own. If you change a video slot's folder by hand, restart the server (or open the folder in the editor) so its iPhone clips get converted.
 
 Top-level settings:
 
@@ -324,7 +338,7 @@ Top-level settings:
 {
   "layout": "classic-4",
   "wall_color": "#1a1a1a",       // background color shown between and around frames (the "wall")
-  "show_metadata": true,         // global kill switch — false hides all overlays on all slots instantly
+  "show_metadata": true,         // global kill switch — false hides all overlays on all slots instantly (the editor's Default Metadata → Show metadata)
   "date_format": "long",         // "long" (July 4, 2019) | "medium" (Jul 4, 2019) | "short" (7/4/2019) | "iso" (2019-07-04)
   "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
   "frame_defaults": {            // mat and frame style applied to every slot; per-slot frame: {} overrides
@@ -332,7 +346,8 @@ Top-level settings:
     "mat_width": 16,             // mat thickness in pixels
     "show_frame": true,          // show outer frame border
     "frame_color": "#2c2318",    // dark wood frame (any CSS color)
-    "frame_width": 8             // frame border thickness in pixels
+    "frame_width": 8,            // frame border thickness in pixels
+    "frame_style": "solid"       // "solid" (uses frame_color) | "wood" | "gold" — decorative frames ignore frame_color
   },
   "metadata_defaults": {         // applied to every slot; per-slot metadata overrides these
     "show_date": true,
@@ -343,7 +358,16 @@ Top-level settings:
     "show_shutter_speed": false,
     "show_iso": false,
     "show_focal_length": false,
-    "show_people": false
+    "show_people": false,
+    "text_size": "medium",       // "small" | "medium" | "large" | "x-large" — scales with each slot (see Metadata pills below)
+    "pill_size": "medium"        // "small" | "medium" | "large" — padding around the text
+  },
+  "video_max_edge": 1920,        // long-edge cap for converted videos: 1280 | 1920 (default, 1080p) | 3840 | 0 = original size
+  "include_live_photos": false,  // true = also play the short .MOV clips saved with Live Photos
+  "layout_rotation": {           // show a different layout each day (see Daily layout rotation below)
+    "enabled": false,
+    "layouts": [],               // layout ids to rotate through; [] = every layout
+    "change_at": "04:00"         // local time on the display when the next day's layout appears
   }
 }
 ```
@@ -355,8 +379,22 @@ Per-slot `metadata` and `frame` are both optional. If omitted, the slot inherits
   "id": 1,
   "source_path": "photos",
   "cycle_seconds": 30,
-  "metadata": { "show_camera": true },       // inherits everything else from metadata_defaults
-  "frame": { "mat_color": "#ffffff" }        // white mat on this slot only; inherits frame_defaults for the rest
+  "use_global": { "metadata": false },      // needed for the slot's own metadata settings to apply
+  "metadata": { "show_camera": true, "text_size": "large" },  // inherits everything else from metadata_defaults
+  "frame": { "mat_color": "#ffffff", "frame_style": "gold" }  // white mat and a gold frame on this slot only; inherits frame_defaults for the rest
+}
+```
+
+A video slot sets `mode` to `"video"` and points at a folder of MP4/MOV clips (see **Video slots** in the Slot Configuration Reference above):
+
+```json
+{
+  "id": 2,
+  "mode": "video",
+  "source_path": "/Videos/Clips",
+  "use_global": { "source": false },
+  "video_loops": 3,                          // play each clip 3 times, then advance
+  "video_audio": false                       // muted (default)
 }
 ```
 
@@ -375,17 +413,135 @@ Available metadata fields:
 
 Non-date pills are shown in the table order above. If `max_metadata_pills` is set, only the first N enabled non-date fields that have data are shown — put your highest-priority fields first in your slot config.
 
+#### Metadata pills
+
+`text_size` and `pill_size` set how big the metadata pills are. Set them under **Default Metadata** in the editor, or per slot in the slot's **Metadata Overlays** section (in **Advanced** mode; turn **Use global** off first, as with the other metadata settings). Hand-edited values other than the ones below are treated as `"medium"`.
+
+- **`text_size`** scales with the slot, so the same setting looks right in a big slot and a small one. The text is 4% of the shorter side of the space inside the frame (at least 14 px and at most 32 px), multiplied by the preset: `small` 0.8, `medium` 1, `large` 1.25, `x-large` 1.5. The result is always between 12 px and 48 px. At 1920×1080, a classic-4 slot gets 20 px text with `medium`, about 13 mm tall on a 55" TV and comfortable from the couch.
+- **`pill_size`** sets the padding around the text, in proportion to the text: `small` is snug, `medium` matches the original look and `large` is roomier. Pills are always fully rounded.
+
+When a slot is too small for all its pills:
+
+- `max_metadata_pills` applies first, exactly as before.
+- If the pills are still too tall for the slot, the lowest-priority ones (the last in the table above) are hidden until the rest fit. The date is never hidden and always stays at the bottom. Hidden pills come back if the window gets bigger.
+- A pill whose text is too wide for the slot scrolls slowly (about 25 px a second) back and forth, pausing for 2 seconds at each end. Text is never cut off with "…". If the TV or computer is set to reduce motion, the text doesn't move and is clipped at the pill's edge instead.
+
+**Upgrading:** `medium` pills are larger than the fixed 12 px pills of earlier versions. Choose **Small** for something closer to the old look.
+
 To use a different photo folder (e.g. a folder elsewhere on your PC), set `source_path` to the full path:
 
 ```json
 "source_path": "C:/Users/yourname/Pictures/Vacations"
 ```
 
+#### Frames
+
+Each slot has a mat (`mat_color`, `mat_width`) around the photo or video and a frame around the mat. The mat always shows: the photo sits inside it, cropped there in **Fill** mode and letterboxed there in **Fit** mode.
+
+`frame_style` picks the frame: `"solid"` draws a plain border in `frame_color`, while `"wood"` and `"gold"` draw a decorative moulding (`frame_color` is ignored for those). Set it under **Default Frame** in the editor, per slot in the slot's Frame section, or per time-of-day period (**Same as default** keeps the slot's usual style). `frame_width` sets the moulding's thickness, too. Choosing wood or gold when the width is under 16 px sets it to that style's own default (28 px wood, 36 px gold), since a thinner moulding loses its detail. The frame never takes more than a sixth of a small slot's shortest side, and corners keep their shape at any size. Time-of-day periods have their own frame width (8 px unless changed), so raise it there if a wood or gold frame looks thin at night.
+
+**Frame assets.** The wood and gold images in `frontend/assets/frames/` are original renders made by `tools/frames/generate_frames.py` (Pillow only, no third-party images; MIT like the rest of PicMe). It also writes `frames.js`, the list of styles the display and editor load. To change or add a style, edit the script and re-run it; `--check` verifies the committed files match, and `--preview /tmp/frames.png` writes a contact sheet to look at:
+
+```bash
+.venv/bin/python tools/frames/generate_frames.py
+.venv/bin/python tools/frames/generate_frames.py --check
+```
+
+`.gitignore` ignores `*.png` to keep photos out of the repo, with an exception for `frontend/assets/frames/`.
+
+#### Daily layout rotation
+
+Turn on **Rotate layout daily** in the editor's Layout section, then (in **Advanced** mode) tick the layouts to rotate through. In Basic mode every layout rotates, unless Advanced has narrowed the list. The display shows one of them each day:
+
+- **Which layout:** the ticked layouts take turns in the order the editor lists them, so two days in a row never show the same layout (when 2 or more are ticked). Ticking every layout is saved as `"layouts": []`, which also includes layouts added later. With only one ticked, that layout is shown every day.
+- **When it changes:** at `change_at` (default 04:00) by the display's own clock and time zone. An open display switches by itself within 30 seconds, and a TV that was asleep switches as soon as it wakes. Before `change_at` it is still the previous day's layout.
+- **Stays the same all day:** reloading the page, opening a second TV or opening the editor gives the same layout for the same day. The editor marks today's layout with a **Today** badge and says which layout comes next. Changing the ticked layouts can change today's layout straight away.
+- **Base layout:** clicking a layout still sets `layout`, which is shown when rotation is off and is the layout the editor preview shows.
+- **Slots:** slot *N* is always the same slot on every layout. A layout with fewer slots shows slots 1 to its slot count; the rest are kept with their settings and come back on days with a bigger layout. When rotation is on, the editor creates slots up to the biggest ticked layout (as photo slots using the global settings) and lists the extra slots under the preview so you can edit them.
+- **Video slots and groups:** a video slot plays only on days its position is visible, but its folder is still converted in the background so it's ready. A larger layout can show more video slots at once, so keep their number small. A group only cycles the slots that are visible that day, at the timer of its first visible slot.
+- **Old configs:** `"daily_layout_rotation": true` from earlier versions still works (all layouts, switching at midnight). The editor converts it to `layout_rotation` the next time it saves.
+
+#### Rearranging slots
+
+To move a slot's content to another position, drag it onto that slot in the editor's layout preview; the two slots swap all their settings (mode, folder, frame, metadata, timer, group, fill and video options). Slot numbers stay with the positions, so slot 1 is still `config.slots[0]`. On a phone or tablet, press and hold a slot for a moment, then drag; a quick swipe scrolls the page as usual. With daily rotation on, drop a slot on one of the **Edit slot N** buttons under the preview to swap it with a slot that only shows on some days (or drag the button onto the preview). Dragging back undoes a swap. The change saves automatically, and open displays pick it up within a few seconds: a swap that changes a visible slot's mode, timer, group or video folder reloads the display, anything else is applied in place.
+
+#### Editor modes
+
+The switch at the top of the editor's sidebar picks **Basic** or **Advanced**. Basic shows the settings most people change; Advanced shows everything.
+
+- **A view preference only.** Hidden settings keep their values and still apply on the display. Switching modes never changes `config.json`.
+- **Per browser.** The choice is saved in the browser (`localStorage`), not in the config, so each person's editor remembers its own mode. A browser that has never chosen starts in Basic. If the browser blocks storage, the editor still works and starts in Basic each time.
+- **Advanced values in Basic.** When the config sets advanced settings away from their defaults, Basic shows **"N advanced settings active · Show"** under the switch. Hover it for the list; **Show** switches to Advanced.
+
+Which settings each mode shows (the split lives in one table, `EDITOR_SETTINGS` in `frontend/editor/index.html`, so it is easy to change):
+
+| | Basic | Advanced adds |
+|---|---|---|
+| **Layout** | Layout picker, Rotate layout daily (and today's rotation status) | Which layouts rotate, Switch layout at |
+| **Global** | Default media folder, Wall color | Reset all slots to global |
+| **Frame** | Mat color, Frame style | Mat width, Show frame border, Frame color, Frame width |
+| **Metadata** | Show metadata; Text size, Pill size and the fields (Date, Location, Camera…) | Date format, Max metadata pills |
+| **Time-of-Day, Videos** | — | The whole sections (templates, max video size, Live Photo clips) |
+| **Each slot** | Media folder, Photos / Video (and the "no videos" warning), Change every (seconds), Fit / Fill, Show metadata | Use global toggles, Group, Frame, the slot's own metadata settings, video loops and audio, conversion status |
+
+In Basic, a slot's media folder is always editable: typing a different folder gives the slot its own folder, and clearing it or typing the default folder (a trailing `/` makes no difference) makes it follow the default again. Like every folder box, it is saved when you press Enter, leave the box or pick a folder with **Browse…**, not while you type. A slot that follows the default shows the default folder, also right after the default changes. Picking Wood or Gold widens a thin frame to suit it; going back to Solid restores the previous width unless you changed it in between.
+
+**Show metadata.** The **Default Metadata** section and each slot's **Metadata Overlays** section open and close with a **Show metadata** switch (instantly if the computer is set to reduce motion):
+
+- **Default Metadata** controls `show_metadata`. Off hides every pill on every slot and keeps all the other metadata settings. While it is off, each slot's switch is greyed out.
+- **A slot's switch** is on when the slot shows at least one pill (for a video slot, the date). Turning it off sets `use_global.metadata: false` and every `show_*` field to `false` for that slot; text and pill size are kept. Turning it on removes the slot's `show_*` fields so it uses the default fields again. If those show nothing (for example no field is on in Default Metadata), it turns the date on for that slot. A slot's own field choices made in Advanced are not remembered after turning it off and on again.
+
+---
+
+### iPhone photos (HEIC/HEIF)
+
+iPhones save photos as HEIC, which only Safari can display. PicMe lists `.heic`/`.heif` files like any other photo and, when a slot shows one, converts it on the server to a JPEG:
+
+- Orientation is applied (portrait shots aren't sideways).
+- Display P3 / wide-gamut colors are converted to sRGB so they don't look washed out. HDR photos show their standard (SDR) image.
+- Large photos (e.g. 48MP) are scaled down to at most 3840px on the long edge so TVs stay fast. Metadata overlays (including megapixels) are read from the original.
+
+The first time a large HEIC is shown it takes about a second to convert. The converted JPEGs are cached, keyed by the file's path, modified time, and size, so an edited photo is converted again. The cache lives here:
+
+| OS | Cache folder |
+|---|---|
+| macOS | `~/Library/Caches/PicMe/heic` |
+| Windows | `%LOCALAPPDATA%\PicMe\Cache\heic` |
+| Linux | `~/.cache/picme/heic` (or `$XDG_CACHE_HOME/picme/heic`) |
+
+Set the `PICME_CACHE_DIR` environment variable to use a different folder. Your original photos are only ever read, never modified, and nothing is written into your photo folders. The cache is safe to delete at any time. A HEIC that can't be decoded is skipped like any other broken image.
+
+Live Photos export as a pair: `IMG_1234.HEIC` plus a short `IMG_1234.MOV`. The HEIC shows up in photo slots. The `.MOV` is hidden from video slots by default (see below).
+
+---
+
+### iPhone videos (HEVC)
+
+iPhones record video in HEVC (H.265), usually 10-bit HDR, which Chrome and most TV browsers (e.g. Samsung) can't play. PicMe converts these clips in the background to H.264 MP4, which plays everywhere:
+
+- **Which clips are converted:** anything that isn't plain 8-bit H.264 — HEVC, HDR (HLG / Dolby Vision), ProRes, uncommon audio (e.g. iPhone 16 spatial audio) — plus H.264 clips larger than `video_max_edge`. Ordinary H.264 clips are streamed untouched.
+- **Look:** HDR (HLG, PQ, Dolby Vision) is tone-mapped to standard range so clips don't look dark, flat or washed out, and portrait clips stay upright. PicMe generates a tone-mapping lookup table (BT.2100 → SDR with highlight roll-off) into its cache and applies it with ffmpeg's `lut3d` filter, which every ffmpeg build has. On a Mac, decoding and encoding use the GPU (VideoToolbox); SDR clips are converted entirely on the GPU.
+- **Size:** converted clips are scaled down to `video_max_edge` (default 1920, i.e. 1080p; set in the editor under *Videos → Max video size*). Several 4K videos at once overwhelm most TV decoders. Clips are never scaled up, and frame rates above 60 fps (slo-mo) are capped at 60.
+- **Background, one at a time:** conversion starts when PicMe starts (for every video slot's folder) and whenever a folder is opened in the editor or saved. It runs one clip at a time at low priority, shortest first. Until a clip is ready it's left out of the rotation; the display picks it up within a few minutes without a reload. The editor shows progress for the selected video slot, e.g. *"12 of 40 videos ready — converting IMG_1234.MOV (45%)"*.
+- **Cache:** converted copies are stored next to the HEIC cache, in a `video` folder (`~/Library/Caches/PicMe/video` on macOS, `%LOCALAPPDATA%\PicMe\Cache\video` on Windows, `~/.cache/picme/video` on Linux, or `$PICME_CACHE_DIR/video`). Your originals are only ever read, and nothing is written into your video folders. Expect roughly 45 MB per minute of 1080p video. Copies whose original is deleted or edited are cleaned up at startup. The folder is safe to delete; it's rebuilt as needed.
+- **Live Photos:** the 2–3 second `.MOV` an iPhone saves with each Live Photo would flicker by in a video slot, so a `.MOV`/`.MP4` of 4 seconds or less with the same name as a HEIC/JPEG in the same folder is hidden. A longer clip that happens to share a photo's name is still shown. Turn on *Include Live Photo clips* in the editor (`include_live_photos`) to show them anyway.
+- **A clip that can't be converted** (e.g. a damaged file) is skipped, and the editor counts it. Replacing or editing the file retries it.
+
+**Installing ffmpeg.** PicMe looks for `ffmpeg` and `ffprobe` on your `PATH`, then in Homebrew's folders (`/opt/homebrew/bin`, `/usr/local/bin`), so it's found even when PicMe is started at login.
+
+- **macOS:** `brew install ffmpeg`
+- **Windows:** `winget install Gyan.FFmpeg`, then open a new terminal (or log out and back in) so `PATH` picks it up. Or download the "essentials" build from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), unzip it, and add its `bin` folder to `PATH`.
+- **Anywhere:** set `PICME_FFMPEG` and `PICME_FFPROBE` to the full paths of the two programs.
+
+If ffmpeg is missing, PicMe logs a warning, keeps playing H.264 clips, skips iPhone clips, and the editor shows how to install it. Once ffmpeg is installed PicMe picks it up within a few minutes (or when you open the video slot in the editor); no restart needed.
+
 ---
 
 ### Upgrading
 
 After pulling new code, re-run the dependency install step to pick up any new packages:
+
+> **HEIC support adds a new dependency, `pillow-heif`.** If you're upgrading from an earlier version, re-run the install below (on macOS, the `uv` command with the `DYLD_LIBRARY_PATH` export). It installs from a prebuilt wheel, so you don't need Homebrew's `libheif`. Until you do, the server won't start (`ModuleNotFoundError: No module named 'pillow_heif'`).
 
 ```bash
 # Windows
@@ -408,6 +564,8 @@ Install the dev dependencies (`uv pip install -r requirements-dev.txt`), then fr
 ```
 
 The browser tests (`tests/e2e/`) drive a locally installed Chrome via Playwright and are skipped automatically if Chrome can't launch.
+
+To check for duplicate photos across slots, sample only each slot's decoded `img.visible` (or the display's `displayedPaths` claims), never both `<img>`s or anything with opacity > 0 — the outgoing image of a crossfade would count as a duplicate. See the comment above `SAMPLE_SLOTS` in `tests/e2e/test_browser.py`.
 
 ---
 

@@ -21,7 +21,13 @@ photos/
 *.jpg
 *.jpeg
 *.png
+# ...except the generated decorative frame assets
+!frontend/assets/frames/*.png
 *.gif
+*.heic
+*.heif
+*.HEIC
+*.HEIF
 *.mp4
 *.mov
 
