@@ -105,14 +105,12 @@
     .overlay-pill.fit-hidden { display: none; }
 
     /* Labels on the mat (label_position): a caption under the photo — one centred row, date
-       first. Nothing but mat behind it, so no blur. fitOverlay lets long pills shrink (and
-       scroll) once it has measured them, and the date only when it alone is too wide. */
+       first. Nothing but mat behind it, so no blur. fitOverlay lets a pill that is too long
+       shrink, so its text scrolls (a non-date pill no narrower than its inline min-width). */
     .slot-overlay.caption { flex-direction: row; align-items: center; max-height: none; }
     .slot-overlay.caption .overlay-pill { backdrop-filter: none; }
     .slot-overlay.caption .overlay-pill[data-date] { order: -1; }
-    .slot-overlay.caption.caption-fit .overlay-pill:not([data-date]),
-    .slot-overlay.caption .overlay-pill.caption-squeeze { flex-shrink: 1; }
-    .slot-overlay.caption .overlay-pill.caption-squeeze { min-width: 0; }
+    .slot-overlay.caption .overlay-pill.caption-squeeze { flex-shrink: 1; min-width: 0; }
 
     /* Text that doesn't fit scrolls (fitOverlay sets the animation); it is never cut with "…" */
     .pill-clip { display: block; overflow: hidden; }
@@ -470,8 +468,8 @@
     // each side; on the mat: one row in the caption band):
     // 1. Too many: hide non-date pills from the lowest priority up. The date is never hidden.
     //    On the photo, a date that alone doesn't fit drops to the smallest font and the overlay
-    //    clips it; in a caption, long pills first shrink to a few words, and a date that alone
-    //    is too wide shrinks too.
+    //    clips it. In a caption, the last non-date pill left may shrink to a few words (and
+    //    scroll) before it is hidden too, and a date that alone is too wide shrinks.
     // 2. Too wide: the pill's text scrolls slowly back and forth (static under reduced motion).
     // Hidden pills stay in the DOM, so a resize can bring them back.
     function fitOverlay(slotEl) {
@@ -479,7 +477,6 @@
       if (!overlay) return;
       const pills = [...overlay.querySelectorAll('.overlay-pill')];
       overlay.style.removeProperty('--pill-font-size');
-      overlay.classList.remove('caption-fit');
       pills.forEach(p => { p.classList.remove('fit-hidden', 'caption-squeeze'); p.style.minWidth = ''; });
       if (pills.length === 0) return;
 
@@ -488,17 +485,24 @@
         ? () => overlay.scrollWidth > overlay.clientWidth + 0.5
         : () => overlay.scrollHeight > overlay.clientHeight + 0.5;
       const optional = pills.filter(p => !p.dataset.date);
-      if (caption && window.PicMePills) {
-        // Measured at full width, then allowed to shrink to CAPTION_PILL_MIN_EM (or their own width)
-        const em = parseFloat(getComputedStyle(pills[0]).fontSize) || 16;
-        const widths = optional.map(p => p.offsetWidth);
-        optional.forEach((p, i) => { p.style.minWidth = `${Math.min(widths[i], PicMePills.CAPTION_PILL_MIN_EM * em)}px`; });
-        overlay.classList.add('caption-fit');
-      }
-      while (overflows() && optional.length) optional.pop().classList.add('fit-hidden');
-      if (overflows()) {
-        if (caption) pills.forEach(p => { if (p.dataset.date) p.classList.add('caption-squeeze'); });
-        else if (window.PicMePills) overlay.style.setProperty('--pill-font-size', `${PicMePills.FONT_MIN}px`);
+      if (caption) {
+        // At full width first, so a caption stays crisp: only the last pill left may scroll
+        while (overflows() && optional.length > 1) optional.pop().classList.add('fit-hidden');
+        const last = optional[0];
+        if (overflows() && last && window.PicMePills) {
+          const em = parseFloat(getComputedStyle(last).fontSize) || 16;
+          last.style.minWidth = `${Math.min(last.offsetWidth, PicMePills.CAPTION_PILL_MIN_EM * em)}px`;
+          last.classList.add('caption-squeeze');
+          if (overflows()) {
+            last.classList.remove('caption-squeeze');
+            last.style.minWidth = '';
+            optional.pop().classList.add('fit-hidden');
+          }
+        }
+        if (overflows()) pills.forEach(p => { if (p.dataset.date) p.classList.add('caption-squeeze'); });
+      } else {
+        while (overflows() && optional.length) optional.pop().classList.add('fit-hidden');
+        if (overflows() && window.PicMePills) overlay.style.setProperty('--pill-font-size', `${PicMePills.FONT_MIN}px`);
       }
 
       // A photo slot shows each photo for cycle_seconds; video slots have no fixed window

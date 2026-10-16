@@ -42,8 +42,8 @@
   // smallest slot's height.
   const CAPTION_GAP_EM = 0.35;
   const CAPTION_MAX_FRACTION = 0.25;
-  // Long caption pills shrink and scroll down to this many em (or their own width) before the
-  // lowest-priority pills are hidden to make room
+  // The last non-date pill left in a caption shrinks and scrolls down to this many em (or its
+  // own width) before it is hidden too
   const CAPTION_PILL_MIN_EM = 6;
   const LABEL_POSITIONS = ['auto', 'photo', 'mat'];
 

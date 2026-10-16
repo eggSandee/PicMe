@@ -473,7 +473,7 @@ When a slot is too small for all its pills:
 
 - `max_metadata_pills` applies first, exactly as before.
 - On the photo: if the pills are still too tall, the lowest-priority ones (the last in the table above) are hidden until the rest fit. The date is never hidden and always stays at the bottom.
-- In a caption: if the row is too wide, long pills shrink down to about 6 characters and scroll, then the lowest-priority pills are hidden until the row fits. The date is never hidden; if it alone is too wide, it scrolls.
+- In a caption: if the row is too wide, the lowest-priority pills are hidden until it fits, so captions stay crisp. If the last one left is long (a long location, say), it shrinks to about 6 characters and scrolls before it is hidden too. The date is never hidden; if it alone is too wide, it scrolls.
 - Hidden pills come back if the window gets bigger.
 - A pill whose text is too wide scrolls slowly (about 25 px a second) back and forth, pausing for 2 seconds at each end. Text is never cut off with "…". If the TV or computer is set to reduce motion, the text doesn't move and is clipped at the pill's edge instead.
 
