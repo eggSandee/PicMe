@@ -180,6 +180,10 @@ def test_gallery_mat_fields_update_the_preview_and_save(write_cfg, open_page):
     _saved(write_cfg, lambda c: c["gallery"]["mat_color"] == "#123456")
     assert page.evaluate("() => getComputedStyle(document.querySelector('#collage-preview .gallery-mat')).backgroundColor") == "rgb(18, 52, 86)"
 
+    # The gallery's own frame style shows only with "Use a different frame" on
+    assert page.locator("#g-gal-frame-style").is_hidden()
+    page.click("#g-gal-frame-override + .toggle-track")
+    _saved(write_cfg, lambda c: c.get("gallery", {}).get("frame_override") is True)
     page.select_option("#g-gal-frame-style", "gold")
     _saved(write_cfg, lambda c: c["gallery"]["frame_style"] == "gold")
     assert "gold.png" in page.evaluate("() => getComputedStyle(document.querySelector('#collage-preview .gallery-frame')).borderImageSource")
@@ -191,18 +195,137 @@ def test_gallery_mat_fields_update_the_preview_and_save(write_cfg, open_page):
     assert w.errors == []
 
 
-def test_basic_shows_mat_colour_and_frame_style_and_counts_the_rest(write_cfg, open_page):
+def test_basic_shows_mat_colour_and_the_frame_style_and_counts_the_rest(write_cfg, open_page):
     write_cfg(layout="gallery-12", slots=12, gallery={"gutter": 50})
     page = open_page(editor_mode="basic").page
-    assert page.locator("#g-gal-mat-color").is_visible() and page.locator("#g-gal-frame-style").is_visible()
+    assert page.locator("#g-gal-mat-color").is_visible()
+    # The frame style you see is set in the Frame section, which says so on a gallery screen
+    assert page.locator("#g-frame-style").is_visible() and page.locator("#g-frame-style").is_enabled()
+    assert page.locator("#frame-gallery-hint").is_visible()
+    assert page.locator("#frame-gallery-hint").text_content() == "Also the outer frame of gallery-mat layouts."
+    # Mat colour applies to separate frames only: disabled on a gallery-only screen, saying why
+    assert page.locator("#g-mat-color").is_disabled()
+    assert page.locator(".field:has(#g-mat-color) + .scope-hint").text_content() == "Separate-frame layouts only."
     for sel in ("#g-gal-gutter", "#g-gal-margin", "#g-gal-frame-width", "#g-gal-bevel-width", "#g-gal-wall-margin",
-                "#g-gal-frame-color", "#g-gal-show-frame"):
+                "#g-gal-frame-style", "#g-gal-frame-color", "#g-gal-show-frame", "#g-gal-frame-override"):
         assert page.locator(sel).is_hidden(), sel
     assert page.locator("#layout-mode").is_visible()  # the Frames switch is Basic
     assert page.locator("#advanced-hint").is_visible()
     assert "Gallery: mat between openings" in page.locator("#advanced-hint").get_attribute("title")
     page.click("#advanced-hint-show")
     assert page.locator("#g-gal-gutter").is_visible()
+
+
+# --- One frame control: the Frame section drives the frame in both modes ---
+
+FRAME_STYLE_JS = """() => {
+  const g = document.querySelector('.gallery-frame');
+  if (g) return 'gallery:' + g.dataset.frameStyle;
+  const src = getComputedStyle(document.querySelector('#slot-1 .mat-frame')).borderImageSource;
+  return 'slots:' + (src.includes('gold.png') ? 'gold' : src.includes('wood.png') ? 'wood' : 'solid');
+}"""
+
+
+def test_frame_style_control_changes_the_frame_in_both_modes(write_cfg, open_page):
+    write_cfg(frame_defaults={"mat_color": "#000000", "mat_width": 16, "show_frame": True,
+                              "frame_color": "#2c2318", "frame_width": 8, "frame_style": "solid"})
+    display = open_page("/display/").page
+    _until(display, MEDIA_READY_JS)
+    w = open_page(editor_mode="basic")
+    page = w.page
+    assert display.evaluate(FRAME_STYLE_JS) == "slots:solid"
+
+    page.select_option("#g-frame-style", "gold")
+    _until(display, f"() => ({FRAME_STYLE_JS})() === 'slots:gold'", timeout=8)
+
+    page.click("#layout-mode button[data-mode='gallery']")
+    _until(display, "() => document.getElementById('collage')?.classList.contains('gallery')", timeout=8)
+    _until(display, f"() => ({FRAME_STYLE_JS})() === 'gallery:gold'", timeout=8)
+    _until(display, MEDIA_READY_JS)
+    display.evaluate("window.__marker = 1")
+    assert page.locator("#frame-gallery-hint").is_visible()
+    page.select_option("#g-frame-style", "wood")  # the same, visible control
+    _until(display, f"() => ({FRAME_STYLE_JS})() === 'gallery:wood'", timeout=8)
+    assert display.evaluate("window.__marker") == 1  # patched in place
+    # The editor's own preview and thumbnail follow it too
+    assert page.evaluate("() => document.querySelector('#collage-preview .gallery-frame').dataset.frameStyle") == "wood"
+    assert page.evaluate("() => document.querySelector(\".layout-thumb[data-id='classic-4'] .gallery-frame\").dataset.frameStyle") == "wood"
+
+    # Frame colour, on a solid frame (Advanced)
+    page.click("#editor-mode button[data-mode='advanced']")
+    page.select_option("#g-frame-style", "solid")
+    page.fill("#g-frame-color", "#00ff00")
+    _saved(write_cfg, lambda c: c["frame_defaults"]["frame_color"] == "#00ff00")
+    _until(display, "() => getComputedStyle(document.querySelector('.gallery-frame')).borderTopColor === 'rgb(0, 255, 0)'", timeout=8)
+    assert display.evaluate("window.__marker") == 1
+    assert w.errors == []
+
+
+def test_gallery_frame_override_and_controls_that_do_nothing_are_disabled(write_cfg, open_page):
+    write_cfg(layout="gallery-12", slots=12, frame_defaults={"frame_style": "wood", "frame_width": 28})
+    w = open_page()
+    page = w.page
+    frame = "() => document.querySelector('#collage-preview .gallery-frame').dataset.frameStyle"
+    assert page.evaluate(frame) == "wood"
+    # Gallery-only screen: mat and widths are separate-frame settings
+    for sel in ("#g-mat-color", "#g-mat-width", "#g-frame-width"):
+        assert page.locator(sel).is_disabled(), sel
+    assert page.locator(".field:has(#g-mat-width) + .scope-hint").is_visible()
+    assert page.locator("#g-frame-style").is_enabled()
+
+    page.click("#g-gal-frame-override + .toggle-track")
+    _saved(write_cfg, lambda c: c.get("gallery", {}).get("frame_override") is True)
+    assert page.locator("#g-gal-frame-style").is_visible()
+    page.select_option("#g-gal-frame-style", "gold")
+    _saved(write_cfg, lambda c: c["gallery"]["frame_style"] == "gold")
+    assert page.evaluate(frame) == "gold"  # the gallery's own frame wins
+    assert page.locator("#frame-gallery-hint").is_hidden()
+    # Now nothing on screen uses the Frame section's style: disabled, with the reason
+    assert page.locator("#g-frame-style").is_disabled()
+    assert "Gallery mats use their own frame" in page.locator(".field:has(#g-frame-style) + .scope-hint").text_content()
+    page.click("#editor-mode button[data-mode='basic']")
+    assert "Gallery: own frame" in page.locator("#advanced-hint").get_attribute("title")
+
+    # A day with separate frames (rotation) makes them all useful again
+    page.click("#editor-mode button[data-mode='advanced']")
+    page.click("#g-rotation-enabled + .toggle-track")
+    _saved(write_cfg, lambda c: c["layout_rotation"]["enabled"] is True)
+    for sel in ("#g-mat-color", "#g-mat-width", "#g-frame-width", "#g-frame-style"):
+        assert page.locator(sel).is_enabled(), sel
+    assert page.locator(".scope-hint:visible").count() == 0
+    assert w.errors == []
+
+
+# --- Label position ---
+
+def test_label_position_control_saves_and_previews_captions(write_cfg, open_page):
+    write_cfg(layout="gallery-salon", slots=8, show_metadata=True,
+              metadata_defaults={"show_date": True, "show_camera": True})
+    w = open_page(editor_mode="basic")
+    page = w.page
+    sel = page.locator("#g-label-position")
+    assert sel.is_visible() and sel.input_value() == "auto"
+    caption = "() => [...document.querySelectorAll('#collage-preview .slot-overlay')].map(o => o.classList.contains('caption'))"
+    assert page.evaluate(caption) == [True] * 8  # auto: on the mat for a gallery mat
+    # Every preview caption is under its opening's box
+    assert page.evaluate("""() => [...document.querySelectorAll('#collage-preview .opening')].every(o => {
+        const ov = o.querySelector('.slot-overlay').getBoundingClientRect(), b = o.querySelector('.opening-box').getBoundingClientRect();
+        return ov.top >= b.bottom - 0.5; })""")
+    sel.select_option("photo")
+    _saved(write_cfg, lambda c: c.get("label_position") == "photo")
+    assert page.evaluate(caption) == [False] * 8
+
+    page.click("#layout-mode button[data-mode='slots']")
+    sel.select_option("mat")
+    _saved(write_cfg, lambda c: c.get("label_position") == "mat")
+    # Separate frames: the bars sit in each cell's (taller) bottom mat, under the photo, one row
+    bars = page.evaluate("""() => [...document.querySelectorAll('.preview-slot')].map(el => {
+        const pills = el.querySelector('.preview-pills');
+        const photo = [...el.children].find(c => !c.classList.contains('preview-pills') && c.offsetHeight > 20);
+        return { top: pills.getBoundingClientRect().top, photoBottom: photo.getBoundingClientRect().bottom,
+                 row: getComputedStyle(pills).flexDirection }; })""")
+    assert all(b["top"] >= b["photoBottom"] - 0.5 and b["row"] == "row" for b in bars), bars
+    assert w.errors == []
 
 
 # --- Opening shape picker ---
@@ -299,6 +422,24 @@ def test_editor_preview_matches_the_display(write_cfg, open_page, layout):
     assert display.evaluate(mat, "#collage") == editor.evaluate(mat, "#collage-preview") == "rgb(0, 255, 255)"
     frame = "sel => getComputedStyle(document.querySelector(`${sel} .gallery-frame`)).borderTopWidth"
     assert display.evaluate(frame, "#collage") == editor.evaluate(frame, "#collage-preview") == "40px"
+
+
+@pytest.mark.parametrize("layout", ["gallery-salon", "gallery-cameo"])
+def test_editor_preview_captions_match_the_display(write_cfg, open_page, layout):
+    write_cfg(layout=layout, slots=12, show_metadata=True, metadata_defaults={"show_date": True, "show_camera": True},
+              slot_overrides={1: {"shape": "heart"}})
+    display = open_page("/display/").page
+    _until(display, MEDIA_READY_JS)
+    _until(display, "() => document.querySelector('.slot-overlay.caption')")
+    editor = open_page().page
+    caption_js = GEOMETRY_JS.replace("const r = o.querySelector('.opening-box').getBoundingClientRect();",
+                                     "const r = o.querySelector('.slot-overlay').getBoundingClientRect();")
+    for js in (GEOMETRY_JS, caption_js):
+        shown, preview = display.evaluate(js, "#collage"), editor.evaluate(js, "#collage-preview")
+        assert len(shown) == len(preview)
+        for a, b in zip(shown, preview):
+            for key in ("y", "h") if js is caption_js else ("x", "y", "w", "h"):  # captions are as wide as their pills
+                assert b[key] == pytest.approx(a[key], abs=3), (key, a, b)
 
 
 # --- Rotation: per-layout mode chips ---

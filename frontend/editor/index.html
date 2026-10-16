@@ -122,19 +122,36 @@
 
     .layout-thumb.active span { color: var(--accent); }
 
-    /* Daily rotation: eligibility checkbox and "Today" badge on each layout thumbnail */
+    /* Daily rotation: a small eligibility checkbox in each thumbnail's bottom-right corner (the
+       Gallery and Today badges hold the top corners), and the "Today" badge */
     .layout-thumb { position: relative; }
-    .layout-thumb .rotation-pick-row {
+    .layout-thumb .thumb-frame { position: relative; margin-bottom: 4px; }
+    .layout-thumb .thumb-frame .thumb-grid { margin-bottom: 0; }
+    .layout-thumb .rotation-pick-corner {
+      position: absolute;
+      right: 3px;
+      bottom: 3px;
+      z-index: 1;
       display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      margin-top: 4px;
-      font-size: 11px;
-      color: var(--text-muted);
+      padding: 2px;
+      border-radius: 3px;
+      background: rgba(0, 0, 0, 0.45);
+      line-height: 0;
       cursor: pointer;
+      opacity: 0.55;
+      transition: opacity 0.15s;
     }
-    .layout-thumb .rotation-pick { accent-color: var(--accent); }
+    .layout-thumb .rotation-pick-corner.checked,
+    .layout-thumb .rotation-pick-corner:hover,
+    .layout-thumb .rotation-pick-corner:focus-within { opacity: 1; }
+    .layout-thumb .rotation-pick {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+    .layout-thumb .layout-mode-row { margin-top: 2px; }
     .layout-thumb .thumb-grid.thumb-gallery { display: block; position: relative; overflow: hidden; }
     .layout-thumb .gallery-badge {
       position: absolute;
@@ -149,7 +166,7 @@
     }
     .layout-thumb.active .gallery-badge { color: #fff; }
     .layout-thumb .layout-mode-chip {
-      margin: 4px 0 0 6px;
+      margin: 0;
       padding: 0 5px;
       font-size: 10px;
       line-height: 16px;
@@ -172,6 +189,24 @@
       padding: 1px 4px;
     }
     #rotation-options[hidden] { display: none; }
+    /* Section title with small text links on the right (Layout: Select all / Deselect all) */
+    .sidebar-header-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+    .sidebar-header-row h3 { margin-bottom: 0; }
+    #rotation-bulk { display: flex; align-items: baseline; gap: 4px; font-size: 11px; line-height: inherit; color: var(--text-muted); }
+    #rotation-bulk[hidden] { display: none; }
+    .link-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      font: inherit;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .link-btn:hover:not(:disabled), .link-btn:focus-visible { color: var(--accent); text-decoration: underline; }
+    .link-btn:disabled { opacity: 0.45; cursor: default; }
+    /* Why a control is disabled: it changes nothing on the layouts the display can show */
+    .scope-hint { font-size: 11px; color: var(--text-muted); margin: -6px 0 10px; line-height: 1.4; }
+    .scope-hint[hidden] { display: none; }
     #rotation-status { font-size: 12px; color: var(--text); line-height: 1.4; margin-top: 8px; }
     #rotation-slot-hint { font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.5; }
     #rotation-slot-hint .btn { padding: 2px 8px; font-size: 11px; margin: 0 4px 0 0; }
@@ -324,6 +359,7 @@
     .gallery-stage .opening.drag-source { opacity: 0.4; }
     .gallery-stage .drop-target { outline-width: 6px; outline-offset: -6px; }
     .gallery-stage .slot-overlay { position: absolute; display: flex; flex-direction: column; align-items: flex-start; overflow: hidden; pointer-events: none; }
+    .gallery-stage .slot-overlay.caption { flex-direction: row; align-items: center; }
     .gallery-stage .opening-mark { position: absolute; pointer-events: none; z-index: 11; }
     .opening-ghost { background: var(--surface2); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; color: var(--text-muted); }
 
@@ -603,7 +639,14 @@
     </div>
 
     <div class="sidebar-section">
-      <h3>Layout</h3>
+      <div class="sidebar-header-row">
+        <h3>Layout</h3>
+        <span id="rotation-bulk" data-setting="rotation.bulk" hidden>
+          <button type="button" class="link-btn" id="rotation-select-all">Select all</button>
+          <span aria-hidden="true">·</span>
+          <button type="button" class="link-btn" id="rotation-deselect-all">Deselect all</button>
+        </span>
+      </div>
       <div id="layout-picker" data-setting="layout.picker"></div>
 
       <div class="field" style="margin-top:10px" data-setting="layout.mode">
@@ -622,7 +665,7 @@
         </label>
       </div>
       <div id="rotation-options">
-        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 10px;" data-setting="rotation.layouts">Tick the layouts to rotate through. The display shows one each day; clicking a layout still sets the base layout used when rotation is off.</p>
+        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 10px;" data-setting="rotation.layouts">Tick the box in a layout's corner to rotate through it. The display shows one each day; clicking a layout still sets the base layout used when rotation is off.</p>
         <div class="field" data-setting="rotation.change_at">
           <label>Switch layout at</label>
           <input type="time" id="g-rotation-change-at" />
@@ -684,7 +727,8 @@
     </div>
 
     <div class="sidebar-section">
-      <h3>Default Frame</h3>
+      <h3>Frame</h3>
+      <p id="frame-gallery-hint" class="scope-hint" style="margin-top:-6px" data-setting="frame.frame_style" hidden>Also the outer frame of gallery-mat layouts.</p>
 
       <div class="field" data-setting="frame.mat_color">
         <label>Mat color</label>
@@ -729,24 +773,33 @@
           <label>Mat color</label>
           <input type="color" id="g-gal-mat-color" />
         </div>
-        <div class="field" data-setting="gallery.frame_style">
-          <label>Frame style</label>
-          <select id="g-gal-frame-style"></select>
-        </div>
-        <div class="toggle-row" style="margin-bottom:8px" data-setting="gallery.show_frame">
-          <label>Show frame</label>
+        <div class="toggle-row" style="margin-bottom:8px" data-setting="gallery.frame_override">
+          <label for="g-gal-frame-override">Use a different frame for gallery mats</label>
           <label class="toggle">
-            <input type="checkbox" id="g-gal-show-frame" />
+            <input type="checkbox" id="g-gal-frame-override" aria-controls="g-gal-own-frame" />
             <span class="toggle-track"></span>
           </label>
         </div>
-        <div class="field" data-setting="gallery.frame_color">
-          <label>Frame color</label>
-          <input type="color" id="g-gal-frame-color" />
-          <p id="g-gal-frame-color-hint" style="display:none;font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;">Color applies to solid frames only.</p>
+        <div id="g-gal-own-frame" hidden>
+          <div class="field" data-setting="gallery.frame_style">
+            <label>Gallery frame style</label>
+            <select id="g-gal-frame-style"></select>
+          </div>
+          <div class="toggle-row" style="margin-bottom:8px" data-setting="gallery.show_frame">
+            <label>Show frame</label>
+            <label class="toggle">
+              <input type="checkbox" id="g-gal-show-frame" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="field" data-setting="gallery.frame_color">
+            <label>Gallery frame color</label>
+            <input type="color" id="g-gal-frame-color" />
+            <p id="g-gal-frame-color-hint" style="display:none;font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;">Color applies to solid frames only.</p>
+          </div>
         </div>
         <div class="field" data-setting="gallery.frame_width">
-          <label>Frame width (px)</label>
+          <label>Outer frame width (px)</label>
           <input type="number" id="g-gal-frame-width" data-key="frame_width" />
         </div>
         <div class="field" data-setting="gallery.margin">
@@ -776,7 +829,7 @@
           <label>Bevel color</label>
           <input type="color" id="g-gal-bevel-color" />
         </div>
-        <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;line-height:1.4;" data-setting="gallery.frame_style">Sizes are px on a 1920×1080 screen. Time-of-day periods change the mat and frame colours; widths stay as set here.</p>
+        <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;line-height:1.4;" data-setting="gallery.mat_color">The frame's style and colour come from the Frame section. Sizes are px on a 1920×1080 screen. Time-of-day periods change the mat and frame colours; widths stay as set here.</p>
       </div>
     </div>
 
@@ -812,7 +865,15 @@
             <label>Pill size</label>
             <select id="g-pill-size"></select>
           </div>
-          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;" data-setting="metadata.sizes">Sizes scale with each slot. Small slots hide lower-priority pills (never the date), and text too long for its pill scrolls.</p>
+          <div class="field" data-setting="metadata.position">
+            <label for="g-label-position">Label position</label>
+            <select id="g-label-position">
+              <option value="auto">Auto (on the mat for gallery layouts)</option>
+              <option value="photo">On the photo</option>
+              <option value="mat">On the mat</option>
+            </select>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;" data-setting="metadata.sizes">One size for every slot on screen, set by the smallest. On the mat, pills sit in a caption under each photo and never cover it. Lower-priority pills hide when there's no room (never the date), and text too long for its pill scrolls.</p>
           <div id="g-meta-toggles" data-setting="metadata.fields"></div>
           <div class="field" style="margin-top:12px" data-setting="metadata.date_format">
             <label>Date format</label>
@@ -993,8 +1054,9 @@
     'rotation.enabled':   { tier: 'basic',    label: 'Rotate layout daily' },
     'rotation.status':    { tier: 'basic',    label: 'Rotation status' },
     'rotation.slot_hint': { tier: 'basic',    label: 'Slots shown on some days (Edit slot N, drop targets)' },
-    'rotation.layouts':   { tier: 'advanced', label: 'Layouts to rotate',
-                            active: () => rotationOn() && config.layout_rotation.layouts.length > 0 },
+    // The checkbox in each thumbnail's corner, and Select all / Deselect all on the Layout header
+    'rotation.layouts':   { tier: 'basic',    label: 'Layouts to rotate' },
+    'rotation.bulk':      { tier: 'basic',    label: 'Select / deselect all layouts' },
     'rotation.change_at': { tier: 'advanced', label: 'Switch layout at',
                             active: () => rotationOn() && (config.layout_rotation.change_at || '04:00') !== '04:00' },
     // Frames per rotated layout: the chips on other layouts' thumbnails
@@ -1018,13 +1080,13 @@
                             active: () => (getGlobalFrame().frame_width ?? 8) !==
                                           (frameAsset(getGlobalFrame().frame_style)?.default_width ?? 8) },
     'gallery.mat_color':  { tier: 'basic',    label: 'Gallery mat color' },
-    'gallery.frame_style': { tier: 'basic',   label: 'Gallery frame style' },
-    'gallery.show_frame': { tier: 'advanced', label: 'Gallery: show frame',
-                            active: () => galleryCfg().show_frame !== GALLERY_DEFAULTS.show_frame },
-    'gallery.frame_color': { tier: 'advanced', label: 'Gallery frame color',
-                            active: () => !frameAsset(galleryCfg().frame_style) &&
-                                          galleryCfg().frame_color.toLowerCase() !== GALLERY_DEFAULTS.frame_color },
-    'gallery.frame_width': { tier: 'advanced', label: 'Gallery frame width',
+    // The gallery's outer frame follows the Frame section unless it has its own (these four)
+    'gallery.frame_override': { tier: 'advanced', label: 'Gallery: own frame',
+                            active: () => galleryCfg().frame_override === true },
+    'gallery.frame_style': { tier: 'advanced', label: 'Gallery frame style' },
+    'gallery.show_frame': { tier: 'advanced', label: 'Gallery: show frame' },
+    'gallery.frame_color': { tier: 'advanced', label: 'Gallery frame color' },
+    'gallery.frame_width': { tier: 'advanced', label: 'Gallery outer frame width',
                             active: () => galleryCfg().frame_width !== GALLERY_DEFAULTS.frame_width },
     'gallery.margin':     { tier: 'advanced', label: 'Gallery: mat around the openings',
                             active: () => galleryCfg().outer_margin !== GALLERY_DEFAULTS.outer_margin },
@@ -1038,6 +1100,7 @@
                                      g.bevel_color.toLowerCase() !== GALLERY_DEFAULTS.bevel_color; } },
     'metadata.show':      { tier: 'basic',    label: 'Show metadata' },
     'metadata.sizes':     { tier: 'basic',    label: 'Text and pill size' },
+    'metadata.position':  { tier: 'basic',    label: 'Label position' },
     'metadata.fields':    { tier: 'basic',    label: 'Metadata fields' },
     'metadata.date_format': { tier: 'advanced', label: 'Date format',
                             active: () => (config.date_format || 'long') !== 'long' },
@@ -1273,6 +1336,8 @@
     document.getElementById('gallery-fields').hidden = !used;
     document.getElementById('gallery-off-hint').hidden = used;
     const g = galleryCfg();
+    document.getElementById('g-gal-frame-override').checked = g.frame_override;
+    document.getElementById('g-gal-own-frame').hidden = !g.frame_override;
     document.getElementById('g-gal-mat-color').value = g.mat_color;
     document.getElementById('g-gal-frame-style').value = frameAsset(g.frame_style) ? g.frame_style : 'solid';
     document.getElementById('g-gal-show-frame').checked = g.show_frame;
@@ -1283,6 +1348,41 @@
     const decorative = !!frameAsset(g.frame_style);
     document.getElementById('g-gal-frame-color').disabled = decorative;
     document.getElementById('g-gal-frame-color-hint').style.display = decorative ? '' : 'none';
+    refreshFrameSection();
+  }
+
+  // Disable a Frame section control that changes nothing the display can show, saying why in a
+  // hint under it (tagged like the control, so Basic hides the hint with it)
+  function setFrameControlScope(inputId, why, alsoDisabled = false) {
+    const input = document.getElementById(inputId);
+    const field = input.closest('.field, .toggle-row');
+    input.disabled = !!why || alsoDisabled;
+    let hint = field.nextElementSibling?.classList.contains('scope-hint') ? field.nextElementSibling : null;
+    if (!hint && !why) return;
+    if (!hint) {
+      hint = document.createElement('p');
+      hint.className = 'scope-hint';
+      tag(hint, field.dataset.setting);
+      field.after(hint);
+    }
+    hint.textContent = why || '';
+    hint.hidden = !why;
+  }
+
+  // The Frame section sets separate frames and, unless the gallery has its own frame, the look
+  // (on/off, style, colour) of the gallery's outer frame. Mat and widths are separate-frame only.
+  function refreshFrameSection() {
+    const reach = reachableLayouts();
+    const anySeparate = reach.some(l => layoutMode(l) !== 'gallery');
+    const anyGallery = reach.some(l => layoutMode(l) === 'gallery');
+    const own = galleryCfg().frame_override;
+    document.getElementById('frame-gallery-hint').hidden = !anyGallery || own;
+    const separateOnly = anySeparate ? null : 'Separate-frame layouts only.';
+    for (const id of ['g-mat-color', 'g-mat-width', 'g-frame-width']) setFrameControlScope(id, separateOnly);
+    const look = anySeparate || !own ? null : 'Separate-frame layouts only. Gallery mats use their own frame (Gallery Mat).';
+    setFrameControlScope('g-show-frame', look);
+    setFrameControlScope('g-frame-style', look);
+    setFrameControlScope('g-frame-color', look, !!frameAsset(config.frame_defaults?.frame_style));
   }
 
   function onGalleryChanged() {
@@ -1301,6 +1401,7 @@
     document.getElementById('g-gal-frame-color').oninput = e => set('frame_color', e.target.value);
     document.getElementById('g-gal-bevel-color').oninput = e => set('bevel_color', e.target.value);
     document.getElementById('g-gal-show-frame').onchange = e => set('show_frame', e.target.checked);
+    document.getElementById('g-gal-frame-override').onchange = e => set('frame_override', e.target.checked);
     document.getElementById('g-gal-bevel').onchange = e => set('bevel', e.target.checked);
     styleSel.onchange = e => {
       const g = ensureGallery();
@@ -1389,7 +1490,10 @@
         return { matFrame, overlay };
       },
     });
-    const openings = PicMeGallery.applyStyles(stage, galleryCfg(), layout, activeSlots, {
+    // The display's labels: one pill size for every opening, captions on the mat by default
+    const placement = PicMePills.labelPlacement(config.label_position, 'gallery');
+    const sizes = layout.slots.map((d, i) => (previewShowsPills(slotAt(i)) ? pillSizes(getSlotMeta(slotAt(i))) : null));
+    const { openings, short } = PicMeGallery.layoutWithLabels(stage, galleryCfg(), layout, activeSlots, { placement, sizes }, {
       idPrefix: 'pv', selectedId: selectedSlotId, selectWidth: Math.max(6, 3 / k),
     });
 
@@ -1417,11 +1521,17 @@
         play.style.cssText = `left:${o.safe.x + 12}px;top:${o.safe.y + 8}px;font-size:26px;color:#aaa;`;
         boxEl.appendChild(play);
       }
-      // Like the display: no pills when the slot has no field on (its Show metadata is off)
-      if (config.show_metadata !== false && slotShowsMetadata(slotCfg)) {
-        el.querySelector('.slot-overlay').appendChild(previewPills(slotCfg, el, preview, o.safe));
+      if (sizes[i]) {
+        // Stage px are display px; the overlay is placed by gallery.js, on the photo or in the caption
+        const room = o.caption ? o.caption.w : o.safe.h - 2 * o.inset;
+        el.querySelector('.slot-overlay').appendChild(previewPills(slotCfg, { short, scale: 1, room, caption: !!o.caption }));
       }
     });
+  }
+
+  // Like the display: no pills when the slot has no field on (its Show metadata is off)
+  function previewShowsPills(slotCfg) {
+    return config.show_metadata !== false && slotShowsMetadata(slotCfg);
   }
 
   // Drag stand-in for a gallery opening: its on-screen size, with the slot number
@@ -1524,6 +1634,12 @@
     const on = rotationOn();
     document.getElementById('g-rotation-enabled').checked = on;
     document.getElementById('rotation-options').hidden = !on;
+    // Select all / Deselect all on the Layout header, disabled when they'd change nothing
+    document.getElementById('rotation-bulk').hidden = !on;
+    const ticked = on ? eligibleIds() : [];
+    document.getElementById('rotation-select-all').disabled = ticked.length === layouts.length;
+    document.getElementById('rotation-deselect-all').disabled =
+      layouts.length < 2 || (ticked.length === 1 && ticked[0] === baseLayout().id);
     document.getElementById('g-rotation-change-at').value = config.layout_rotation?.change_at || '04:00';
 
     const status = document.getElementById('rotation-status');
@@ -1599,6 +1715,21 @@
     return true;
   }
 
+  // Every layout (stored as [] = all, so layouts added later join too)
+  function selectAllRotation() {
+    ensureRotation();
+    config.layout_rotation.layouts = [];
+    onRotationChanged();
+  }
+
+  // One layout must stay ticked: the base layout. The status line then asks for a second one.
+  function deselectAllRotation() {
+    if (layouts.length < 2) return;
+    ensureRotation();
+    config.layout_rotation.layouts = [baseLayout().id];
+    onRotationChanged();
+  }
+
   function onRotationChanged() {
     ensureReachableSlots();
     buildLayoutPicker();
@@ -1636,7 +1767,11 @@
       const label = document.createElement('span');
       label.textContent = layout.name;
 
-      thumb.append(grid, label);
+      // The grid's own box, so a corner checkbox survives the gallery thumbnail's redraw
+      const frame = document.createElement('div');
+      frame.className = 'thumb-frame';
+      frame.appendChild(grid);
+      thumb.append(frame, label);
       const gallery = layoutMode(layout) === 'gallery';
       if (gallery) {
         galleryThumbs.push([grid, layout]);
@@ -1648,21 +1783,28 @@
       }
 
       if (rotating) {
-        const pickRow = tag(document.createElement('label'), 'rotation.layouts');
-        pickRow.className = 'rotation-pick-row';
-        pickRow.addEventListener('click', e => e.stopPropagation());  // ticking isn't selecting
+        // A small box in the thumbnail's bottom-right corner
+        const pick = tag(document.createElement('label'), 'rotation.layouts');
+        pick.className = 'rotation-pick-corner' + (eligible.has(layout.id) ? ' checked' : '');
+        pick.title = `Rotate ${layout.name} daily`;
+        pick.addEventListener('click', e => e.stopPropagation());  // ticking isn't selecting
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.className = 'rotation-pick';
         cb.dataset.id = layout.id;
         cb.checked = eligible.has(layout.id);
+        cb.setAttribute('aria-label', `Rotate ${layout.name} daily`);
         cb.onchange = () => {
           if (!setRotationEligible(layout.id, cb.checked)) { cb.checked = true; return; }
           onRotationChanged();
         };
-        pickRow.append(cb, document.createTextNode('Rotate'));
+        pick.appendChild(cb);
+        frame.appendChild(pick);
         // Separate frames or a gallery mat on this layout's days
-        const chip = tag(document.createElement('button'), 'rotation.layout_modes');
+        const modeRow = tag(document.createElement('div'), 'rotation.layout_modes');
+        modeRow.className = 'layout-mode-row';
+        modeRow.addEventListener('click', e => e.stopPropagation());  // switching isn't selecting
+        const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'layout-mode-chip';
         chip.dataset.id = layout.id;
@@ -1670,8 +1812,8 @@
         chip.title = gallery ? 'Shown as a gallery mat — click for separate frames' : 'Shown with separate frames — click for a gallery mat';
         chip.setAttribute('aria-pressed', String(gallery));
         chip.onclick = () => { setLayoutMode(layout, gallery ? 'slots' : 'gallery'); onLayoutModeChanged(); };
-        pickRow.appendChild(chip);
-        thumb.appendChild(pickRow);
+        modeRow.appendChild(chip);
+        thumb.appendChild(modeRow);
       }
       if (layout.id === todayId) {
         const badge = document.createElement('span');
@@ -1716,6 +1858,7 @@
     preview.innerHTML = '';
 
     const activeSlots = config.slots.slice(0, layout.slots.length);
+    const cells = [];
     for (let i = 0; i < layout.slots.length; i++) {
       const slotDef = layout.slots[i];
       // Unconfigured slots are padded on the display from slot 1's config — mirror its mode here
@@ -1758,15 +1901,57 @@
       div.addEventListener('click', () => selectSlot(slotCfg.id ?? slotDef.id));
       preview.appendChild(div);
       frameBorderStyle(div, frameCfg);  // after appending: decorative widths fit the cell
-      // Like the display: no pills when the slot has no field on (its Show metadata is off)
-      if (config.show_metadata !== false && slotShowsMetadata(slotCfg)) inner.appendChild(previewPills(slotCfg, div, preview));
+      cells.push({ div, inner, slotCfg, frameCfg });
     }
+
+    // Pills as on the display (applySlotFrames): every slot sized from the shortest pill area,
+    // in display px of a 1920 px wide screen; on the mat, a caption band in each bottom mat
+    const scale = preview.clientWidth / 1920;
+    if (!(scale > 0) || !window.PicMePills) return;
+    const placement = PicMePills.labelPlacement(config.label_position, 'slots');
+    const geo = cells.map(({ div, frameCfg }) => {
+      const w = div.offsetWidth / scale, h = div.offsetHeight / scale;
+      const mat = Number(frameCfg.mat_width ?? 16) || 0;
+      const frameOn = frameCfg.show_frame ?? true;
+      const asset = frameOn ? frameAsset(frameCfg.frame_style ?? 'solid') : null;
+      const width = Number(frameCfg.frame_width ?? 8) || 0;
+      const border = asset ? Math.min(width, Math.max(4, Math.floor(Math.min(w, h) / 6))) : (frameOn ? width : 0);
+      const inset = 10 + (asset ? border : 0);
+      const edge = border + mat;
+      return { slot: { w: w - 2 * inset, h: h - 2 * inset }, photo: { w: Math.max(0, w - 2 * edge), h: Math.max(0, h - 2 * edge) } };
+    });
+    const area = g => (placement === 'mat' ? g.photo : g.slot);
+    const sizes = cells.map(c => (previewShowsPills(c.slotCfg) ? pillSizes(getSlotMeta(c.slotCfg)) : null));
+    const shown = geo.filter((g, i) => sizes[i]);
+    if (shown.length === 0) return;
+    const short = PicMePills.sharedShort(shown.map(area));
+    const band = placement === 'mat'
+      ? Math.min(Math.max(...sizes.filter(Boolean).map(sz => PicMePills.captionBand(sz, short))),
+                 Math.floor(PicMePills.CAPTION_MAX_FRACTION * Math.min(...geo.map(g => g.photo.h))))
+      : 0;
+    cells.forEach(({ div, inner, slotCfg, frameCfg }, i) => {
+      if (!sizes[i]) return;
+      if (band > 0) {
+        // The bottom mat grows by the band, and the caption sits in it, centred under the photo
+        const matPx = Number(frameCfg.mat_width ?? 16) || 0;
+        div.style.paddingBottom = `${matPx + band * scale}px`;
+        const bar = previewPills(slotCfg, { short, scale, room: geo[i].photo.w, caption: true });
+        Object.assign(bar.style, { position: 'absolute', left: `${matPx}px`, right: `${matPx}px`, bottom: `${matPx}px`,
+                                   height: `${band * scale}px`, justifyContent: 'center', alignItems: 'center' });
+        div.appendChild(bar);
+      } else {
+        const bar = previewPills(slotCfg, { short, scale, room: geo[i].slot.h, caption: false });
+        Object.assign(bar.style, { position: 'absolute', bottom: '4px', left: '4px' });
+        inner.appendChild(bar);
+      }
+    });
   }
 
-  // Metadata position preview — bars at bottom-left showing where the pills appear and how big
-  // they are, sized as on a 1920 px wide display (as pill-size.js sizes the display's pills).
-  // `box`: a gallery opening's safe rect, already in display px (the stage is scaled as a whole).
-  function previewPills(slotCfg, cell, preview, box = null) {
+  // Metadata preview — bars showing where the pills appear and how big they are, sized as
+  // pill-size.js sizes the display's: from `short`, the shortest pill area on screen, so every
+  // slot's are the same. `scale`: preview px per display px. `room`: display px the pills may
+  // use — the column's height on the photo, the row's width in a caption on the mat.
+  function previewPills(slotCfg, { short, scale, room, caption }) {
     const slotMeta = getSlotMeta(slotCfg);
     // Video slots only show the date pill
     let pillCount = slotCfg.mode === 'video' ? 1 : META_FIELDS.filter(f => slotMeta[f.key]).length;
@@ -1775,27 +1960,21 @@
     pillCount = Math.min(pillCount, maxPills);
 
     let barH = 4, barW = 14, gap = 2;
-    if (window.PicMePills && (box || preview.clientWidth > 0)) {
-      const scale = box ? 1 : preview.clientWidth / 1920;
-      // Pills sit 10 px inside the slot, and inside a decorative moulding
-      const decorative = !box && getComputedStyle(cell).borderImageSource !== 'none';
-      const inset = 10 + (decorative ? parseFloat(getComputedStyle(cell).borderTopWidth) / scale : 0);
-      const boxW = box ? box.w : cell.offsetWidth / scale, boxH = box ? box.h : cell.offsetHeight / scale;
+    if (window.PicMePills && scale > 0) {
       const sizes = PicMePills.resolve(slotMeta);
-      const font = PicMePills.fontSize(sizes, boxW - 2 * inset, boxH - 2 * inset);
+      const font = PicMePills.fontSize(sizes, short, short);
       const pad = PicMePills.PILL_SIZES[sizes.pill_size];
       barH = Math.max(2, (font * 1.25 + 2 * pad.py * font) * scale);
       barW = Math.max(8, (5 * font + 2 * pad.px * font) * scale);  // a typical pill: about 5em of text
       gap = Math.max(1, pad.gap * font * scale);
-      // Like the display, drop pills that don't fit the slot's height
-      const room = (boxH - 2 * inset) * scale;
-      pillCount = Math.max(1, Math.min(pillCount, Math.floor((room + gap) / (barH + gap))));
+      // Like the display, drop pills that don't fit: the column's height, or the caption's width
+      const step = caption ? barW : barH;
+      pillCount = Math.max(1, Math.min(pillCount, Math.floor((room * scale + gap) / (step + gap))));
     }
 
     const pillBar = document.createElement('div');
     pillBar.className = 'preview-pills';
-    // In a gallery opening the bars sit in the opening's pill overlay, placed like the display's
-    pillBar.style.cssText = `${box ? '' : 'position:absolute;bottom:4px;left:4px;'}display:flex;flex-direction:column;gap:${gap}px;pointer-events:none;`;
+    pillBar.style.cssText = `display:flex;flex-direction:${caption ? 'row' : 'column'};gap:${gap}px;pointer-events:none;`;
     for (let p = 0; p < pillCount; p++) {
       const pill = document.createElement('div');
       pill.style.cssText = `height:${barH}px;width:${barW}px;max-width:calc(100% - 4px);background:rgba(255,255,255,0.2);border-radius:${barH / 2}px;`;
@@ -1834,6 +2013,9 @@
     document.getElementById('g-wall-color').value   = g.wall_color    || '#1a1a1a';
     document.getElementById('g-date-format').value  = g.date_format   || 'long';
     document.getElementById('g-max-pills').value    = g.max_metadata_pills ?? 0;
+    const labelSel = document.getElementById('g-label-position');
+    labelSel.value = PicMePills.LABEL_POSITIONS.includes(g.label_position) ? g.label_position : 'auto';
+    labelSel.onchange = e => { config.label_position = e.target.value; buildPreview(); scheduleAutoSave(); };
     const showMeta = document.getElementById('g-show-metadata');
     showMeta.checked = g.show_metadata !== false;
     setCollapsible(document.getElementById('g-meta-body'), showMeta.checked, showMeta, false);
@@ -1905,6 +2087,8 @@
       scheduleAutoSave();
     };
     document.getElementById('g-rotation-enabled').onchange = e => { ensureRotation(); config.layout_rotation.enabled = e.target.checked; onRotationChanged(); };
+    document.getElementById('rotation-select-all').onclick = selectAllRotation;
+    document.getElementById('rotation-deselect-all').onclick = deselectAllRotation;
     document.getElementById('g-rotation-change-at').onchange = e => {
       if (!e.target.value) return;
       ensureRotation();
@@ -1917,7 +2101,7 @@
     document.getElementById('g-include-subfolders').onchange = e => { config.include_subfolders = e.target.checked; renderSlotPanel(); scheduleAutoSave(); };
     document.getElementById('g-mat-color').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_color   = e.target.value; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-mat-width').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_width   = parseInt(e.target.value); buildPreview(); scheduleAutoSave(); };
-    document.getElementById('g-show-frame').onchange  = e => { ensureFrameDefaults(); config.frame_defaults.show_frame  = e.target.checked; buildPreview(); scheduleAutoSave(); };
+    document.getElementById('g-show-frame').onchange  = e => { ensureFrameDefaults(); config.frame_defaults.show_frame  = e.target.checked; onFrameLookChanged(); };
     // Like a time-of-day template: undo our own wood/gold width bump when going back to solid
     // (unless the width was changed since), so Basic doesn't leave a hidden frame width behind
     let bumpedWidth = null;
@@ -1934,10 +2118,9 @@
       fd.frame_width = bumped;
       document.getElementById('g-frame-width').value = fd.frame_width ?? 8;
       syncGlobalFrameColor();
-      buildPreview();
-      scheduleAutoSave();
+      onFrameLookChanged();
     };
-    document.getElementById('g-frame-color').oninput  = e => { ensureFrameDefaults(); config.frame_defaults.frame_color = e.target.value; buildPreview(); scheduleAutoSave(); };
+    document.getElementById('g-frame-color').oninput  = e => { ensureFrameDefaults(); config.frame_defaults.frame_color = e.target.value; onFrameLookChanged(); };
     document.getElementById('g-frame-width').oninput  = e => {
       ensureFrameDefaults();
       const w = clampFrameWidth(e.target.value);
@@ -1956,11 +2139,19 @@
     if (!config.frame_defaults) config.frame_defaults = {};
   }
 
+  // Frame on/off, style or colour: separate frames, and the gallery's outer frame unless it has
+  // its own — so the gallery preview and thumbnails redraw too
+  function onFrameLookChanged() {
+    buildPreview();
+    buildLayoutPicker();
+    scheduleAutoSave();
+  }
+
   // A decorative default frame ignores frame_color — say so rather than leave a dead control
   function syncGlobalFrameColor() {
     const decorative = !!frameAsset(config.frame_defaults?.frame_style);
-    document.getElementById('g-frame-color').disabled = decorative;
     document.getElementById('g-frame-color-hint').style.display = decorative ? '' : 'none';
+    refreshFrameSection();  // disables the colour (decorative, or nothing on screen uses it)
   }
 
   // ── Reset all modal ──

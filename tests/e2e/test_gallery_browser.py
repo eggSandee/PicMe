@@ -540,6 +540,7 @@ def test_max_metadata_pills_caps_a_caption_before_fitting(write_cfg, open_displa
     _until(page, PILLS_VISIBLE_JS)
     for i in range(1, 5):
         info = caption(page, i)
+        assert info["caption"] and all(p["rect"]["y"] >= info["box"]["bottom"] - 0.5 for p in info["pills"])
         assert sorted(p["date"] for p in info["pills"]) == [False, True] and info["hidden"] == []
 
 
