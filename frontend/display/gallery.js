@@ -6,7 +6,10 @@
 // photo, video and pill code works on them unchanged. Needs shapes.js; uses frames.js if loaded.
 //
 // config.gallery = { mat_color, outer_margin, gutter, wall_margin, bevel, bevel_width,
-//                    bevel_color, show_frame, frame_style, frame_color, frame_width }
+//                    bevel_color, frame_width, frame_override, show_frame, frame_style, frame_color }
+// The outer frame's on/off, style and colour follow config.frame_defaults (the editor's Frame
+// section), like separate frames; gallery.show_frame/frame_style/frame_color apply only with
+// frame_override: true.
 // config.layout_modes = { "<layout id>": "gallery" | "slots" } — overrides a layout's own mode
 (function () {
   // Widths are px at the 1920x1080 reference. A resolution scale factor would multiply these
@@ -23,6 +26,7 @@
     frame_style: 'wood',
     frame_color: '#2c2318',
     frame_width: 48,
+    frame_override: false,
   };
   const GALLERY_LIMITS = {
     outer_margin: [0, 120],
@@ -36,6 +40,10 @@
   const SMALL_SCREEN = { outer_margin: 0.12, gutter: 0.08, frame_width: 1 / 6 };
   // Time-of-day periods change colours only: their widths are for separate-frame slots
   const TOD_KEYS = ['mat_color', 'frame_color', 'frame_style'];
+  // Taken from config.frame_defaults unless frame_override; a missing key is what a separate
+  // frame uses for it (the display's applyFrameStyle)
+  const FRAME_KEYS = ['show_frame', 'frame_style', 'frame_color'];
+  const FRAME_FALLBACK = { show_frame: true, frame_style: 'solid', frame_color: '#2c2318' };
   const BACKING = '#1b1b1b';  // behind a photo that doesn't fill its opening (Fit), or none yet
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -57,13 +65,21 @@
     return Math.round(Math.min(hi, Math.max(lo, n)));
   }
 
-  // The gallery settings in effect: defaults, then config.gallery, then the time-of-day colours.
+  // The gallery settings in effect: defaults, then config.gallery (the frame's look from
+  // config.frame_defaults unless frame_override), then the time-of-day colours.
   // Values of the wrong type fall back to the default; numbers are clamped to GALLERY_LIMITS.
   function resolveGallery(config, tod) {
     const out = { ...GALLERY_DEFAULTS };
     const g = isObject(config) && isObject(config.gallery) ? config.gallery : {};
+    const own = g.frame_override === true;
+    if (!own) {
+      const fd = isObject(config) && isObject(config.frame_defaults) ? config.frame_defaults : {};
+      for (const key of FRAME_KEYS) {
+        out[key] = typeof fd[key] === typeof FRAME_FALLBACK[key] && fd[key] !== '' ? fd[key] : FRAME_FALLBACK[key];
+      }
+    }
     for (const key of Object.keys(GALLERY_DEFAULTS)) {
-      if (!has(g, key)) continue;
+      if (!has(g, key) || (!own && FRAME_KEYS.includes(key))) continue;
       const def = GALLERY_DEFAULTS[key];
       if (has(GALLERY_LIMITS, key)) out[key] = clampNumber(key, g[key]);
       else if (typeof g[key] === typeof def) out[key] = g[key];
@@ -118,6 +134,7 @@
     .gallery .opening-deco { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
       pointer-events: none; overflow: visible; }
     .gallery .opening .slot-overlay { z-index: 10; }
+    .gallery .opening .slot-overlay.caption { flex-direction: row; align-items: center; }
   `;
 
   function ensureStyles(doc = document) {
@@ -235,16 +252,23 @@
   }
 
   // Size each opening's box for its cell and shape, clip its media, draw its bevel and place its
-  // pills. Returns { [slotId]: { shape, box, bevel, safe } } — px rects in the opening's own
-  // coordinates; `safe` is where the pills may sit (inside the shape and the bevel).
+  // pills. Returns { [slotId]: { shape, cell, box, bevel, safe, inset, caption } } — px rects in
+  // the opening's own coordinates; `safe` is where on-photo pills may sit (inside the shape and
+  // the bevel), `caption` the band under the box for pills on the mat (null without one).
+  // opts.captionBand (px): leave a band that tall under each box, and put the pills in it.
+  // opts.placeOverlays: false leaves the pill overlays where they are (a measuring pass).
   function layoutOpenings(root, gcfg, shapes, opts = {}) {
     const S = window.PicMeShapes;
+    const band = Math.max(0, Math.floor(Number(opts.captionBand) || 0));
     const result = {};
     for (const opening of root.querySelectorAll('.opening')) {
       const id = Number(opening.dataset.slotId);
       const shape = S.has(shapes[id]) ? shapes[id] : 'rect';
       const def = S.get(shape);
-      const box = S.box(shape, opening.clientWidth, opening.clientHeight);
+      const cell = { w: opening.clientWidth, h: opening.clientHeight };
+      // The box fits above the caption band, and box and band are centred in the cell together
+      const box = S.box(shape, cell.w, Math.max(0, cell.h - band));
+      if (band) box.y = Math.max(0, Math.floor((cell.h - box.h - band) / 2));
       const b = gcfg.bevel ? Math.min(gcfg.bevel_width, Math.floor(Math.min(box.w, box.h) / 12)) : 0;
       opening.dataset.shape = shape;
 
@@ -259,26 +283,68 @@
       matFrame.style.webkitClipPath = clip;
       drawDeco(boxEl.querySelector('.opening-deco'), id, shape, box.w, box.h, b, gcfg, opts);
 
-      // Pills: inside the photo's safe rect, --pill-inset in from its edges
       const s = def.safe(iw, ih);
       const safe = { x: b + s.x, y: b + s.y, w: s.w, h: s.h };
-      const overlay = boxEl.querySelector('.slot-overlay');
-      if (overlay) {
-        const inset = parseFloat(getComputedStyle(opening).getPropertyValue('--pill-inset')) || 10;
-        Object.assign(overlay.style, {
-          left: `${Math.round(safe.x + inset)}px`,
-          bottom: `${Math.round(box.h - (safe.y + safe.h) + inset)}px`,
-          maxWidth: `${Math.max(0, Math.floor(safe.w - 2 * inset))}px`,
-          maxHeight: `${Math.max(0, Math.floor(safe.h - 2 * inset))}px`,
-        });
+      const inset = parseFloat(getComputedStyle(opening).getPropertyValue('--pill-inset')) || 10;
+      // On the mat: one row under the box, as wide as the cell less --pill-inset, centred
+      const caption = band ? { x: inset, y: box.y + box.h, w: Math.max(0, cell.w - 2 * inset), h: band } : null;
+      const overlay = opening.querySelector('.slot-overlay');
+      if (overlay && opts.placeOverlays !== false) {
+        overlay.classList.toggle('caption', !!caption);
+        if (caption) {
+          // In the cell, not the box: the band is outside the box
+          if (overlay.parentElement !== opening) opening.appendChild(overlay);
+          Object.assign(overlay.style, {
+            left: `${caption.x}px`, right: `${caption.x}px`, top: `${caption.y}px`, bottom: '',
+            height: `${caption.h}px`, width: 'fit-content', margin: '0 auto', maxWidth: `${caption.w}px`, maxHeight: '',
+          });
+        } else {
+          // On the photo: inside its safe rect, --pill-inset in from its edges
+          if (overlay.parentElement !== boxEl) boxEl.appendChild(overlay);
+          Object.assign(overlay.style, {
+            left: `${Math.round(safe.x + inset)}px`, right: '', top: '',
+            bottom: `${Math.round(box.h - (safe.y + safe.h) + inset)}px`, height: '', width: '', margin: '',
+            maxWidth: `${Math.max(0, Math.floor(safe.w - 2 * inset))}px`,
+            maxHeight: `${Math.max(0, Math.floor(safe.h - 2 * inset))}px`,
+          });
+        }
       }
-      result[id] = { shape, box, bevel: b, safe };
+      result[id] = { shape, cell, box, bevel: b, safe, inset, caption };
     }
     return result;
   }
 
+  // applyStyles() plus the screen's labels (README → Metadata pills). Measures where each
+  // opening's pills would go, takes the shortest side (one pill size for the whole screen:
+  // PicMePills.sharedShort) and, for captions on the mat, lays out again with a band under every
+  // opening. The band comes from the size measured before it, so the two can't feed back.
+  // labels = { placement: 'mat' | 'photo', sizes: [i] -> slot i's { text_size, pill_size },
+  //            or null when slot i puts no pill on screen }
+  // Returns { openings, short, band }: openings as layoutOpenings(); short to size the pills by.
+  function layoutWithLabels(root, gcfg, layout, slotCfgs, labels, opts = {}) {
+    const P = window.PicMePills;
+    const mat = labels.placement === 'mat';
+    let openings = applyStyles(root, gcfg, layout, slotCfgs, mat ? { ...opts, placeOverlays: false } : opts);
+    const slots = layout.slots || [];
+    const all = slots.map(def => openings[def.id]).filter(Boolean);
+    const shown = slots.map((def, i) => (labels.sizes[i] ? openings[def.id] : null)).filter(Boolean);
+    // A caption labels the whole photo; on the photo, pills keep --pill-inset inside the safe rect
+    const area = o => (mat ? o.box : { w: o.safe.w - 2 * o.inset, h: o.safe.h - 2 * o.inset });
+    const short = P ? P.sharedShort((shown.length ? shown : all).map(area)) : 0;
+    let band = 0;
+    if (mat) {
+      if (P && shown.length && all.length) {
+        const need = Math.max(...labels.sizes.filter(Boolean).map(s => P.captionBand(s, short)));
+        band = Math.min(need, Math.floor(P.CAPTION_MAX_FRACTION * Math.min(...all.map(o => o.cell.h))));
+      }
+      openings = applyStyles(root, gcfg, layout, slotCfgs, { ...opts, captionBand: band });
+    }
+    return { openings, short, band };
+  }
+
   window.PicMeGallery = {
-    GALLERY_DEFAULTS, GALLERY_LIMITS, SMALL_SCREEN, TOD_KEYS, BACKING,
+    GALLERY_DEFAULTS, GALLERY_LIMITS, SMALL_SCREEN, TOD_KEYS, FRAME_KEYS, BACKING,
     effectiveMode, resolveGallery, slotShape, frameBorder, ensureStyles, build, applyStyles, layoutOpenings,
+    layoutWithLabels,
   };
 })();
