@@ -63,13 +63,17 @@ DEFAULT_CONFIG = {
     "show_metadata": True,
     "date_format": "long",
     "max_metadata_pills": 3,
+    # Pills on the photo, or in a caption on the mat under it; auto = on the mat for gallery mats
+    "label_position": "auto",  # auto | photo | mat (README → Metadata pills)
+    # Also the outer frame of gallery mats, unless gallery.frame_override (README → Gallery mat).
+    # New installs start with wood; existing config.json files keep their own frame_defaults.
     "frame_defaults": {
         "mat_color": "#000000",
         "mat_width": 16,
         "show_frame": True,
         "frame_color": "#2c2318",
-        "frame_width": 8,
-        "frame_style": "solid",  # or a decorative style from frontend/assets/frames/frames.js
+        "frame_width": 28,  # wood's default_width in frontend/assets/frames/frames.js
+        "frame_style": "wood",  # solid, or a decorative style from frames.js
     },
     "metadata_defaults": {
         "show_date": True,
@@ -96,10 +100,11 @@ DEFAULT_CONFIG = {
         "bevel": True,
         "bevel_width": 4,
         "bevel_color": "#fbfaf6",
-        "show_frame": True,
+        "show_frame": True,  # show_frame, frame_style and frame_color apply only with frame_override
         "frame_style": "wood",
         "frame_color": "#2c2318",
         "frame_width": 48,
+        "frame_override": False,  # False: the outer frame's look follows frame_defaults
     },
     "layout_modes": {},  # layout id -> "gallery" | "slots", overriding the layout's own mode
     "source_path": "photos",  # relative to the server's cwd — run.sh / run.bat start in the repo root

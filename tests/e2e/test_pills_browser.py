@@ -8,6 +8,10 @@ Playwright route on /api/metadata.
 Slot sizes at 1920x1080 (12 px collage padding and gap): classic-4 slots are 942 x 522, so the
 pill box (10 px inset) is 922 x 502 and medium text is 0.04 x 502 = 20 px. hero-center side slots
 are 310 x 522; at 1280 x 720 they are 203 x 342.
+
+Every slot on screen gets the same size, from the smallest pill box (README → Metadata pills):
+on hero-center that is a side slot's 290 px (1080p) or 183 px (720p), so medium is the 14 px floor
+everywhere, even in the big centre slot.
 """
 from __future__ import annotations
 
@@ -319,17 +323,69 @@ def test_resize_refits_size_and_hidden_pills(write_cfg, open_display):
     w = open_display()
     page = w.page
     assert not any(p["hidden"] for p in slot(page, 1)["pills"])  # 310 x 522: everything fits
-    assert slot(page, 1)["pills"][0]["font"] == 21                # 290 px → 14 px floor x 1.5
-    assert slot(page, 3)["pills"][0]["font"] == 48                # 1240 x 1056 center: the 48 px cap
+    # 290 px side slots → 14 px floor x 1.5, in every slot (the 1240 x 1056 centre too)
+    assert fonts(page) == {i: 21 for i in range(1, 6)}
     page.set_viewport_size(SMALL_VIEWPORT)
     _until(page, "() => document.querySelector('#slot-1 .overlay-pill.fit-hidden')")
     for slot_id in slot_ids(page):
         info = slot(page, slot_id)
         assert_fits(info)
         assert_date_last(info)
-    assert slot(page, 3)["pills"][0]["font"] == 41  # 825 x 696 → 676 px: 0.04 x 676 x 1.5
+    assert fonts(page) == {i: 21 for i in range(1, 6)}  # 183 px: still the floor, still uniform
+    assert not any(p["hidden"] for p in slot(page, 3)["pills"])  # the fit pass is per slot
     page.set_viewport_size(VIEWPORT)
     _until(page, "() => !document.querySelector('.overlay-pill.fit-hidden')")
+    assert w.errors == []
+
+
+# --- One size for every slot on screen ---
+
+FONTS_JS = """() => [...document.querySelectorAll('.slot')].map(s => ({
+  id: +s.id.slice(5), fonts: [...new Set([...s.querySelectorAll('.overlay-pill')].map(p => parseFloat(getComputedStyle(p).fontSize)))] }))"""
+
+
+def _all_fonts(page) -> set[float]:
+    per_slot = page.evaluate(FONTS_JS)
+    assert all(len(s["fonts"]) == 1 for s in per_slot), per_slot  # every slot shows pills
+    return {s["fonts"][0] for s in per_slot}
+
+
+@pytest.mark.parametrize("viewport", [VIEWPORT, {"width": 1517, "height": 911}])
+def test_pill_size_is_the_same_in_every_slot_from_the_smallest(write_cfg, open_display, viewport):
+    write_cfg({"text_size": "large"}, layout="hero-center", slots=5)
+    w = open_display(viewport=viewport)
+    page = w.page
+    # The smallest pill box on screen: each slot less --pill-inset on each side
+    infos = [slot(page, n) for n in slot_ids(page)]
+    short = min(min(i["slot"]["width"], i["slot"]["height"]) - 2 * i["inset"] for i in infos)
+    expected = page.evaluate("s => PicMePills.fontSize({ text_size: 'large' }, s, s)", short)
+    assert _all_fonts(page) == {expected}
+    if viewport == VIEWPORT:
+        assert expected == 18  # 290 px → the 14 px floor x 1.25; the centre slot alone would get 40
+    assert w.errors == []
+
+
+def test_uniform_size_in_a_gallery_with_mixed_openings(write_cfg, open_display):
+    write_cfg(layout="gallery-feature", slots=7)
+    w = open_display()
+    page = w.page
+    # Captions on the mat (auto): each opening's box before the caption band; the smallest sets the size
+    short = page.evaluate("""() => Math.min(...[...document.querySelectorAll('.opening')].map(o => {
+        const b = PicMeShapes.box(o.dataset.shape, o.clientWidth, o.clientHeight); return Math.min(b.w, b.h); }))""")
+    big, small = page.evaluate("""() => { const a = [...document.querySelectorAll('.opening-box')].map(b => b.clientWidth * b.clientHeight);
+        return [Math.max(...a), Math.min(...a)]; }""")
+    assert big > 4 * small  # a big hero opening and small ones…
+    assert _all_fonts(page) == {page.evaluate("s => PicMePills.fontSize({}, s, s)", short)}  # …with the same pills
+    assert w.errors == []
+
+
+def test_slot_text_size_scales_the_shared_size(write_cfg, open_display):
+    write_cfg({"text_size": "medium"}, layout="hero-center", slots=5, slot_overrides={
+        3: {"use_global": {"metadata": False}, "metadata": {"text_size": "large"}},
+        1: {"use_global": {"metadata": True}, "metadata": {"text_size": "x-large"}}})  # adopted: ignored
+    w = open_display()
+    # Shared base 14 px (the 290 px side slots); the centre's own "large" is 1.25 x that, not its own 40 px
+    assert fonts(w.page) == {1: 14, 2: 14, 3: 18, 4: 14, 5: 14}
     assert w.errors == []
 
 
@@ -435,18 +491,19 @@ def test_scrolling_follows_a_resize(write_cfg, open_display):
     write_cfg({"show_location": True, "text_size": "small"}, layout="hero-center", slots=5)
     w = open_display(routes=[("**/api/metadata?*", long_location)])
     page = w.page
-    before = slot(page, 3)["pills"][0]
+    before = slot(page, 1)["pills"][0]
     assert before["scrolling"]
     page.set_viewport_size(SMALL_VIEWPORT)
-    _until(page, f"() => document.querySelector('#slot-3 .pill-text').offsetWidth < {before['textWidth']}")
+    # A side slot: same text size (uniform, at the floor either way), less room once narrower
+    _until(page, f"() => document.querySelector('#slot-1 .pill-clip').clientWidth < {before['clipWidth']}")
     page.wait_for_timeout(300)
-    after = slot(page, 3)["pills"][0]
+    after = slot(page, 1)["pills"][0]
     assert after["scrolling"]
     # A new scroll distance for the narrower slot
     assert after["animation"] != before["animation"]
     # 300 s cycle: plenty of time, so the base 25 px/s
     assert after["animation"] == f"pill-marquee-{after['textWidth'] - after['clipWidth']}-25"
-    assert_fits(slot(page, 3))
+    assert_fits(slot(page, 1))
     assert w.errors == []
 
 

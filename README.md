@@ -122,6 +122,7 @@ PicMe/
 - [x] Any layout can use separate frames or a gallery mat; daily rotation can mix both
 - [x] Editor: Frames switch, Gallery Mat settings, shape picker, and a preview drawn by the display's own renderer
 - [x] Layout files are checked when loaded; an invalid file is skipped instead of breaking the display
+- [x] Polish: metadata as a caption on the mat (never over the photo), one pill size for every slot on screen, one Frame section for both modes, rotation checkboxes in Basic
 - [ ] Later: custom opening sizes (a geometry editor), the `custom` layout, a scalloped frame style
 
 ---
@@ -363,13 +364,15 @@ Top-level settings:
   "show_metadata": true,         // global kill switch — false hides all overlays on all slots instantly (the editor's Default Metadata → Show metadata)
   "date_format": "long",         // "long" (July 4, 2019) | "medium" (Jul 4, 2019) | "short" (7/4/2019) | "iso" (2019-07-04)
   "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
-  "frame_defaults": {            // mat and frame style applied to every slot; per-slot frame: {} overrides
+  "label_position": "auto",      // "auto" | "photo" | "mat" — pills on the photo or in a caption on the mat (see Metadata pills below)
+  "frame_defaults": {            // mat and frame style applied to every slot; per-slot frame: {} overrides.
+                                 // show_frame, frame_style and frame_color also style the gallery's outer frame
     "mat_color": "#000000",      // mat color behind the photo (any CSS color)
     "mat_width": 16,             // mat thickness in pixels
     "show_frame": true,          // show outer frame border
     "frame_color": "#2c2318",    // dark wood frame (any CSS color)
-    "frame_width": 8,            // frame border thickness in pixels
-    "frame_style": "solid"       // "solid" (uses frame_color) | "wood" | "gold" — decorative frames ignore frame_color
+    "frame_width": 28,           // frame border thickness in pixels (28 is wood's own width)
+    "frame_style": "wood"        // "solid" (uses frame_color) | "wood" | "gold" — decorative frames ignore frame_color
   },
   "metadata_defaults": {         // applied to every slot; per-slot metadata overrides these
     "show_date": true,
@@ -381,7 +384,7 @@ Top-level settings:
     "show_iso": false,
     "show_focal_length": false,
     "show_people": false,
-    "text_size": "medium",       // "small" | "medium" | "large" | "x-large" — scales with each slot (see Metadata pills below)
+    "text_size": "medium",       // "small" | "medium" | "large" | "x-large" — one size for every slot on screen (see Metadata pills below)
     "pill_size": "medium"        // "small" | "medium" | "large" — padding around the text
   },
   "video_max_edge": 1920,        // long-edge cap for converted videos: 1280 | 1920 (default, 1080p) | 3840 | 0 = original size
@@ -400,10 +403,11 @@ Top-level settings:
     "bevel": true,               // a light bevel-cut edge around each opening
     "bevel_width": 4,            // (0–16)
     "bevel_color": "#fbfaf6",
+    "frame_width": 48,           // the outer frame's width (0–160)
+    "frame_override": false,     // true = the three below style the outer frame instead of frame_defaults
     "show_frame": true,
     "frame_style": "wood",       // "solid" | "wood" | "gold"
-    "frame_color": "#2c2318",    // solid frames only
-    "frame_width": 48            // (0–160)
+    "frame_color": "#2c2318"     // solid frames only
   },
   "layout_modes": {}             // layout id -> "gallery" | "slots", e.g. { "classic-4": "gallery" }
 }
@@ -455,14 +459,23 @@ Non-date pills are shown in the table order above. If `max_metadata_pills` is se
 
 `text_size` and `pill_size` set how big the metadata pills are. Set them under **Default Metadata** in the editor, or per slot in the slot's **Metadata Overlays** section (in **Advanced** mode; turn **Use global** off first, as with the other metadata settings). Hand-edited values other than the ones below are treated as `"medium"`.
 
-- **`text_size`** scales with the slot, so the same setting looks right in a big slot and a small one. The text is 4% of the shorter side of the space inside the frame (at least 14 px and at most 32 px), multiplied by the preset: `small` 0.8, `medium` 1, `large` 1.25, `x-large` 1.5. The result is always between 12 px and 48 px. At 1920×1080, a classic-4 slot gets 20 px text with `medium`, about 13 mm tall on a 55" TV and comfortable from the couch.
+- **`text_size`** sets one size for every slot on screen, so pills look the same in a big opening and a small one. The text is 4% of the shorter side of the **smallest** pill area on screen (at least 14 px and at most 32 px), multiplied by the preset: `small` 0.8, `medium` 1, `large` 1.25, `x-large` 1.5. The result is always between 12 px and 48 px. At 1920×1080, classic-4 gets 20 px text with `medium`, about 13 mm tall on a 55" TV and comfortable from the couch. On a layout with a big hero slot and small ones, the big slot gets the same pills as the small ones. The smallest area is measured where the pills go: on the photo, the slot (or a shaped opening's inner part) inside the frame, less 10 px on each side; on the mat, the photo's opening. Slots that show no pills don't count.
+- **A slot's own `text_size`** (with `use_global.metadata: false`) still wins: it scales the screen's size instead of the default, so a `large` slot is 1.25 × the size every other slot gets.
 - **`pill_size`** sets the padding around the text, in proportion to the text: `small` is snug, `medium` matches the original look and `large` is roomier. Pills are always fully rounded.
+
+**Label position** (`label_position`, **Default Metadata → Label position** in the editor) says where the pills go:
+
+- **On the photo** (`"photo"`): the original overlay, a column in the photo's bottom-left corner. In a shaped gallery opening it sits in the part of the shape it can use.
+- **On the mat** (`"mat"`): a caption under the photo, like a label in a gallery. The pills sit in one row, centred under the opening (under a heart's or circle's bounding box too), with the date first. They never cover the photo. On a gallery mat, each opening gets a band of mat under it, and the photo fits in the space above. On separate frames, the bottom mat of every slot grows by the band, like a bottom-weighted mat in real framing. The band is one pill tall, the same on every slot, and at most a quarter of the smallest slot's height.
+- **Auto** (`"auto"`, the default): on the mat on gallery-mat layouts, on the photo on separate-frame layouts. On a rotation that mixes both, each day follows its own layout.
 
 When a slot is too small for all its pills:
 
 - `max_metadata_pills` applies first, exactly as before.
-- If the pills are still too tall for the slot, the lowest-priority ones (the last in the table above) are hidden until the rest fit. The date is never hidden and always stays at the bottom. Hidden pills come back if the window gets bigger.
-- A pill whose text is too wide for the slot scrolls slowly (about 25 px a second) back and forth, pausing for 2 seconds at each end. Text is never cut off with "…". If the TV or computer is set to reduce motion, the text doesn't move and is clipped at the pill's edge instead.
+- On the photo: if the pills are still too tall, the lowest-priority ones (the last in the table above) are hidden until the rest fit. The date is never hidden and always stays at the bottom.
+- In a caption: if the row is too wide, the lowest-priority pills are hidden until it fits, so captions stay crisp. If the last one left is long (a long location, say), it shrinks to about 6 characters and scrolls before it is hidden too. The date is never hidden; if it alone is too wide, it scrolls.
+- Hidden pills come back if the window gets bigger.
+- A pill whose text is too wide scrolls slowly (about 25 px a second) back and forth, pausing for 2 seconds at each end. Text is never cut off with "…". If the TV or computer is set to reduce motion, the text doesn't move and is clipped at the pill's edge instead.
 
 **Upgrading:** `medium` pills are larger than the fixed 12 px pills of earlier versions. Choose **Small** for something closer to the old look.
 
@@ -486,7 +499,7 @@ A media folder includes the photos and videos in its subfolders too, however dee
 
 Each slot has a mat (`mat_color`, `mat_width`) around the photo or video and a frame around the mat. The mat always shows: the photo sits inside it, cropped there in **Fill** mode and letterboxed there in **Fit** mode.
 
-`frame_style` picks the frame: `"solid"` draws a plain border in `frame_color`, while `"wood"` and `"gold"` draw a decorative moulding (`frame_color` is ignored for those). Set it under **Default Frame** in the editor, per slot in the slot's Frame section, or per time-of-day period (**Same as default** keeps the slot's usual style). `frame_width` sets the moulding's thickness, too. Choosing wood or gold when the width is under 16 px sets it to that style's own default (28 px wood, 36 px gold), since a thinner moulding loses its detail. The frame never takes more than a sixth of a small slot's shortest side, and corners keep their shape at any size. Time-of-day periods have their own frame width (8 px unless changed), so raise it there if a wood or gold frame looks thin at night.
+`frame_style` picks the frame: `"solid"` draws a plain border in `frame_color`, while `"wood"` and `"gold"` draw a decorative moulding (`frame_color` is ignored for those). Set it under **Frame** in the editor, per slot in the slot's Frame section, or per time-of-day period (**Same as default** keeps the slot's usual style). `frame_width` sets the moulding's thickness, too. Choosing wood or gold when the width is under 16 px sets it to that style's own default (28 px wood, 36 px gold), since a thinner moulding loses its detail. The frame never takes more than a sixth of a small slot's shortest side, and corners keep their shape at any size. Time-of-day periods have their own frame width (8 px unless changed), so raise it there if a wood or gold frame looks thin at night.
 
 **Frame assets.** The wood and gold images in `frontend/assets/frames/` are original renders made by `tools/frames/generate_frames.py` (Pillow only, no third-party images; MIT like the rest of PicMe). It also writes `frames.js`, the list of styles the display and editor load. To change or add a style, edit the script and re-run it; `--check` verifies the committed files match, and `--preview /tmp/frames.png` writes a contact sheet to look at:
 
@@ -495,6 +508,8 @@ Each slot has a mat (`mat_color`, `mat_width`) around the photo or video and a f
 .venv/bin/python tools/frames/generate_frames.py --check
 ```
 
+New installs start with wood frames (`frame_style: "wood"`, `frame_width: 28`). An existing `config.json` keeps the frame it has; to switch to wood, pick **Wood** in the editor's **Frame → Frame style** (a thin frame widens to 28 px by itself).
+
 `.gitignore` ignores `*.png` to keep photos out of the repo, with an exception for `frontend/assets/frames/`.
 
 #### Gallery mat
@@ -502,11 +517,13 @@ Each slot has a mat (`mat_color`, `mat_width`) around the photo or video and a f
 Instead of a frame around every slot, a layout can show **one frame around the whole display and one mat** filling it, with each slot an opening cut into the mat — like a multi-photo frame from a shop. The openings are separated only by mat.
 
 - **Which layouts.** The `gallery-*` layouts are designed for it: some openings are bigger than others, and some have shapes. Any other layout can use it too: pick the layout and set **Frames** (under the layout picker) to **Gallery mat**, which saves `"layout_modes": { "classic-4": "gallery" }`. **Separate** sets a gallery layout back to a frame per slot (empty cells then show the wall, and shapes are ignored). With daily rotation on, Advanced mode adds a **Mat** chip on each layout, so a rotation can mix gallery-mat days and separate-frame days.
-- **Mat and frame.** The **Gallery Mat** section in the editor (or `"gallery"` in `config.json`) sets the mat colour, the frame style (solid, wood or gold — the same frames as slots), and in Advanced mode the frame colour and width, the mat around the openings (`outer_margin`), the mat between openings (`gutter`), the wall around the frame (`wall_margin`) and the bevel. Sizes are px on a 1920×1080 screen. Gallery mode is designed for TVs and 1080p-or-larger monitors. On a smaller screen the margins, gutter and frame shrink somewhat (margin up to 12%, gutter 8%, frame a sixth of the shortest side), but the mat still takes a large share of the screen, so small displays are better served by a regular layout with fewer slots.
+- **One frame control.** The outer frame's style, colour and on/off come from the editor's **Frame** section (`frame_defaults`), the same controls as separate frames, so the frame you set is the frame you see in either mode. The Frame section says so on a gallery screen. To give gallery mats a different frame, turn on **Use a different frame for gallery mats** under Gallery Mat (Advanced, `"frame_override": true`); its own style, colour and on/off then apply to the gallery. Mat colour, mat width and frame width in the Frame section are for separate frames only. When nothing the display can show uses a Frame control (for example mat width on a gallery-only screen), it is greyed out with the reason under it.
+- **Mat and sizes.** The **Gallery Mat** section in the editor (or `"gallery"` in `config.json`) sets the mat colour, and in Advanced mode the outer frame width (`frame_width`, separate from slots' frame width because it frames the whole screen), the mat around the openings (`outer_margin`), the mat between openings (`gutter`), the wall around the frame (`wall_margin`) and the bevel. Sizes are px on a 1920×1080 screen. Gallery mode is designed for TVs and 1080p-or-larger monitors. On a smaller screen the margins, gutter and frame shrink somewhat (margin up to 12%, gutter 8%, frame a sixth of the shortest side), but the mat still takes a large share of the screen, so small displays are better served by a regular layout with fewer slots.
 - **Bevel.** Each opening gets a thin light edge, like the slanted cut of real mat board, lit from the top left, and the mat casts a soft shadow onto the photo. Turn it off with **Bevelled openings** (`"bevel": false`).
 - **Shapes.** `rect` (default), `rounded`, `ellipse` (oval), `circle`, `arch`, `hexagon` and `heart`. A gallery layout can give an opening a shape; pick **Opening shape** in a slot's settings to change it (`"shape"` in the slot), or **Layout default** to go back. Circles, hexagons and hearts keep their proportions and sit centred in their space; arches are never much wider than tall. The photo or video fills the shape; **Fill** usually looks best, since **Fit** keeps the whole photo inside the shape's box and the corners outside the shape are hidden.
 - **Shapes stay with the position.** The shape is the hole in the mat, not part of the photo, so dragging slots to swap them moves their photos and settings but not the shapes (see [Rearranging slots](#rearranging-slots)). **Reset all slots** leaves shapes alone too.
-- **Pills.** Metadata pills sit inside the shape, and are sized and fitted to the part of it they can use — a small heart shows fewer pills (never dropping the date), and long text scrolls inside the shape as on any slot.
+- **Pills.** By default (label position **Auto**) the metadata is a caption on the mat under each opening, so it never covers a heart or a circle; see [Metadata pills](#metadata-pills). With **On the photo**, pills sit inside the shape and are fitted to the part of it they can use: a small heart shows fewer pills (never dropping the date), and long text scrolls inside the shape as on any slot.
+- **Upgrading.** The outer frame now follows the Frame section. If you had picked a different gallery frame (`gallery.frame_style`), it is kept but no longer used. To get it back, turn on **Use a different frame for gallery mats**, or pick the same style in the Frame section.
 - **Time of day.** Day and night periods change the gallery's mat colour, frame colour and frame style; widths stay as set in the Gallery Mat section.
 - **Per-slot frames.** A slot's own Frame settings apply on separate-frame layouts and are ignored on gallery-mat days (there is one mat). Fit / Fill applies in both.
 - **Videos in shapes.** Video slots work in any opening. Rectangles are never clipped; a shaped video opening is, which a TV may draw less efficiently — prefer rectangles for video on older TVs. As with any layout, keep the number of video slots small (`gallery-12` has 12 openings).
@@ -514,7 +531,7 @@ Instead of a frame around every slot, a layout can show **one frame around the w
 
 #### Daily layout rotation
 
-Turn on **Rotate layout daily** in the editor's Layout section, then (in **Advanced** mode) tick the layouts to rotate through. In Basic mode every layout rotates, unless Advanced has narrowed the list. The display shows one of them each day:
+Turn on **Rotate layout daily** in the editor's Layout section. A small checkbox appears in the bottom-right corner of every layout thumbnail, in Basic and Advanced mode: tick the layouts to rotate through. Ticking a box doesn't change the base layout; clicking the thumbnail does. **Select all** and **Deselect all**, on the right of the Layout heading, tick every layout or only the base layout (at least one must stay ticked, and the status line asks for a second). Both save straight away. The display shows one of the ticked layouts each day:
 
 - **Which layout:** the ticked layouts take turns in the order the editor lists them, so two days in a row never show the same layout (when 2 or more are ticked). Ticking every layout is saved as `"layouts": []`, which also includes layouts added later. With only one ticked, that layout is shown every day.
 - **When it changes:** at `change_at` (default 04:00) by the display's own clock and time zone. An open display switches by itself within 30 seconds, and a TV that was asleep switches as soon as it wakes. Before `change_at` it is still the previous day's layout.
@@ -541,11 +558,11 @@ Which settings each mode shows (the split lives in one table, `EDITOR_SETTINGS` 
 
 | | Basic | Advanced adds |
 |---|---|---|
-| **Layout** | Layout picker, Frames (Separate / Gallery mat), Rotate layout daily (and today's rotation status) | Which layouts rotate, Switch layout at, Mat chips (frames per rotated layout) |
+| **Layout** | Layout picker, Frames (Separate / Gallery mat), Rotate layout daily, the rotation checkboxes on the thumbnails, Select all / Deselect all, today's rotation status | Switch layout at, Mat chips (frames per rotated layout) |
 | **Global** | Default media folder, Wall color | Include subfolders, Reset all slots to global |
 | **Frame** | Mat color, Frame style | Mat width, Show frame border, Frame color, Frame width |
-| **Gallery Mat** | Mat color, Frame style | Show frame, Frame color, Frame width, mat around and between the openings, wall around the frame, bevel |
-| **Metadata** | Show metadata; Text size, Pill size and the fields (Date, Location, Camera…) | Date format, Max metadata pills |
+| **Gallery Mat** | Mat color (the frame's style is in Frame) | Use a different frame for gallery mats (its style, show frame, colour), outer frame width, mat around and between the openings, wall around the frame, bevel |
+| **Metadata** | Show metadata; Text size, Pill size, Label position and the fields (Date, Location, Camera…) | Date format, Max metadata pills |
 | **Time-of-Day, Videos** | — | The whole sections (templates, max video size, Live Photo clips) |
 | **Each slot** | Media folder, Photos / Video (and the "no videos" warning), Change every (seconds), Fit / Fill, Opening shape, Show metadata | Use global toggles, Include subfolders, Group, Frame, the slot's own metadata settings, video loops and audio, conversion status |
 
