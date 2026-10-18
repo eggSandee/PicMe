@@ -28,7 +28,11 @@ def test_config_get_without_file_creates_defaults(client, config_path):
     assert cfg["metadata_defaults"]["text_size"] == "medium"
     assert cfg["metadata_defaults"]["pill_size"] == "medium"
     assert cfg["frame_defaults"]["show_frame"] is True
-    assert cfg["frame_defaults"]["frame_style"] == "solid"  # decorative frames are opt-in
+    # New installs start with wood frames at wood's own default width (frames.js default_width)
+    assert cfg["frame_defaults"]["frame_style"] == "wood"
+    assert cfg["frame_defaults"]["frame_width"] == 28
+    assert cfg["label_position"] == "auto"
+    assert cfg["gallery"]["frame_override"] is False  # the gallery's frame follows frame_defaults
     # Persisted on first run, so the editor and a restart see the same thing
     assert json.loads(config_path.read_text()) == cfg
     assert client.get("/api/config").json() == cfg
@@ -43,6 +47,22 @@ def test_config_get_does_not_overwrite_existing_empty_config(client, config_path
     config_path.write_text("{}")
     assert client.get("/api/config").json() == {}
     assert config_path.read_text() == "{}"
+
+
+def test_existing_config_keeps_its_own_frame_defaults(client, config_path):
+    """The wood default is for new installs: a saved config's solid frame is never rewritten."""
+    saved = make_config("photos")
+    saved["frame_defaults"] = {"mat_color": "#000000", "mat_width": 16, "show_frame": True,
+                               "frame_color": "#2c2318", "frame_width": 8, "frame_style": "solid"}
+    config_path.write_text(json.dumps(saved))
+    assert client.get("/api/config").json() == saved
+    assert json.loads(config_path.read_text()) == saved
+
+
+def test_wood_default_width_matches_frames_js():
+    frames = (REPO_ROOT / "frontend" / "assets" / "frames" / "frames.js").read_text(encoding="utf-8")
+    wood = re.search(r"wood: \{[^}]*default_width: (\d+)", frames)
+    assert wood and int(wood.group(1)) == main.DEFAULT_CONFIG["frame_defaults"]["frame_width"]
 
 
 def test_config_get_does_not_overwrite_config_without_slots(client, config_path):

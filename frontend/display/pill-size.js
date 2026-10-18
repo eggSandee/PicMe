@@ -7,6 +7,10 @@
 // tokens() returns CSS custom properties; the display's pill CSS reads only these:
 //   --pill-font-size, --pill-pad-y, --pill-pad-x, --pill-gap, --pill-radius
 // (--pill-inset, the overlay's distance from the box edge, is set by whoever positions the overlay).
+//
+// One size per screen: callers measure the pill area of every slot on screen, take the shortest
+// side with sharedShort(), and size every slot's pills from that (a slot's own text_size still
+// scales it). config.label_position puts the pills on the photo or in a caption on the mat.
 (function () {
   // ── Tuning: every number that decides pill size is here ──
   // Base font = BASE_RATIO of the box's short side, between BASE_MIN and BASE_MAX; the text
@@ -32,6 +36,16 @@
   // When the photo changes sooner than a slow pass would finish, scroll faster (up to this),
   // so the whole text is shown at least once while the photo is on screen.
   const MARQUEE_MAX_SPEED = 60;
+
+  // Captions on the mat: one row of pills in a band under each opening, CAPTION_GAP_EM of the
+  // font clear of the photo above and below; the band is at most CAPTION_MAX_FRACTION of the
+  // smallest slot's height.
+  const CAPTION_GAP_EM = 0.35;
+  const CAPTION_MAX_FRACTION = 0.25;
+  // The last non-date pill left in a caption shrinks and scrolls down to this many em (or its
+  // own width) before it is hidden too
+  const CAPTION_PILL_MIN_EM = 6;
+  const LABEL_POSITIONS = ['auto', 'photo', 'mat'];
 
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const has = (obj, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key);
@@ -64,6 +78,31 @@
     };
   }
 
+  // The shortest side of the given {w, h} boxes, ignoring empty ones (hidden slots); 0 if none
+  function sharedShort(boxes) {
+    let short = Infinity;
+    for (const b of boxes || []) {
+      const w = Number(b && b.w) || 0, h = Number(b && b.h) || 0;
+      if (w > 0 && h > 0) short = Math.min(short, w, h);
+    }
+    return Number.isFinite(short) ? short : 0;
+  }
+
+  // px height of a caption band holding one row of pills sized for `short`
+  function captionBand(sizes, short) {
+    const font = fontSize(sizes, short, short);
+    const p = PILL_SIZES[resolve(sizes).pill_size];
+    return Math.round(font * (1.25 + 2 * p.py)) + 2 * Math.round(CAPTION_GAP_EM * font);
+  }
+
+  // Where the pills go on a screen in `mode` ('gallery' | 'slots'): 'mat' or 'photo'.
+  // label_position auto (the default, and any unknown value) is the mat on a gallery mat only.
+  function labelPlacement(labelPosition, mode) {
+    const pos = LABEL_POSITIONS.includes(labelPosition) ? labelPosition : 'auto';
+    if (pos === 'auto') return mode === 'gallery' ? 'mat' : 'photo';
+    return pos;
+  }
+
   // px/s for a `d` px scroll on a photo shown for `windowSec` s (unknown, e.g. video: base speed)
   function marqueeSpeed(d, windowSec) {
     if (!(windowSec > 0)) return MARQUEE_SPEED;
@@ -89,6 +128,7 @@
 
   window.PicMePills = {
     TEXT_SIZES, PILL_SIZES, FONT_MIN, FONT_MAX, MARQUEE_SPEED, MARQUEE_PAUSE, MARQUEE_MAX_SPEED,
-    resolve, fontSize, tokens, marquee,
+    CAPTION_GAP_EM, CAPTION_MAX_FRACTION, CAPTION_PILL_MIN_EM, LABEL_POSITIONS,
+    resolve, fontSize, tokens, marquee, sharedShort, captionBand, labelPlacement,
   };
 })();

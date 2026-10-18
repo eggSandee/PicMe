@@ -5,7 +5,8 @@ Pixel checks screenshot the display at device scale 1 with a test palette — ma
 solid frame, cyan mat, white bevel — and each slot showing its own solid-colour photo. Shape
 checks walk out from each opening's centre to where its outline (PicMeShapes, the same outline
 the display clips with) ends, then sample a few px outside (must be mat) and inside the photo's
-own outline, past the cast shadow (must be photo).
+own outline, past the cast shadow (must be photo). The green frame comes from frame_defaults: the
+gallery's outer frame follows the Frame section unless gallery.frame_override is on.
 """
 from __future__ import annotations
 
@@ -84,8 +85,9 @@ def write_cfg(e2e_config_path):
             slot["fill_mode"] = "cover"
         cfg["wall_color"] = "#ff00ff"
         cfg["show_metadata"] = False
+        # The outer frame's look (solid green); its width is gallery.frame_width
         cfg["frame_defaults"] = {"mat_color": "#000000", "mat_width": 16, "show_frame": True,
-                                 "frame_color": "#2c2318", "frame_width": 8, "frame_style": "solid"}
+                                 "frame_color": "#00ff00", "frame_width": 8, "frame_style": "solid"}
         cfg["gallery"] = {**GALLERY, **(gallery or {})}
         for slot_id, override in (slot_overrides or {}).items():
             cfg["slots"][slot_id - 1].update(override)
@@ -360,7 +362,7 @@ CAMERA_FIELDS = {"show_date": True, "show_camera": True, "show_fstop": True, "sh
 
 @pytest.mark.parametrize("shape", ["heart", "ellipse", "hexagon", "arch"])
 def test_pills_stay_inside_the_shape_and_size_for_it(write_cfg, open_display, shape):
-    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, show_metadata=True,
+    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, show_metadata=True, label_position="photo",
               metadata_defaults=CAMERA_FIELDS, max_metadata_pills=None,
               slot_overrides={i: {"shape": shape} for i in range(1, 5)})
     w = open_display()
@@ -377,7 +379,7 @@ def test_pills_stay_inside_the_shape_and_size_for_it(write_cfg, open_display, sh
 
 
 def test_small_heart_keeps_the_date_and_hides_other_pills(write_cfg, open_display):
-    write_cfg(show_metadata=True, metadata_defaults={**CAMERA_FIELDS, "show_megapixels": True,
+    write_cfg(show_metadata=True, label_position="photo", metadata_defaults={**CAMERA_FIELDS, "show_megapixels": True,
                                                      "show_shutter_speed": True, "show_focal_length": True},
               max_metadata_pills=None, slot_overrides={i: {"shape": "heart"} for i in range(1, 13)})
     page = open_display().page
@@ -389,7 +391,7 @@ def test_small_heart_keeps_the_date_and_hides_other_pills(write_cfg, open_displa
 
 
 def test_long_pill_scrolls_inside_the_shape(write_cfg, open_display):
-    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, show_metadata=True,
+    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, show_metadata=True, label_position="photo",
               metadata_defaults={"show_date": True, "show_location": True},
               slot_overrides={i: {"shape": "ellipse"} for i in range(1, 5)})
     w = open_display(routes=[("**/api/metadata?*", long_location)])
@@ -399,6 +401,179 @@ def test_long_pill_scrolls_inside_the_shape(write_cfg, open_display):
     loc = info["pills"][0]
     assert loc["text"] == LONG_LOCATION and loc["scrolling"] and loc["animation"].startswith("pill-marquee-")
     assert all(loc["corners"])
+    assert w.errors == []
+
+
+# --- Captions on the mat (label_position auto on a gallery mat, or "mat") ---
+
+# Each visible pill's rect, the opening's cell / box / photo rects, and points on a grid over the
+# photo that are inside its outline and at least `clear` px from it (past the cast shadow)
+CAPTION_JS = """({ id, step, clear }) => {
+  const el = document.getElementById(`slot-${id}`);
+  const rect = e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, w: r.width, h: r.height }; };
+  const gallery = el.classList.contains('opening');
+  const media = gallery ? el.querySelector('.mat-frame') : el.querySelector('img.visible');
+  const m = media.getBoundingClientRect();
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  document.body.appendChild(svg);
+  const p = document.createElementNS(NS, 'path');
+  p.setAttribute('d', PicMeShapes.get(gallery ? el.dataset.shape : 'rect').svgPath(0, 0, m.width, m.height));
+  svg.appendChild(p);
+  const pt = svg.createSVGPoint();
+  const inside = (x, y) => { pt.x = x; pt.y = y; return p.isPointInFill(pt); };
+  const points = [];
+  for (let y = clear; y < m.height - clear; y += step) for (let x = clear; x < m.width - clear; x += step) {
+    if ([...Array(16).keys()].every(k => inside(x + clear * Math.cos(k * Math.PI / 8), y + clear * Math.sin(k * Math.PI / 8))))
+      points.push([m.x + x, m.y + y]);
+  }
+  svg.remove();
+  const ov = el.querySelector('.slot-overlay');
+  return {
+    cell: rect(el), box: gallery ? rect(el.querySelector('.opening-box')) : rect(el.querySelector('.mat-frame')), media: rect(media),
+    caption: ov.classList.contains('caption'), labels: document.getElementById('collage').dataset.labels,
+    overflow: [ov.scrollWidth, ov.clientWidth],
+    pills: [...ov.querySelectorAll('.overlay-pill')].filter(q => getComputedStyle(q).display !== 'none').map(q => ({
+      date: !!q.dataset.date, rect: rect(q), opacity: getComputedStyle(q).opacity,
+      scrolling: q.classList.contains('scrolling'),
+      animation: getComputedStyle(q.querySelector('.pill-text')).animationName })),
+    hidden: [...ov.querySelectorAll('.overlay-pill.fit-hidden')].map(q => !!q.dataset.date),
+    points,
+  };
+}"""
+
+PILLS_VISIBLE_JS = "() => [...document.querySelectorAll('.slot')].every(s => s.querySelector('.overlay-pill.visible'))"
+
+
+def caption(page, slot_id, step=6, clear=10) -> dict:
+    return page.evaluate(CAPTION_JS, {"id": slot_id, "step": step, "clear": clear})
+
+
+def assert_photo_uncovered(img, info, color, slot_id):
+    """Every grid point inside the photo's outline is the photo's own colour: no pill on it."""
+    assert len(info["points"]) > 50, info["points"][:3]
+    bad = [(p, pixel(img, *p)) for p in info["points"] if not near(pixel(img, *p), color, 24)]
+    assert not bad, f"slot {slot_id}: photo covered at {bad[:5]}"
+
+
+@pytest.mark.parametrize("shape", ["rect", "heart", "circle", "hexagon", "arch"])
+def test_captions_sit_under_the_opening_and_never_cover_the_photo(write_cfg, open_display, shape):
+    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, show_metadata=True,
+              metadata_defaults=CAMERA_FIELDS, max_metadata_pills=None,
+              slot_overrides={i: {"shape": shape} for i in range(1, 5)})
+    w = open_display()
+    page = w.page
+    _until(page, PILLS_VISIBLE_JS)
+    page.wait_for_timeout(700)  # the pills' fade-in
+    img = shot(page)
+    for i in range(1, 5):
+        info = caption(page, i)
+        assert info["labels"] == "mat" and info["caption"], info["labels"]
+        assert len(info["pills"]) == 4 and all(p["opacity"] == "1" for p in info["pills"])  # date + 3, all fit
+        date = next(p for p in info["pills"] if p["date"])
+        assert date["rect"]["x"] == min(p["rect"]["x"] for p in info["pills"])  # date first in the row
+        cell, box = info["cell"], info["box"]
+        for p in info["pills"]:
+            r = p["rect"]
+            assert r["y"] >= box["bottom"] - 0.5, (shape, i, r, box)  # under the opening, in the mat
+            assert r["x"] >= cell["x"] - 0.5 and r["right"] <= cell["right"] + 0.5 and r["bottom"] <= cell["bottom"] + 0.5
+            assert abs(r["y"] - date["rect"]["y"]) < 1  # one row
+        row_mid = (min(p["rect"]["x"] for p in info["pills"]) + max(p["rect"]["right"] for p in info["pills"])) / 2
+        assert row_mid == pytest.approx(box["x"] + box["w"] / 2, abs=2)  # centred under the shape
+        assert_photo_uncovered(img, info, SLOT_COLORS[i - 1], i)
+        # Between the photo and the caption: mat
+        assert near(pixel(img, box["x"] + box["w"] / 2, box["bottom"] + 2), MAT, 30)
+    assert w.errors == []
+
+
+def test_caption_band_shrinks_openings_by_the_same_amount(write_cfg, open_display):
+    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"})
+    page = open_display().page
+    before = [opening(page, i)["box"] for i in range(1, 5)]
+    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, show_metadata=True,
+              metadata_defaults=CAMERA_FIELDS)
+    _until(page, "() => document.querySelector('#slot-1 .slot-overlay.caption')", timeout=8)
+    after = [opening(page, i)["box"] for i in range(1, 5)]
+    bands = {round(b["h"] - a["h"]) for a, b in zip(after, before)}
+    assert len(bands) == 1 and 20 <= bands.pop() <= 60  # one band per screen, about a pill tall
+    assert all(a["w"] == b["w"] for a, b in zip(after, before))
+    # Pills on the photo again: no band
+    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, show_metadata=True,
+              metadata_defaults=CAMERA_FIELDS, label_position="photo")
+    _until(page, "() => !document.querySelector('.slot-overlay.caption')", timeout=8)
+    assert [opening(page, i)["box"] for i in range(1, 5)] == before
+
+
+def test_long_caption_pill_scrolls_and_the_date_stays(write_cfg, open_display):
+    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, show_metadata=True,
+              metadata_defaults={"show_date": True, "show_location": True})
+    w = open_display(routes=[("**/api/metadata?*", long_location)])
+    page = w.page
+    _until(page, "() => document.querySelector('#slot-1 .overlay-pill.scrolling')")
+    info = caption(page, 1)
+    loc = next(p for p in info["pills"] if not p["date"])
+    date = next(p for p in info["pills"] if p["date"])
+    assert loc["scrolling"] and loc["animation"].startswith("pill-marquee-")
+    assert not date["scrolling"] and date["rect"]["right"] <= loc["rect"]["x"] + 0.5
+    assert info["overflow"][0] <= info["overflow"][1] + 1  # the row fits; the long text scrolls inside its pill
+    assert all(p["rect"]["y"] >= info["box"]["bottom"] - 0.5 for p in info["pills"])
+    assert w.errors == []
+
+
+def test_small_captions_show_the_date_and_hide_the_rest(write_cfg, open_display):
+    write_cfg(show_metadata=True, metadata_defaults={**CAMERA_FIELDS, "text_size": "x-large"}, max_metadata_pills=None)
+    w = open_display(viewport={"width": 1280, "height": 720})
+    page = w.page
+    _until(page, PILLS_VISIBLE_JS)
+    for i in range(1, 13):
+        info = caption(page, i)
+        assert [p["date"] for p in info["pills"]] == [True], info["pills"]  # only the date fits
+        assert info["hidden"] == [False, False, False]  # every other pill hidden; never the date
+        assert info["overflow"][0] <= info["overflow"][1] + 1
+    assert w.errors == []
+
+
+def test_max_metadata_pills_caps_a_caption_before_fitting(write_cfg, open_display):
+    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, show_metadata=True,
+              metadata_defaults=CAMERA_FIELDS, max_metadata_pills=1)
+    page = open_display().page
+    _until(page, PILLS_VISIBLE_JS)
+    for i in range(1, 5):
+        info = caption(page, i)
+        assert info["caption"] and all(p["rect"]["y"] >= info["box"]["bottom"] - 0.5 for p in info["pills"])
+        assert sorted(p["date"] for p in info["pills"]) == [False, True] and info["hidden"] == []
+
+
+def test_separate_frames_caption_on_the_mat_live(write_cfg, open_display):
+    # auto on separate frames: pills on the photo, as before
+    write_cfg(layout="classic-4", slots=4, show_metadata=True, metadata_defaults=CAMERA_FIELDS)
+    w = open_display()
+    page = w.page
+    _until(page, PILLS_VISIBLE_JS)
+    info = caption(page, 1)
+    assert info["labels"] == "photo" and not info["caption"]
+    assert info["pills"][-1]["rect"]["y"] < info["media"]["bottom"] - 10  # on the photo
+    page.evaluate("window.__marker = 1")
+    write_cfg(layout="classic-4", slots=4, show_metadata=True, metadata_defaults=CAMERA_FIELDS, label_position="mat")
+    _until(page, "() => document.querySelector('#slot-1 .slot-overlay.caption')", timeout=8)
+    _until(page, PILLS_VISIBLE_JS)
+    page.wait_for_timeout(1000)  # pills re-made after the patch, and their fade-in
+    assert page.evaluate("window.__marker") == 1  # patched in place, no reload
+    img = shot(page)
+    bottoms = set()
+    for i in range(1, 5):
+        info = caption(page, i)
+        assert info["labels"] == "mat" and info["caption"] and len(info["pills"]) == 4
+        frame, media = info["box"], info["media"]  # the slot's .mat-frame and its photo
+        # 8 px frame + 16 px mat at the bottom, plus the caption band the bottom mat grew by
+        assert frame["bottom"] - media["bottom"] > 8 + 16 + 20
+        bottoms.add(round(frame["bottom"] - media["bottom"]))
+        for p in info["pills"]:
+            r = p["rect"]
+            assert r["y"] >= media["bottom"] - 0.5 and r["bottom"] <= frame["bottom"] - 24 + 0.5
+            assert r["x"] >= frame["x"] + 24 - 0.5 and r["right"] <= frame["right"] - 24 + 0.5
+        assert_photo_uncovered(img, info, SLOT_COLORS[i - 1], i)
+    assert len(bottoms) == 1  # the same band in every slot
     assert w.errors == []
 
 
@@ -466,7 +641,7 @@ def test_rotation_mixes_gallery_and_separate_frame_days(write_cfg, open_display)
     # Eligible layouts in /api/layouts order: classic-4, gallery-cameo
     day = dt.datetime(2026, 10, 13, 3, 59, tzinfo=dt.timezone.utc)
     before, after = ["classic-4", "gallery-cameo"][(_rotation_day(day) - 1) % 2], ["classic-4", "gallery-cameo"][_rotation_day(day) % 2]
-    write_cfg(layout="classic-4", slots=5,
+    write_cfg(layout="classic-4", slots=5, frame_defaults=_frame_defaults(frame_style="gold"),
               layout_rotation={"enabled": True, "layouts": ["classic-4", "gallery-cameo"], "change_at": "04:00"})
     w = open_display(at=day)
     page = w.page
@@ -475,9 +650,12 @@ def test_rotation_mixes_gallery_and_separate_frame_days(write_cfg, open_display)
         _until(page, f"() => document.getElementById('collage').dataset.layout === '{layout_id}'")
         if layout_id == "gallery-cameo":
             assert gallery_mode(page) and opening(page, 2)["shape"] == "arch"
+            # The Frame section's style on gallery days too
+            assert page.evaluate("() => document.querySelector('.gallery-frame').dataset.frameStyle") == "gold"
         else:
             assert not gallery_mode(page)
-            assert page.evaluate("() => getComputedStyle(document.querySelector('#slot-1 .mat-frame')).borderTopWidth") == "8px"
+            mf = page.evaluate("() => { const cs = getComputedStyle(document.querySelector('#slot-1 .mat-frame')); return [cs.borderTopWidth, cs.borderImageSource]; }")
+            assert mf[0] == "8px" and "gold.png" in mf[1]
 
     check(before)
     page.evaluate("window.__marker = 1")
@@ -562,13 +740,49 @@ def test_small_screen_keeps_openings_usable(write_cfg, open_display):
     assert w.errors == []
 
 
+def _frame_defaults(**kw) -> dict:
+    return {"mat_color": "#000000", "mat_width": 16, "show_frame": True, "frame_color": "#00ff00",
+            "frame_width": 8, "frame_style": "solid", **kw}
+
+
 def test_decorative_frame_on_the_gallery(write_cfg, open_display):
-    write_cfg(gallery={"frame_style": "wood", "frame_width": 120})
+    # The style comes from frame_defaults (the Frame section); the width is the gallery's own
+    write_cfg(gallery={"frame_width": 120}, frame_defaults=_frame_defaults(frame_style="wood", frame_width=28))
     page = open_display(viewport={"width": 640, "height": 360}).page
     f = page.evaluate("() => { const cs = getComputedStyle(document.querySelector('.gallery-frame')); return [cs.borderImageSource, cs.borderTopWidth, cs.borderImageRepeat]; }")
     assert "/assets/frames/wood.png" in f[0]
     assert f[1] == "60px"  # capped at a sixth of the 360 px short side
     assert "round" in f[2]
-    big = write_cfg(gallery={"frame_style": "gold", "frame_width": 48})
-    assert big
+    page.evaluate("window.__marker = 1")
+    write_cfg(gallery={"frame_width": 48}, frame_defaults=_frame_defaults(frame_style="gold"))
     _until(page, "() => getComputedStyle(document.querySelector('.gallery-frame')).borderImageSource.includes('gold.png')", timeout=8)
+    assert page.evaluate("window.__marker") == 1  # patched, not reloaded
+
+
+def test_gallery_frame_follows_frame_defaults_unless_overridden(write_cfg, open_display):
+    # A config saved before the gallery followed the Frame section: its gallery.frame_style is dormant
+    write_cfg(gallery={"frame_style": "gold"}, frame_defaults=_frame_defaults(frame_style="wood"))
+    page = open_display().page
+    style = "() => document.querySelector('.gallery-frame').dataset.frameStyle"
+    assert page.evaluate(style) == "wood"
+    write_cfg(gallery={"frame_style": "gold", "frame_override": True}, frame_defaults=_frame_defaults(frame_style="wood"))
+    _until(page, f"() => ({style})() === 'gold'", timeout=8)
+    # Off in the Frame section: no outer frame either
+    write_cfg(frame_defaults=_frame_defaults(show_frame=False))
+    _until(page, f"() => ({style})() === 'none'", timeout=8)
+    # No frame_defaults at all: a separate frame's defaults (solid #2c2318)
+    write_cfg(frame_defaults=None)
+    _until(page, f"() => ({style})() === 'solid'", timeout=8)
+    assert near(pixel(shot(page), 31, 540), (0x2c, 0x23, 0x18), 20)
+
+
+def test_time_of_day_frame_style_applies_in_both_modes(write_cfg, open_display):
+    tod = {"enabled": True, "day_start": "07:00", "night_start": "20:00", "day": {"wall_color": "#ff00ff"},
+           "night": {"wall_color": "#ff00ff", "frame_style": "gold"}}
+    night = dt.datetime(2026, 10, 13, 22, 0, tzinfo=dt.timezone.utc)
+    write_cfg(time_of_day=tod, frame_defaults=_frame_defaults(frame_style="wood"))
+    page = open_display(at=night).page
+    assert page.evaluate("() => document.querySelector('.gallery-frame').dataset.frameStyle") == "gold"
+    write_cfg(layout="classic-4", slots=4, time_of_day=tod, frame_defaults=_frame_defaults(frame_style="wood"))
+    _until(page, "() => !document.getElementById('collage').classList.contains('gallery') && document.querySelector('#slot-1 .mat-frame')", timeout=8)
+    _until(page, "() => getComputedStyle(document.querySelector('#slot-1 .mat-frame')).borderImageSource.includes('gold.png')")

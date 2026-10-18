@@ -29,7 +29,7 @@ SHOW_KEYS = list(FIELDS_OFF)
 ADVANCED_SIDEBAR = ["#g-frame-width", "#g-mat-width", ".toggle-row:has(#g-show-frame)", "#g-frame-color", "#tod-configure-btn",
                     "#g-video-max-edge", ".toggle-row:has(#g-include-live-photos)", ".toggle-row:has(#g-include-subfolders)", "#g-date-format", "#g-max-pills",
                     "#g-rotation-change-at"]
-BASIC_SIDEBAR = ["#g-wall-color", "#g-frame-style", "#g-mat-color", "#g-text-size", "#g-pill-size",
+BASIC_SIDEBAR = ["#g-wall-color", "#g-frame-style", "#g-mat-color", "#g-text-size", "#g-pill-size", "#g-label-position",
                  "#g-source-path", "#layout-picker", "#g-meta-toggles"]
 
 

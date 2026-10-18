@@ -46,9 +46,11 @@
       box-sizing: border-box;
     }
 
-    /* Media sit inside the mat: --mat is the mat width, set per slot by applyFrameStyle */
+    /* Media sit inside the mat: --mat is the mat width, set per slot by applyFrameStyle;
+       --mat-bottom is the bottom mat, wider when it holds a caption (labels on the mat) */
     .mat-frame img, .mat-frame video {
-      width: calc(100% - 2 * var(--mat, 0px)); height: calc(100% - 2 * var(--mat, 0px));
+      width: calc(100% - 2 * var(--mat, 0px));
+      height: calc(100% - var(--mat, 0px) - var(--mat-bottom, var(--mat, 0px)));
       object-fit: contain; /* default; overridden per-slot by applyFrameStyle */
       position: absolute;
       top: var(--mat, 0px); left: var(--mat, 0px);
@@ -101,6 +103,14 @@
     .overlay-pill.visible { opacity: 1; }
     /* Hidden by fitOverlay when the slot is too short for every pill */
     .overlay-pill.fit-hidden { display: none; }
+
+    /* Labels on the mat (label_position): a caption under the photo — one centred row, date
+       first. Nothing but mat behind it, so no blur. fitOverlay lets a pill that is too long
+       shrink, so its text scrolls (a non-date pill no narrower than its inline min-width). */
+    .slot-overlay.caption { flex-direction: row; align-items: center; max-height: none; }
+    .slot-overlay.caption .overlay-pill { backdrop-filter: none; }
+    .slot-overlay.caption .overlay-pill[data-date] { order: -1; }
+    .slot-overlay.caption .overlay-pill.caption-squeeze { flex-shrink: 1; min-width: 0; }
 
     /* Text that doesn't fit scrolls (fitOverlay sets the animation); it is never cut with "…" */
     .pill-clip { display: block; overflow: hidden; }
@@ -272,28 +282,68 @@
 
     let lastTodPeriod = null;
 
+    // Where this screen's pills go: 'mat' (a caption under each photo) or 'photo'
+    function labelPlacement() {
+      return window.PicMePills ? PicMePills.labelPlacement(config.label_position, activeMode) : 'photo';
+    }
+
+    // Whether the slot puts any pill on screen (video slots only show the date)
+    function slotHasPills(slotCfg) {
+      if (config.show_metadata === false) return false;
+      const meta = effectiveMeta(slotCfg);
+      return !!meta.show_date || (slotCfg.mode !== 'video' && METADATA_FIELDS.some(f => meta[f.flag]));
+    }
+
+    // Frames, then one pill size for every slot on screen (README → Metadata pills): each slot's
+    // pill area is measured, the shortest side sizes them all, and labels on the mat get a
+    // caption band sized from it.
     function applyTodStyles() {
       const tod = getTimeOfDayTemplate();
       const collage = document.getElementById('collage');
       collage.style.background = tod?.wall_color ?? config.wall_color ?? '#1a1a1a';
+      const placement = labelPlacement();
+      collage.dataset.labels = placement;
+      // Each slot's pill sizes, or null for a slot without pills (it doesn't set the size)
+      const sizes = activeSlots.map(s => (slotHasPills(s) ? (window.PicMePills?.resolve(effectiveMeta(s)) ?? {}) : null));
+      let short = 0;
       if (activeMode === 'gallery') {
         // One frame and mat for the whole display (time of day changes their colours only);
         // per-slot frame settings apply on separate-frame layouts
-        const openings = PicMeGallery.applyStyles(collage, PicMeGallery.resolveGallery(config, tod), activeLayout, activeSlots);
+        ({ short } = PicMeGallery.layoutWithLabels(collage, PicMeGallery.resolveGallery(config, tod), activeLayout,
+                                                  activeSlots, { placement, sizes }));
         for (const slotCfg of activeSlots) {
           const slotEl = document.getElementById(`slot-${slotCfg.id}`);
-          if (!slotEl) continue;
-          applyFit(slotEl, slotCfg);
-          // Pills are sized for the part of the opening they may sit in
-          applyPillStyle(slotEl, slotCfg, openings[slotCfg.id]?.safe);
+          if (slotEl) applyFit(slotEl, slotCfg);
         }
       } else {
-        for (const slotCfg of activeSlots) {
-          const slotEl = document.getElementById(`slot-${slotCfg.id}`);
-          if (slotEl) applyFrameStyle(slotEl, slotCfg);
-        }
+        short = applySlotFrames(placement, sizes);
+      }
+      for (const slotCfg of activeSlots) {
+        const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+        if (slotEl) applyPillStyle(slotEl, slotCfg, short);
       }
       lastTodPeriod = getTodPeriodName();
+    }
+
+    // Separate frames for every slot on screen, with a caption band in each bottom mat when the
+    // labels are on the mat. Returns the shortest pill area on screen. The band is sized from
+    // the areas measured before it, so the two can't feed back.
+    function applySlotFrames(placement, sizes) {
+      const P = window.PicMePills;
+      const mat = placement === 'mat';
+      const els = activeSlots.map(s => document.getElementById(`slot-${s.id}`));
+      const geo = activeSlots.map((s, i) => (els[i] ? applyFrameStyle(els[i], s, 0) : null));
+      // A caption labels the whole photo; on the photo, pills keep --pill-inset from the slot edge
+      const area = g => (mat ? g.photo : { w: g.slot.w - 2 * g.inset, h: g.slot.h - 2 * g.inset });
+      const all = geo.filter(Boolean);
+      const shown = geo.filter((g, i) => g && sizes[i]);
+      const short = P ? P.sharedShort((shown.length ? shown : all).map(area)) : 0;
+      if (mat && P && shown.length) {
+        const need = Math.max(...sizes.filter(Boolean).map(s => P.captionBand(s, short)));
+        const band = Math.min(need, Math.floor(P.CAPTION_MAX_FRACTION * Math.min(...all.map(g => g.photo.h))));
+        activeSlots.forEach((s, i) => { if (els[i]) applyFrameStyle(els[i], s, band); });
+      }
+      return short;
     }
 
     const TOD_FRAME_KEYS = ['mat_color', 'mat_width', 'show_frame', 'frame_color', 'frame_width', 'frame_style'];
@@ -305,9 +355,12 @@
       return frames && style && Object.prototype.hasOwnProperty.call(frames, style) ? frames[style] : null;
     }
 
-    function applyFrameStyle(slotEl, slotCfg) {
+    // The slot's frame and mat; `band` px more bottom mat holds a caption (labels on the mat).
+    // Returns { slot, photo: {w, h}, inset }: the slot's size, the photo's space inside the
+    // frame and mat (before the band), and the slot's --pill-inset.
+    function applyFrameStyle(slotEl, slotCfg, band = 0) {
       const matFrame = slotEl.querySelector('.mat-frame');
-      if (!matFrame) return;
+      if (!matFrame) return null;
 
       // TOD template sits between global defaults and per-slot overrides in priority.
       // Only keys the template sets: an unset key must not blank out the global value.
@@ -316,7 +369,7 @@
       if (tod) for (const key of TOD_FRAME_KEYS) if (tod[key] !== undefined) todFrame[key] = tod[key];
       const frameCfg = { ...(config.frame_defaults || {}), ...todFrame, ...(slotCfg.frame || {}) };
 
-      const matWidth  = frameCfg.mat_width  ?? 16;
+      const matWidth  = Number(frameCfg.mat_width ?? 16) || 0;
       const matColor  = frameCfg.mat_color  ?? '#000000';
       const frameOn   = frameCfg.show_frame ?? true;
       const frameWidth = frameCfg.frame_width ?? 8;
@@ -324,8 +377,12 @@
       const asset = frameOn ? frameAsset(frameCfg.frame_style ?? 'solid') : null;
 
       matFrame.style.padding    = `${matWidth}px`;
+      matFrame.style.paddingBottom = `${matWidth + band}px`;
       matFrame.style.setProperty('--mat', `${matWidth}px`);
+      if (band > 0) matFrame.style.setProperty('--mat-bottom', `${matWidth + band}px`);
+      else matFrame.style.removeProperty('--mat-bottom');
       matFrame.style.background = matColor;
+      let border = 0;
       if (asset) {
         // A 9-slice PNG: corners scale uniformly (never stretch) and edges tile with `round`.
         // On a small slot the moulding is capped at a sixth of the short side.
@@ -336,17 +393,30 @@
         matFrame.style.backgroundClip = 'padding-box';
         // Keep the metadata pills inside the moulding
         slotEl.style.setProperty('--pill-inset', `${w + 10}px`);
+        border = w;
       } else {
         matFrame.style.border = frameOn ? `${frameWidth}px solid ${frameColor}` : 'none';
         matFrame.style.borderImage = 'none';
         matFrame.style.backgroundClip = '';
         slotEl.style.removeProperty('--pill-inset');
+        border = frameOn ? Number(frameWidth) || 0 : 0;
+      }
+
+      // A caption sits in the bottom mat, under the photo, centred on it
+      const edge = border + matWidth;
+      const slotW = slotEl.clientWidth, slotH = slotEl.clientHeight;
+      const overlay = slotEl.querySelector('.slot-overlay');
+      if (overlay) {
+        overlay.classList.toggle('caption', band > 0);
+        Object.assign(overlay.style, band > 0
+          ? { left: `${edge}px`, right: `${edge}px`, bottom: `${edge}px`, height: `${band}px`,
+              width: 'fit-content', margin: '0 auto', maxWidth: `${Math.max(0, slotW - 2 * edge)}px` }
+          : { left: '', right: '', bottom: '', height: '', width: '', margin: '', maxWidth: '' });
       }
 
       applyFit(slotEl, slotCfg);
-
-      // Pill size depends on the space inside the frame, so it follows every frame change
-      applyPillStyle(slotEl, slotCfg);
+      return { slot: { w: slotW, h: slotH }, photo: { w: Math.max(0, slotW - 2 * edge), h: Math.max(0, slotH - 2 * edge) },
+               inset: pillInset(slotEl) };
     }
 
     // Fit (contain, letterboxed) or Fill (cover, cropped) — per slot, in either mode
@@ -368,15 +438,12 @@
       return parseFloat(getComputedStyle(slotEl).getPropertyValue('--pill-inset')) || 0;
     }
 
-    // Set the slot's pill tokens for the space inside its frame, then re-fit its pills.
-    // `box` ({w, h}): the area the pills sit in when it isn't the whole slot (a gallery
-    // opening's safe rect). Without pill-size.js the CSS fallbacks apply.
-    function applyPillStyle(slotEl, slotCfg, box) {
+    // Set the slot's pill tokens, then re-fit its pills. `short`: the shortest pill area on
+    // screen (applyTodStyles), so every slot gets the same size; the slot's own text_size (with
+    // use_global.metadata off) scales it. Without pill-size.js the CSS fallbacks apply.
+    function applyPillStyle(slotEl, slotCfg, short) {
       if (window.PicMePills) {
-        const inset = pillInset(slotEl);
-        const w = Math.max(0, (box ? box.w : slotEl.clientWidth) - 2 * inset);
-        const h = Math.max(0, (box ? box.h : slotEl.clientHeight) - 2 * inset);
-        const tokens = PicMePills.tokens(PicMePills.resolve(effectiveMeta(slotCfg)), w, h);
+        const tokens = PicMePills.tokens(PicMePills.resolve(effectiveMeta(slotCfg)), short, short);
         for (const [name, value] of Object.entries(tokens)) slotEl.style.setProperty(name, value);
       }
       fitOverlay(slotEl);
@@ -397,9 +464,12 @@
       return `${m.name} ${m.duration.toFixed(2)}s linear infinite`;
     }
 
-    // Make the slot's pills fit inside the overlay (the slot minus --pill-inset on each side):
-    // 1. Too tall: hide non-date pills from the lowest priority up. The date is never hidden;
-    //    if it alone doesn't fit, it drops to the smallest font and the overlay clips it.
+    // Make the slot's pills fit inside the overlay (on the photo: the slot minus --pill-inset on
+    // each side; on the mat: one row in the caption band):
+    // 1. Too many: hide non-date pills from the lowest priority up. The date is never hidden.
+    //    On the photo, a date that alone doesn't fit drops to the smallest font and the overlay
+    //    clips it. In a caption, the last non-date pill left may shrink to a few words (and
+    //    scroll) before it is hidden too, and a date that alone is too wide shrinks.
     // 2. Too wide: the pill's text scrolls slowly back and forth (static under reduced motion).
     // Hidden pills stay in the DOM, so a resize can bring them back.
     function fitOverlay(slotEl) {
@@ -407,13 +477,33 @@
       if (!overlay) return;
       const pills = [...overlay.querySelectorAll('.overlay-pill')];
       overlay.style.removeProperty('--pill-font-size');
-      pills.forEach(p => p.classList.remove('fit-hidden'));
+      pills.forEach(p => { p.classList.remove('fit-hidden', 'caption-squeeze'); p.style.minWidth = ''; });
       if (pills.length === 0) return;
 
-      const overflows = () => overlay.scrollHeight > overlay.clientHeight + 0.5;
+      const caption = overlay.classList.contains('caption');
+      const overflows = caption
+        ? () => overlay.scrollWidth > overlay.clientWidth + 0.5
+        : () => overlay.scrollHeight > overlay.clientHeight + 0.5;
       const optional = pills.filter(p => !p.dataset.date);
-      while (overflows() && optional.length) optional.pop().classList.add('fit-hidden');
-      if (overflows() && window.PicMePills) overlay.style.setProperty('--pill-font-size', `${PicMePills.FONT_MIN}px`);
+      if (caption) {
+        // At full width first, so a caption stays crisp: only the last pill left may scroll
+        while (overflows() && optional.length > 1) optional.pop().classList.add('fit-hidden');
+        const last = optional[0];
+        if (overflows() && last && window.PicMePills) {
+          const em = parseFloat(getComputedStyle(last).fontSize) || 16;
+          last.style.minWidth = `${Math.min(last.offsetWidth, PicMePills.CAPTION_PILL_MIN_EM * em)}px`;
+          last.classList.add('caption-squeeze');
+          if (overflows()) {
+            last.classList.remove('caption-squeeze');
+            last.style.minWidth = '';
+            optional.pop().classList.add('fit-hidden');
+          }
+        }
+        if (overflows()) pills.forEach(p => { if (p.dataset.date) p.classList.add('caption-squeeze'); });
+      } else {
+        while (overflows() && optional.length) optional.pop().classList.add('fit-hidden');
+        if (overflows() && window.PicMePills) overlay.style.setProperty('--pill-font-size', `${PicMePills.FONT_MIN}px`);
+      }
 
       // A photo slot shows each photo for cycle_seconds; video slots have no fixed window
       const slotCfg = (config.slots || []).find(s => `slot-${s.id}` === slotEl.id);
@@ -1069,7 +1159,7 @@
         Object.assign(config, fresh);
         config.slots = oldSlots;
         // checkRotation() and the gallery read these, so a removed key must not linger
-        for (const key of ['layout_rotation', 'daily_layout_rotation', 'gallery', 'layout_modes']) {
+        for (const key of ['layout_rotation', 'daily_layout_rotation', 'gallery', 'layout_modes', 'label_position']) {
           if (!(key in fresh)) delete config[key];
         }
         // Replace each slot's settings, so a key the editor dropped (e.g. after swapping two

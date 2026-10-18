@@ -565,3 +565,131 @@ def test_fresh_install_editor_has_rotation_off(fresh_install, open_at):
     assert page.locator(".rotation-pick").count() == 0
     assert json.loads(config.read_text())["layout_rotation"]["enabled"] is False
     assert w.errors == []
+
+
+# --- Corner checkboxes and Select all / Deselect all (Basic and Advanced) ---
+
+RECT_JS = "el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, w: r.width, h: r.height }; }"
+
+
+def _rect(page, selector) -> dict:
+    return page.locator(selector).evaluate(RECT_JS)
+
+
+@pytest.mark.parametrize("editor_mode", ["basic", "advanced"])
+def test_rotation_checkbox_in_each_thumbnail_corner(server, open_at, rotation_config, editor_mode):
+    rotation_config(layouts=[], enabled=False, slots=4)
+    w = open_at(f"{server}/editor/", at=local(2026, 10, 13, 10, 0), editor_mode=editor_mode)
+    page = w.page
+    path = rotation_config.path
+    assert page.locator(".rotation-pick").count() == 0
+    assert page.locator("#rotation-bulk").is_hidden()
+
+    page.click("#g-rotation-enabled + .toggle-track")  # the visible toggle, in either mode
+    _saved(path, lambda c: c["layout_rotation"]["enabled"] is True)
+    assert page.locator(".layout-thumb").count() == len(ALL)
+    for lid in ALL:
+        thumb = f".layout-thumb[data-id='{lid}']"
+        assert page.locator(f"{thumb} .rotation-pick").is_visible(), lid
+        grid, box = _rect(page, f"{thumb} .thumb-grid"), _rect(page, f"{thumb} .rotation-pick")
+        # Small, inside the thumbnail's picture, in its bottom-right quadrant
+        assert box["w"] <= 16 and box["h"] <= 16, box
+        assert grid["x"] + grid["w"] / 2 <= box["x"] and box["right"] <= grid["right"] + 0.5, (lid, grid, box)
+        assert grid["y"] + grid["h"] / 2 <= box["y"] and box["bottom"] <= grid["bottom"] + 0.5, (lid, grid, box)
+        assert page.locator(f"{thumb} .rotation-pick").get_attribute("aria-label") == \
+            f"Rotate {page.locator(f'{thumb} > span').first.text_content()} daily"
+    # The Today badge stays, clear of the checkbox
+    today = page.locator(".layout-thumb:has(.today-badge)").get_attribute("data-id")
+    badge, box = _rect(page, ".today-badge"), _rect(page, f".layout-thumb[data-id='{today}'] .rotation-pick")
+    assert badge["bottom"] <= box["y"] or badge["right"] <= box["x"]
+    # The Mat chip (frames per rotated layout) is Advanced
+    assert page.locator(".layout-thumb[data-id='classic-6'] .layout-mode-chip").is_visible() == (editor_mode == "advanced")
+
+    # A real click on a box ticks it and doesn't pick the layout; a click on the thumbnail does
+    page.click(".rotation-pick[data-id='hero-left']")
+    saved = _saved(path, lambda c: c["layout_rotation"]["layouts"] == [l for l in ALL if l != "hero-left"])
+    assert saved["layout"] == "classic-4"
+    assert page.locator(".layout-thumb.active").get_attribute("data-id") == "classic-4"
+    assert not page.locator(".rotation-pick[data-id='hero-left']").is_checked()
+    page.click(".rotation-pick[data-id='hero-left']")
+    _saved(path, lambda c: c["layout_rotation"]["layouts"] == [])  # all ticked again = "all"
+    page.click(".layout-thumb[data-id='classic-6'] .thumb-grid")
+    _saved(path, lambda c: c["layout"] == "classic-6")
+
+    page.click("#g-rotation-enabled + .toggle-track")
+    _saved(path, lambda c: c["layout_rotation"]["enabled"] is False)
+    assert page.locator(".rotation-pick").count() == 0
+    assert w.errors == []
+
+
+@pytest.mark.parametrize("editor_mode", ["basic", "advanced"])
+def test_select_all_and_deselect_all_on_the_layout_header(server, open_at, rotation_config, editor_mode):
+    rotation_config(layouts=TWO, slots=6)
+    w = open_at(f"{server}/editor/", at=local(2026, 10, 13, 10, 0), editor_mode=editor_mode)
+    page = w.page
+    path = rotation_config.path
+    status = page.locator("#rotation-status")
+    select_all, deselect_all = page.locator("#rotation-select-all"), page.locator("#rotation-deselect-all")
+    assert select_all.is_visible() and deselect_all.is_visible()
+    # Small links on the Layout header row, at its right
+    h3 = page.locator(".sidebar-section h3", has_text="Layout").first
+    title, links = h3.evaluate(RECT_JS), page.locator("#rotation-bulk").evaluate(RECT_JS)
+    assert links["y"] < title["bottom"] and title["y"] < links["bottom"]  # same row
+    assert links["x"] > title["right"]
+    section = page.locator("#layout-picker").evaluate(RECT_JS)
+    assert links["right"] == pytest.approx(section["right"], abs=2)
+    # The links don't make the title taller than another section's
+    other = page.locator(".sidebar-section h3", has_text="Global Settings").evaluate(RECT_JS)
+    assert title["h"] == pytest.approx(other["h"], abs=0.5) and links["h"] <= title["h"] + 1
+
+    select_all.click()
+    _saved(path, lambda c: c["layout_rotation"]["layouts"] == [])
+    assert page.evaluate(PICKS_JS) == {k: True for k in ALL}
+    assert status.text_content().startswith("Today: ")
+    assert select_all.is_disabled() and not deselect_all.is_disabled()
+
+    deselect_all.click()
+    saved = _saved(path, lambda c: c["layout_rotation"]["layouts"] == ["classic-4"])  # the base layout stays
+    assert page.evaluate(PICKS_JS) == {k: k == "classic-4" for k in ALL}
+    assert status.text_content() == "Tick at least 2 layouts to rotate."
+    assert deselect_all.is_disabled() and not select_all.is_disabled()
+    assert saved["layout"] == "classic-4"
+
+    select_all.click()
+    saved = _saved(path, lambda c: c["layout_rotation"]["layouts"] == [])
+    assert status.text_content().startswith("Today: ")
+    assert saved["layout"] == "classic-4"
+    assert page.locator(".layout-thumb.active").get_attribute("data-id") == "classic-4"
+
+    page.click("#g-rotation-enabled + .toggle-track")
+    _saved(path, lambda c: c["layout_rotation"]["enabled"] is False)
+    assert page.locator("#rotation-bulk").is_hidden()
+    assert w.errors == []
+
+
+@pytest.mark.parametrize("editor_mode", ["basic", "advanced"])
+def test_rotation_checkbox_has_a_24px_hit_area_clear_of_the_badges(server, open_at, rotation_config, editor_mode):
+    rotation_config(layouts=[], enabled=True, slots=4)
+    w = open_at(f"{server}/editor/", at=local(2026, 10, 13, 10, 0), editor_mode=editor_mode)
+    page = w.page
+    path = rotation_config.path
+    base = page.evaluate("() => document.querySelector('.layout-thumb.active').dataset.id")
+    for lid in ("hero-left", "gallery-12"):
+        thumb = f".layout-thumb[data-id='{lid}']"
+        hit = _rect(page, f"{thumb} .rotation-pick-corner")
+        grid = _rect(page, f"{thumb} .thumb-grid")
+        assert hit["w"] >= 24 and hit["h"] >= 24, hit
+        assert grid["right"] + 0.5 >= hit["right"] and grid["bottom"] + 0.5 >= hit["bottom"], (grid, hit)
+        for badge in page.locator(f"{thumb} .gallery-badge, {thumb} .today-badge").all():
+            b = badge.evaluate(RECT_JS)
+            assert b["right"] <= hit["x"] or b["x"] >= hit["right"] or b["bottom"] <= hit["y"] or b["y"] >= hit["bottom"], (b, hit)
+
+    # A click in the padding, well outside the 14px box, still toggles it (and doesn't pick the layout)
+    hit = _rect(page, ".layout-thumb[data-id='hero-left'] .rotation-pick-corner")
+    page.mouse.click(hit["x"] + 2, hit["y"] + 2)
+    _saved(path, lambda c: "hero-left" not in c["layout_rotation"]["layouts"] and c["layout_rotation"]["layouts"])
+    assert not page.locator(".rotation-pick[data-id='hero-left']").is_checked()
+    assert page.evaluate("() => document.querySelector('.layout-thumb.active').dataset.id") == base
+    page.mouse.click(hit["right"] - 2, hit["bottom"] - 2)
+    _saved(path, lambda c: c["layout_rotation"]["layouts"] == [])
+    assert page.locator(".rotation-pick[data-id='hero-left']").is_checked()
