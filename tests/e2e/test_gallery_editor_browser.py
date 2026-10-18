@@ -284,7 +284,7 @@ def test_gallery_frame_override_and_controls_that_do_nothing_are_disabled(write_
     assert page.locator("#g-frame-style").is_disabled()
     assert "Gallery mats use their own frame" in page.locator(".field:has(#g-frame-style) + .scope-hint").text_content()
     page.click("#editor-mode button[data-mode='basic']")
-    assert "Gallery: own frame" in page.locator("#advanced-hint").get_attribute("title")
+    assert page.locator("#g-gal-frame-style").is_visible()  # Basic shows the control that does take effect
 
     # A day with separate frames (rotation) makes them all useful again
     page.click("#editor-mode button[data-mode='advanced']")
@@ -463,4 +463,34 @@ def test_rotation_mode_chips_and_today_badge(write_cfg, open_page):
     page.click("#editor-mode button[data-mode='basic']")
     assert chip("classic-4").is_hidden()
     assert "Frames per rotated layout" in page.locator("#advanced-hint").get_attribute("title")
+    assert w.errors == []
+
+
+def test_basic_mode_with_gallery_frame_override_has_a_visible_gallery_frame_control(write_cfg, open_page):
+    write_cfg(layout="gallery-12", slots=12, gallery={"frame_override": True, "frame_style": "solid"},
+              frame_defaults={"frame_style": "wood", "frame_width": 28})
+    w = open_page(editor_mode="basic")
+    page = w.page
+    frame = "() => document.querySelector('#collage-preview .gallery-frame').dataset.frameStyle"
+    assert page.evaluate(frame) == "solid"
+    # The Frame section's style does nothing here, so the place that does must be visible in Basic
+    assert page.locator("#g-frame-style").is_disabled()
+    assert page.locator("#g-gal-frame-override").evaluate("e => e.closest('.toggle-row').getBoundingClientRect().height") > 0
+    assert page.locator("#g-gal-frame-style").is_visible()
+    assert page.locator("#g-gal-frame-color").is_visible()
+    # The help text agrees with the override
+    help_text = page.locator("#gallery-help").text_content()
+    assert "come from the Frame section" not in help_text
+    assert "set above" in help_text
+
+    page.select_option("#g-gal-frame-style", "gold")
+    _saved(write_cfg, lambda c: c["gallery"]["frame_style"] == "gold")
+    assert page.evaluate(frame) == "gold"
+
+    # Override off: the Frame section drives the frame again, and the text says so
+    page.click("#g-gal-frame-override + .toggle-track")
+    _saved(write_cfg, lambda c: c["gallery"]["frame_override"] is False)
+    assert page.evaluate(frame) == "wood"
+    assert page.locator("#g-frame-style").is_enabled()
+    assert "come from the Frame section" in page.locator("#gallery-help").text_content()
     assert w.errors == []

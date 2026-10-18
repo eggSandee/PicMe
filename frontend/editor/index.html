@@ -829,7 +829,7 @@
           <label>Bevel color</label>
           <input type="color" id="g-gal-bevel-color" />
         </div>
-        <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;line-height:1.4;" data-setting="gallery.mat_color">The frame's style and colour come from the Frame section. Sizes are px on a 1920×1080 screen. Time-of-day periods change the mat and frame colours; widths stay as set here.</p>
+        <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;line-height:1.4;" id="gallery-help" data-setting="gallery.mat_color">The frame's style and colour come from the Frame section. Sizes are px on a 1920×1080 screen. Time-of-day periods change the mat and frame colours; widths stay as set here.</p>
       </div>
     </div>
 
@@ -1081,11 +1081,10 @@
                                           (frameAsset(getGlobalFrame().frame_style)?.default_width ?? 8) },
     'gallery.mat_color':  { tier: 'basic',    label: 'Gallery mat color' },
     // The gallery's outer frame follows the Frame section unless it has its own (these four)
-    'gallery.frame_override': { tier: 'advanced', label: 'Gallery: own frame',
-                            active: () => galleryCfg().frame_override === true },
-    'gallery.frame_style': { tier: 'advanced', label: 'Gallery frame style' },
-    'gallery.show_frame': { tier: 'advanced', label: 'Gallery: show frame' },
-    'gallery.frame_color': { tier: 'advanced', label: 'Gallery frame color' },
+    'gallery.frame_override': { tier: 'basic', label: 'Gallery: own frame' },
+    'gallery.frame_style': { tier: 'basic', label: 'Gallery frame style' },
+    'gallery.show_frame': { tier: 'basic', label: 'Gallery: show frame' },
+    'gallery.frame_color': { tier: 'basic', label: 'Gallery frame color' },
     'gallery.frame_width': { tier: 'advanced', label: 'Gallery outer frame width',
                             active: () => galleryCfg().frame_width !== GALLERY_DEFAULTS.frame_width },
     'gallery.margin':     { tier: 'advanced', label: 'Gallery: mat around the openings',
@@ -1338,6 +1337,10 @@
     const g = galleryCfg();
     document.getElementById('g-gal-frame-override').checked = g.frame_override;
     document.getElementById('g-gal-own-frame').hidden = !g.frame_override;
+    document.getElementById('gallery-help').textContent = (g.frame_override
+      ? "This gallery frame's style and colour are set above; the Frame section doesn't change them."
+      : "The frame's style and colour come from the Frame section.") +
+      ' Sizes are px on a 1920×1080 screen. Time-of-day periods change the mat and frame colours; widths stay as set here.';
     document.getElementById('g-gal-mat-color').value = g.mat_color;
     document.getElementById('g-gal-frame-style').value = frameAsset(g.frame_style) ? g.frame_style : 'solid';
     document.getElementById('g-gal-show-frame').checked = g.show_frame;
