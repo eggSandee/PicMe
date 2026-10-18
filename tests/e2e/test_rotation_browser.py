@@ -674,7 +674,7 @@ def test_rotation_checkbox_has_a_24px_hit_area_clear_of_the_badges(server, open_
     page = w.page
     path = rotation_config.path
     base = page.evaluate("() => document.querySelector('.layout-thumb.active').dataset.id")
-    for lid in ("hero-left", "gallery-5"):
+    for lid in ("hero-left", "gallery-12"):
         thumb = f".layout-thumb[data-id='{lid}']"
         hit = _rect(page, f"{thumb} .rotation-pick-corner")
         grid = _rect(page, f"{thumb} .thumb-grid")
