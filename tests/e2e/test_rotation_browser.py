@@ -665,3 +665,31 @@ def test_select_all_and_deselect_all_on_the_layout_header(server, open_at, rotat
     _saved(path, lambda c: c["layout_rotation"]["enabled"] is False)
     assert page.locator("#rotation-bulk").is_hidden()
     assert w.errors == []
+
+
+@pytest.mark.parametrize("editor_mode", ["basic", "advanced"])
+def test_rotation_checkbox_has_a_24px_hit_area_clear_of_the_badges(server, open_at, rotation_config, editor_mode):
+    rotation_config(layouts=[], enabled=True, slots=4)
+    w = open_at(f"{server}/editor/", at=local(2026, 10, 13, 10, 0), editor_mode=editor_mode)
+    page = w.page
+    path = rotation_config.path
+    base = page.evaluate("() => document.querySelector('.layout-thumb.active').dataset.id")
+    for lid in ("hero-left", "gallery-5"):
+        thumb = f".layout-thumb[data-id='{lid}']"
+        hit = _rect(page, f"{thumb} .rotation-pick-corner")
+        grid = _rect(page, f"{thumb} .thumb-grid")
+        assert hit["w"] >= 24 and hit["h"] >= 24, hit
+        assert grid["right"] + 0.5 >= hit["right"] and grid["bottom"] + 0.5 >= hit["bottom"], (grid, hit)
+        for badge in page.locator(f"{thumb} .gallery-badge, {thumb} .today-badge").all():
+            b = badge.evaluate(RECT_JS)
+            assert b["right"] <= hit["x"] or b["x"] >= hit["right"] or b["bottom"] <= hit["y"] or b["y"] >= hit["bottom"], (b, hit)
+
+    # A click in the padding, well outside the 14px box, still toggles it (and doesn't pick the layout)
+    hit = _rect(page, ".layout-thumb[data-id='hero-left'] .rotation-pick-corner")
+    page.mouse.click(hit["x"] + 2, hit["y"] + 2)
+    _saved(path, lambda c: "hero-left" not in c["layout_rotation"]["layouts"] and c["layout_rotation"]["layouts"])
+    assert not page.locator(".rotation-pick[data-id='hero-left']").is_checked()
+    assert page.evaluate("() => document.querySelector('.layout-thumb.active').dataset.id") == base
+    page.mouse.click(hit["right"] - 2, hit["bottom"] - 2)
+    _saved(path, lambda c: c["layout_rotation"]["layouts"] == [])
+    assert page.locator(".rotation-pick[data-id='hero-left']").is_checked()
