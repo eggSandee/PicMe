@@ -419,9 +419,10 @@
                inset: pillInset(slotEl) };
     }
 
-    // Fit (contain, letterboxed) or Fill (cover, cropped) — per slot, in either mode
+    // Fit (contain, letterboxed) or Fill (cover, cropped), in either mode: the slot's own
+    // fill_mode, else the global one, else Fit (a config from before the global setting)
     function applyFit(slotEl, slotCfg) {
-      const fit = slotCfg.fill_mode === 'cover' ? 'cover' : 'contain';
+      const fit = (slotCfg.fill_mode ?? config.fill_mode) === 'cover' ? 'cover' : 'contain';
       slotEl.querySelectorAll('.mat-frame img, .mat-frame video').forEach(el => el.style.objectFit = fit);
     }
 
@@ -1159,7 +1160,7 @@
         Object.assign(config, fresh);
         config.slots = oldSlots;
         // checkRotation() and the gallery read these, so a removed key must not linger
-        for (const key of ['layout_rotation', 'daily_layout_rotation', 'gallery', 'layout_modes', 'label_position']) {
+        for (const key of ['layout_rotation', 'daily_layout_rotation', 'gallery', 'layout_modes', 'label_position', 'fill_mode']) {
           if (!(key in fresh)) delete config[key];
         }
         // Replace each slot's settings, so a key the editor dropped (e.g. after swapping two

@@ -49,12 +49,14 @@
       gap: 0;
     }
 
+    /* Preview, a draggable divider, then the slot settings (which scroll). --preview-h is set by
+       the divider (editor-split): the preview keeps the display's 16:9, scaled to fit. */
     #main {
-      padding: 24px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
+      padding: 24px 24px 16px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: var(--preview-h, 60%) 16px minmax(0, 1fr);
+      min-height: 0;
     }
 
     #footer {
@@ -81,6 +83,34 @@
       color: var(--text-muted);
       margin-bottom: 12px;
     }
+
+    /* Click a section's title to fold it (editor-sections); remembered per browser */
+    .section-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: none;
+      padding: 0;
+      font: inherit;
+      color: inherit;
+      letter-spacing: inherit;
+      text-transform: inherit;
+      cursor: pointer;
+    }
+    .section-toggle:hover, .section-toggle:focus-visible { color: var(--text); }
+    .section-toggle::before {
+      content: '';
+      width: 5px;
+      height: 5px;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: rotate(45deg) translate(-1px, -1px);
+      transition: transform 0.15s;
+    }
+    .sidebar-section.collapsed .section-toggle::before { transform: rotate(-45deg); }
+    .sidebar-section.collapsed h3, .sidebar-section.collapsed .sidebar-header-row { margin-bottom: 0; }
+    .section-body[hidden] { display: none !important; }
 
     /* ── Layout picker ── */
     #layout-picker {
@@ -217,6 +247,7 @@
     /* Why a control is disabled: it changes nothing on the layouts the display can show */
     .scope-hint { font-size: 11px; color: var(--text-muted); margin: -6px 0 10px; line-height: 1.4; }
     .scope-hint[hidden] { display: none; }
+    .field-hint { font-size: 11px; color: var(--text-muted); margin: 2px 0 4px; line-height: 1.4; }
     #rotation-status { font-size: 12px; color: var(--text); line-height: 1.4; margin-top: 8px; }
     #rotation-slot-hint { font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.5; }
     #rotation-slot-hint .btn { padding: 2px 8px; font-size: 11px; margin: 0 4px 0 0; }
@@ -320,7 +351,33 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 16px;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
+    /* The box the preview fits in: as wide as the area, as tall as the divider allows */
+    #preview-fit { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: flex-start; }
+
+    /* ── Divider between the preview and the slot settings: drag, arrow keys, double-click resets ── */
+    #pane-divider {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: row-resize;
+      touch-action: none;
+      outline: none;
+    }
+    #pane-divider::before {
+      content: '';
+      width: 48px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--border);
+      transition: background 0.15s, width 0.15s;
+    }
+    #pane-divider:hover::before, #pane-divider.dragging::before, #pane-divider:focus-visible::before { background: var(--accent); width: 72px; }
+    body.pane-resizing, body.pane-resizing * { cursor: row-resize !important; user-select: none; }
 
     #preview-area h2 {
       font-size: 13px;
@@ -331,7 +388,9 @@
 
     #collage-preview {
       width: 100%;
+      flex-shrink: 0;
       aspect-ratio: 16/9;
+      min-height: 0;
       display: grid;
       gap: 4px;
       background: #1a1a1a;
@@ -353,6 +412,14 @@
     }
 
     .preview-slot:hover { border-color: var(--accent); background: #2a3a4a; }
+    /* Under the slot number: the opening's aspect ratio and Fit / Fill ("3:2 · Fill") */
+    .slot-tags { font-size: 0.6em; font-weight: 500; color: #b0b0b0; line-height: 1.2; margin-top: 0.15em;
+                 position: relative; z-index: 1; background: rgba(30, 30, 30, 0.85); padding: 0 0.4em; border-radius: 3px;
+                 text-align: center; white-space: nowrap; max-width: calc(100% - 4px); overflow: hidden; text-overflow: ellipsis; }
+    .preview-slot .slot-tags { font-size: clamp(9px, 0.95vw, 12px); }
+    .slot-tags[hidden] { display: none; }
+    .gallery-stage .slot-tags { font-size: 32px; margin: 0; padding: 2px 14px; border-radius: 24px; color: #ddd;
+                                background: rgba(0, 0, 0, 0.55); max-width: none; }
     .preview-slot.selected { border-color: var(--slot-selected); background: #1e3a5a; color: var(--accent); }
 
     /* Drag a slot onto another to swap them (slot-drag.js); a long press starts it on touch */
@@ -379,6 +446,8 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 16px;
+      min-height: 0;
+      overflow-y: auto;
     }
 
     #slot-panel h2 {
@@ -627,6 +696,12 @@
       accent-color: var(--accent);
     }
 
+    .profile-row { display: flex; gap: 6px; }
+    .profile-row .btn { flex: 1; padding: 7px 6px; font-size: 12px; }
+    .btn:disabled { opacity: 0.45; cursor: default; }
+    #undo-row .link-btn { color: var(--accent); }
+    .modal-note .warn { color: #e0a030; }
+
     .modal-btn-row {
       display: flex;
       gap: 8px;
@@ -648,7 +723,18 @@
       <p id="advanced-hint" hidden><span id="advanced-hint-text"></span> · <button type="button" id="advanced-hint-show">Show</button></p>
     </div>
 
-    <div class="sidebar-section">
+    <div class="sidebar-section" data-section="profile" data-setting="settings.profile">
+      <h3>My Settings</h3>
+      <div class="profile-row">
+        <button type="button" class="btn btn-secondary" id="preset-save">Save as my preset</button>
+        <button type="button" class="btn btn-secondary" id="preset-apply" disabled>Apply my preset</button>
+      </div>
+      <p class="field-hint" id="preset-status">No preset saved yet.</p>
+      <button type="button" class="btn btn-danger" id="reset-defaults" style="width:100%;margin-top:8px;padding:7px 12px;">Reset everything to defaults…</button>
+      <p class="field-hint" id="undo-row" hidden><span id="undo-text"></span> · <button type="button" class="link-btn" id="undo-btn">Undo</button></p>
+    </div>
+
+    <div class="sidebar-section" data-section="layout">
       <div class="sidebar-header-row">
         <h3>Layout</h3>
         <span id="rotation-bulk" data-setting="rotation.bulk" hidden>
@@ -684,7 +770,7 @@
       </div>
     </div>
 
-    <div class="sidebar-section">
+    <div class="sidebar-section" data-section="global">
       <h3>Global Settings</h3>
 
       <div class="field" data-setting="global.source_path">
@@ -708,12 +794,22 @@
         <input type="color" id="g-wall-color" />
       </div>
 
-      <button class="btn btn-danger" style="width:100%;margin-top:14px;padding:7px 12px;" onclick="openResetAllModal()" data-setting="slots.reset_all">
-        Reset all slots to global
+      <div class="toggle-row" data-setting="global.fill_mode">
+        <label for="g-fill-mode">Fill frames (crop, no black bars)</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-fill-mode" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <p class="field-hint" data-setting="global.fill_mode">Off: whole photos and videos, with bars where their shape differs from the frame. A slot can choose its own (Advanced).</p>
+
+      <button class="btn btn-danger" style="width:100%;margin-top:14px;padding:7px 12px;" onclick="openResetAllModal()" data-setting="slots.reset_all"
+              title="Clears each slot's own overrides only. To start over, use Reset everything to defaults (My settings).">
+        Reset slots to global settings
       </button>
     </div>
 
-    <div class="sidebar-section" data-setting="videos">
+    <div class="sidebar-section" data-section="videos" data-setting="videos">
       <h3>Videos</h3>
 
       <div class="field">
@@ -736,7 +832,7 @@
       <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;">iPhone (HEVC) videos are converted to H.264 in the background so every browser can play them. Larger clips are scaled down to the max size. Live Photo clips are the 2–3 second videos saved alongside Live Photos.</p>
     </div>
 
-    <div class="sidebar-section">
+    <div class="sidebar-section" data-section="frame">
       <h3>Frame</h3>
       <p id="frame-gallery-hint" class="scope-hint" style="margin-top:-6px" data-setting="frame.frame_style" hidden>Also the outer frame of gallery-mat layouts.</p>
 
@@ -775,7 +871,7 @@
       </div>
     </div>
 
-    <div class="sidebar-section" id="gallery-section">
+    <div class="sidebar-section" id="gallery-section" data-section="gallery">
       <h3>Gallery Mat</h3>
       <p id="gallery-off-hint" style="font-size:12px;color:var(--text-muted);line-height:1.4;">For gallery layouts: one frame and mat around every photo. Pick a Gallery layout, or set Frames to Gallery mat.</p>
       <div id="gallery-fields">
@@ -843,7 +939,7 @@
       </div>
     </div>
 
-    <div class="sidebar-section" data-setting="time_of_day">
+    <div class="sidebar-section" data-section="time_of_day" data-setting="time_of_day">
       <h3>Time-of-Day</h3>
       <div class="toggle-row" style="margin-bottom:10px;">
         <label>Enabled</label>
@@ -856,7 +952,7 @@
       <button class="btn btn-secondary" style="width:100%;" id="tod-configure-btn">Configure templates…</button>
     </div>
 
-    <div class="sidebar-section">
+    <div class="sidebar-section" data-section="metadata">
       <h3>Default Metadata</h3>
       <div class="toggle-row" data-setting="metadata.show">
         <label for="g-show-metadata">Show metadata</label>
@@ -909,9 +1005,12 @@
 
     <div id="preview-area">
       <h2>Layout Preview — click a slot to configure it<span data-setting="slots.rearrange">, drag to swap</span></h2>
-      <div id="collage-preview"></div>
+      <div id="preview-fit"><div id="collage-preview"></div></div>
       <div id="rotation-slot-hint" data-setting="rotation.slot_hint" hidden></div>
     </div>
+
+    <div id="pane-divider" role="separator" tabindex="0" aria-orientation="horizontal" aria-controls="preview-area"
+         aria-label="Resize the preview" title="Drag to resize the preview · double-click to reset"></div>
 
     <div id="slot-panel">
       <h2 id="slot-panel-title">Select a slot to configure it</h2>
@@ -936,6 +1035,7 @@
 <script src="/assets/frames/frames.js"></script>
 <script src="/display/shapes.js"></script>
 <script src="/display/gallery.js"></script>
+<script src="/display/aspect.js"></script>
 <script src="/editor/slot-drag.js"></script>
 <script>
   const API = '';
@@ -1004,6 +1104,13 @@
   function getSlotMeta(slotCfg) {
     if (slotCfg.use_global?.metadata !== false) return getGlobalMeta();
     return { ...getGlobalMeta(), ...(slotCfg.metadata || {}) };
+  }
+
+  // Fit ('contain') or Fill ('cover'): the slot's own choice, else the global one. A config from
+  // before the global setting has none, which means Fit (same rule as the display's applyFit).
+  function globalFill() { return config.fill_mode === 'cover' ? 'cover' : 'contain'; }
+  function effectiveFill(slotCfg) {
+    return slotCfg?.fill_mode === 'cover' || slotCfg?.fill_mode === 'contain' ? slotCfg.fill_mode : globalFill();
   }
 
   function hasCustomSettings(slotCfg) {
@@ -1076,6 +1183,7 @@
     'global.include_subfolders': { tier: 'advanced', label: 'Include subfolders',
                             active: () => config.include_subfolders === false },
     'global.wall_color':  { tier: 'basic',    label: 'Wall color' },
+    'global.fill_mode':   { tier: 'basic',    label: 'Fill frames' },
     'frame.mat_color':    { tier: 'basic',    label: 'Mat color' },
     'frame.frame_style':  { tier: 'basic',    label: 'Frame style' },
     'frame.mat_width':    { tier: 'advanced', label: 'Mat width',
@@ -1119,8 +1227,11 @@
                             active: () => config.time_of_day?.enabled === true },
     'videos':             { tier: 'advanced', label: 'Video settings',
                             active: () => (config.video_max_edge ?? 1920) !== 1920 || config.include_live_photos === true },
-    'slots.reset_all':    { tier: 'advanced', label: 'Reset all slots' },
+    // My Settings: save / apply the preset, reset everything to defaults, undo either
+    'settings.profile':   { tier: 'basic',    label: 'My settings: preset, reset, undo' },
+    'slots.reset_all':    { tier: 'advanced', label: 'Reset slots to global settings' },
     'slots.rearrange':    { tier: 'basic',    label: 'Drag slots to swap' },
+    'preview.tags':       { tier: 'basic',    label: 'Slot sizes and Fit / Fill in the preview' },
     'slot.source':        { tier: 'basic',    label: 'Media folder' },
     'slot.source_adopt':  { tier: 'advanced', label: 'Media folder: use global' },
     'slot.include_subfolders': { tier: 'advanced', label: 'Include subfolders',
@@ -1135,7 +1246,9 @@
     'slot.cycle_seconds': { tier: 'basic',    label: 'Change every' },
     'slot.group':         { tier: 'advanced', label: 'Group',
                             slotActive: s => !!s.group },
-    'slot.fill_mode':     { tier: 'basic',    label: 'Fit / fill' },
+    // A slot's own Fit / Fill, overriding the global "Fill frames"
+    'slot.fill_mode':     { tier: 'advanced', label: 'Fit / fill',
+                            slotActive: s => s.fill_mode != null && s.fill_mode !== globalFill() },
     'slot.opening_shape': { tier: 'basic',    label: 'Opening shape' },  // gallery mat (shape stays with the position)
     'slot.frame':         { tier: 'advanced', label: 'Frame',
                             slotActive: s => s.use_global?.frame === false &&
@@ -1279,20 +1392,21 @@
     return asset && (width ?? 8) < DECORATIVE_MIN_WIDTH ? asset.default_width : width;
   }
 
-  // The display's frame border (applyFrameStyle), minus time-of-day. Call once `el` is laid out:
-  // a decorative frame is capped at a sixth of the cell's short side, like a small slot.
-  function frameBorderStyle(el, frameCfg) {
+  // The display's frame border (applyFrameStyle), minus time-of-day, drawn `scale` preview px
+  // per display px. Call once `el` is laid out: a decorative frame is capped at a sixth of the
+  // cell's short side (in display px), like a small slot.
+  function frameBorderStyle(el, frameCfg, scale = 1) {
     const frameOn = frameCfg.show_frame ?? true;
-    const width = frameCfg.frame_width ?? 8;
+    const width = Number(frameCfg.frame_width ?? 8) || 0;
     const asset = frameOn ? frameAsset(frameCfg.frame_style ?? 'solid') : null;
     if (asset) {
-      const fit = Math.floor(Math.min(el.clientWidth, el.clientHeight) / 6);
-      const w = Math.min(Number(width) || 0, Math.max(4, fit));
+      const fit = Math.floor(Math.min(el.offsetWidth, el.offsetHeight) / scale / 6);
+      const w = Math.min(width, Math.max(4, fit)) * scale;
       el.style.border = `${w}px solid transparent`;
       el.style.borderImage = `url("${asset.src}") ${asset.slice} / ${w}px / 0 round`;
       el.style.backgroundClip = 'padding-box';
     } else {
-      el.style.border = frameOn ? `${width}px solid ${frameCfg.frame_color ?? '#2c2318'}` : 'none';
+      el.style.border = frameOn ? `${width * scale}px solid ${frameCfg.frame_color ?? '#2c2318'}` : 'none';
       el.style.borderImage = 'none';
       el.style.backgroundClip = '';
     }
@@ -1496,7 +1610,7 @@
       makeSlot: slotDef => {
         const matFrame = document.createElement('div');
         matFrame.className = 'mat-frame';
-        matFrame.style.cssText = 'background:#2e2e2e;display:flex;align-items:center;justify-content:center;font-size:72px;font-weight:600;color:#888;';
+        matFrame.style.cssText = 'background:#2e2e2e;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:72px;font-weight:600;color:#888;';
         matFrame.textContent = slotDef.id;
         const overlay = document.createElement('div');
         overlay.className = 'slot-overlay';
@@ -1518,6 +1632,13 @@
       el.classList.toggle('selected', id === selectedSlotId);
       el.addEventListener('click', () => selectSlot(id));
       const boxEl = el.querySelector('.opening-box');
+      // The photo's opening: the shape's box inside the bevel (the stage is the 1920x1080 reference).
+      // Under the number, outside the shape's clip so a heart doesn't cut it off.
+      const tags = makeSlotTags();
+      tags.classList.add('opening-mark');
+      tags.style.cssText = `left:${o.box.w / 2}px;top:${o.box.h / 2 + 46}px;transform:translateX(-50%);`;
+      setSlotTags(tags, { w: o.box.w - 2 * o.bevel, h: o.box.h - 2 * o.bevel }, activeSlots[i] || config.slots[0]);
+      boxEl.appendChild(tags);
       // Badges at the top corners of the part of the shape the pills may use
       if (activeSlots[i] && hasCustomSettings(slotCfg)) {
         const dot = document.createElement('div');
@@ -1865,8 +1986,11 @@
     preview.classList.remove('gallery-preview');
     preview.style.gridTemplateColumns = layout.grid_template_columns;
     preview.style.gridTemplateRows = layout.grid_template_rows;
-    preview.style.gap = '4px';
-    preview.style.padding = '4px';
+    // At the display's proportions: #collage's 12 px gap and padding, the mat and frame, in
+    // preview px (`k` per display px), so a smaller preview is the same picture, smaller
+    const k = preview.clientWidth / 1920 || 0.5;
+    preview.style.gap = `${12 * k}px`;
+    preview.style.padding = `${12 * k}px`;
     preview.style.background = config.wall_color || '#1a1a1a';
     preview.innerHTML = '';
 
@@ -1882,7 +2006,7 @@
       div.className = 'preview-slot' + (slotCfg.id === selectedSlotId ? ' selected' : '');
       div.dataset.slot = div.dataset.dragKey = slotCfg.id ?? slotDef.id;
       div.style.gridArea  = slotDef.grid_area;
-      div.style.padding   = `${frameCfg.mat_width ?? 16}px`;
+      div.style.padding   = `${(Number(frameCfg.mat_width ?? 16) || 0) * k}px`;
       div.style.background = frameCfg.mat_color ?? '#000';
       div.style.position  = 'relative';
 
@@ -1895,7 +2019,7 @@
       }
 
       const inner = document.createElement('div');
-      inner.style.cssText = 'width:100%;height:100%;background:#2e2e2e;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:clamp(10px,2vw,20px);font-weight:600;color:#888;position:relative;overflow:hidden;';
+      inner.style.cssText = 'width:100%;height:100%;background:#2e2e2e;border-radius:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:clamp(10px,2vw,20px);font-weight:600;color:#888;position:relative;overflow:hidden;';
 
       const numSpan = document.createElement('span');
       numSpan.textContent = slotCfg.id ?? slotDef.id;
@@ -1910,17 +2034,62 @@
         inner.appendChild(playBadge);
       }
 
+      const tags = makeSlotTags();
+      inner.appendChild(tags);
+
       div.appendChild(inner);
       div.addEventListener('click', () => selectSlot(slotCfg.id ?? slotDef.id));
       preview.appendChild(div);
-      frameBorderStyle(div, frameCfg);  // after appending: decorative widths fit the cell
-      cells.push({ div, inner, slotCfg, frameCfg });
+      frameBorderStyle(div, frameCfg, k);  // after appending: decorative widths fit the cell
+      cells.push({ div, inner, tags, slotCfg, frameCfg, padded: !activeSlots[i] });
     }
 
-    // Pills as on the display (applySlotFrames): every slot sized from the shortest pill area,
-    // in display px of a 1920 px wide screen; on the mat, a caption band in each bottom mat
+    const band = buildPreviewPills(preview, cells);
+    // Each photo opening at the 1920x1080 reference: the display's grid, less frame, mat and caption
+    const refCells = PicMeAspect.cells(layout);
+    cells.forEach(({ tags, slotCfg, frameCfg, padded }, i) => {
+      const o = PicMeAspect.framedOpening(refCells[i], frameCfg, { decorative: !!frameAsset(frameCfg.frame_style), band });
+      setSlotTags(tags, o, padded ? config.slots[0] : slotCfg);
+    });
+  }
+
+  // Under each preview slot's number: its opening's aspect ratio and whether it fits or fills,
+  // in smaller type ("3:2 · Fill"). `slotCfg` is the config the display uses for the slot.
+  function makeSlotTags() {
+    const el = tag(document.createElement('span'), 'preview.tags');
+    el.className = 'slot-tags';
+    return el;
+  }
+
+  function setSlotTags(el, opening, slotCfg) {
+    const ratio = PicMeAspect.label(opening.w, opening.h);
+    const fill = effectiveFill(slotCfg) === 'cover';
+    const near = PicMeAspect.nearest(opening.w, opening.h);
+    el.dataset.ratio = ratio;
+    el.dataset.fit = fill ? 'fill' : 'fit';
+    el.textContent = `${ratio ? `${ratio} · ` : ''}${fill ? 'Fill' : 'Fit'}`;
+    // A small cell: ratio over Fit / Fill, rather than cutting the line short
+    el.hidden = false;
+    if (ratio && el.isConnected && el.scrollWidth > el.clientWidth + 1) {
+      el.textContent = '';
+      el.append(ratio, document.createElement('br'), fill ? 'Fill' : 'Fit');
+      // Too small even so: leave the cell to its number; the tag's text is the cell's tooltip
+      if (el.scrollWidth > el.clientWidth + 1) el.hidden = true;
+    }
+    if (el.parentElement) el.parentElement.title = el.hidden ? `${ratio} · ${fill ? 'Fill' : 'Fit'}. ${el.title}` : '';
+    el.title = `Photo opening ${Math.round(opening.w)}×${Math.round(opening.h)} px on a 1920×1080 screen` +
+      (near && !near.common ? ` — not a common photo shape (nearest ${near.ratio})` : '') + '. ' +
+      (fill ? 'Fill: photos and videos are cropped to the opening, no black bars.'
+            : 'Fit: whole photos and videos, with bars where their shape differs.') +
+      (slotCfg?.fill_mode === 'cover' || slotCfg?.fill_mode === 'contain' ? ' (This slot\'s own setting.)' : '');
+  }
+
+  // Pills as on the display (applySlotFrames): every slot sized from the shortest pill area,
+  // in display px of a 1920 px wide screen; on the mat, a caption band in each bottom mat.
+  // Returns the band (display px), 0 without one.
+  function buildPreviewPills(preview, cells) {
     const scale = preview.clientWidth / 1920;
-    if (!(scale > 0) || !window.PicMePills) return;
+    if (!(scale > 0) || !window.PicMePills) return 0;
     const placement = PicMePills.labelPlacement(config.label_position, 'slots');
     const geo = cells.map(({ div, frameCfg }) => {
       const w = div.offsetWidth / scale, h = div.offsetHeight / scale;
@@ -1936,7 +2105,7 @@
     const area = g => (placement === 'mat' ? g.photo : g.slot);
     const sizes = cells.map(c => (previewShowsPills(c.slotCfg) ? pillSizes(getSlotMeta(c.slotCfg)) : null));
     const shown = geo.filter((g, i) => sizes[i]);
-    if (shown.length === 0) return;
+    if (shown.length === 0) return 0;
     const short = PicMePills.sharedShort(shown.map(area));
     const band = placement === 'mat'
       ? Math.min(Math.max(...sizes.filter(Boolean).map(sz => PicMePills.captionBand(sz, short))),
@@ -1946,7 +2115,7 @@
       if (!sizes[i]) return;
       if (band > 0) {
         // The bottom mat grows by the band, and the caption sits in it, centred under the photo
-        const matPx = Number(frameCfg.mat_width ?? 16) || 0;
+        const matPx = (Number(frameCfg.mat_width ?? 16) || 0) * scale;
         div.style.paddingBottom = `${matPx + band * scale}px`;
         const bar = previewPills(slotCfg, { short, scale, room: geo[i].photo.w, caption: true });
         Object.assign(bar.style, { position: 'absolute', left: `${matPx}px`, right: `${matPx}px`, bottom: `${matPx}px`,
@@ -1958,6 +2127,7 @@
         inner.appendChild(bar);
       }
     });
+    return band;
   }
 
   // Metadata preview — bars showing where the pills appear and how big they are, sized as
@@ -2085,6 +2255,14 @@
       openFolderBrowser(inp.value, path => { inp.value = path; config.source_path = path; _followGlobalFolder?.(); scheduleAutoSave(); });
     };
     document.getElementById('g-wall-color').oninput    = e => { config.wall_color = e.target.value; buildPreview(); scheduleAutoSave(); };
+    const fillEl = document.getElementById('g-fill-mode');
+    fillEl.checked = globalFill() === 'cover';
+    fillEl.onchange = e => {
+      config.fill_mode = e.target.checked ? 'cover' : 'contain';
+      buildPreview();  // each cell's Fit / Fill tag
+      renderSlotPanel();  // the slot's "Default (global: …)" option
+      scheduleAutoSave();
+    };
     document.getElementById('g-date-format').onchange  = e => { config.date_format = e.target.value; scheduleAutoSave(); };
     document.getElementById('g-max-pills').oninput     = e => {
       const v = parseInt(e.target.value);
@@ -2183,11 +2361,11 @@
     title.textContent = 'Reset all slots to global settings?';
 
     const body = document.createElement('p');
-    body.textContent = 'This removes all per-slot frame and metadata overrides. Every slot will inherit from the global defaults.';
+    body.textContent = 'This removes every slot\'s own folder, frame, metadata and Fit / Fill choices. Every slot will follow the global settings. Other settings are unchanged (to reset everything, use Reset everything to defaults).';
 
     const note = document.createElement('div');
     note.className = 'modal-note';
-    note.innerHTML = '<strong>Always per-slot — not affected:</strong><ul><li>Slot mode (photos / video), video loops and audio</li><li>Cycle timer</li><li>Group assignment</li><li>Fit mode (contain / fill)</li><li>Opening shape (gallery mat)</li></ul>';
+    note.innerHTML = '<strong>Always per-slot — not affected:</strong><ul><li>Slot mode (photos / video), video loops and audio</li><li>Cycle timer</li><li>Group assignment</li><li>Opening shape (gallery mat)</li></ul>';
 
     const cbRow = document.createElement('label');
     cbRow.className = 'modal-cb-row';
@@ -2207,7 +2385,7 @@
 
     const confirmBtn = document.createElement('button');
     confirmBtn.className = 'btn btn-danger-solid';
-    confirmBtn.textContent = 'Reset All Slots';
+    confirmBtn.textContent = 'Reset all slots';
     confirmBtn.onclick = () => {
       for (const slot of config.slots) {
         if (!slot.use_global) slot.use_global = {};
@@ -2218,6 +2396,7 @@
         slot.metadata    = {};
         slot.source_path = null;
         delete slot.include_subfolders;
+        delete slot.fill_mode;  // follow the global Fill frames
         if (cb.checked) {
           slot.cycle_seconds = 30;
           slot.group = null;
@@ -2226,8 +2405,7 @@
       document.body.removeChild(overlay);
       buildPreview();
       renderSlotPanel();
-      refreshAdvancedHint();
-      setStatus('All slots reset to global settings.', '');
+      scheduleAutoSave('All slots reset to global settings — saved.');
     };
 
     btnRow.append(cancelBtn, confirmBtn);
@@ -2395,10 +2573,19 @@
     if (isVideo) schedSection.appendChild(tag(makeHint('Video slots advance after their loops finish.'), 'slot.cycle_seconds'));
     left.appendChild(schedSection);
 
-    // Fit — always per-slot (applies to photos and videos)
+    // Fit — the global "Fill frames" unless this slot picks its own (photos and videos)
     const fillSection = tag(makeSection('Fit'), 'slot.fill_mode');
-    const fillSelect = makeSelect([['contain', `Fit — full ${isVideo ? 'video' : 'photo'}, letterboxed`], ['cover', 'Fill — crop to fit, no bars']], slotCfg.fill_mode || 'contain');
-    fillSelect.onchange = e => { slotCfg.fill_mode = e.target.value; renderSlotPanel(); scheduleAutoSave(); };
+    const ownFill = slotCfg.fill_mode === 'cover' || slotCfg.fill_mode === 'contain' ? slotCfg.fill_mode : '';
+    const fillSelect = makeSelect([['', `Default (global: ${globalFill() === 'cover' ? 'Fill' : 'Fit'})`],
+                                   ['contain', `Fit — full ${isVideo ? 'video' : 'photo'}, letterboxed`],
+                                   ['cover', 'Fill — crop to fit, no bars']], ownFill);
+    fillSelect.id = 'slot-fill-mode';
+    fillSelect.onchange = e => {
+      if (e.target.value) slotCfg.fill_mode = e.target.value; else delete slotCfg.fill_mode;
+      buildPreview();
+      renderSlotPanel();
+      scheduleAutoSave();
+    };
     fillSection.appendChild(fillSelect);
     left.appendChild(fillSection);
 
@@ -2421,7 +2608,7 @@
     const shownShape = PicMeGallery.slotShape(slotCfg, base.slots[slotCfg.id - 1]);
     if (!baseGallery) {
       shapeSection.appendChild(makeHint('Shapes show on gallery-mat layouts (set Frames to Gallery mat).'));
-    } else if (shownShape !== 'rect' && slotCfg.fill_mode !== 'cover') {
+    } else if (shownShape !== 'rect' && effectiveFill(slotCfg) !== 'cover') {
       shapeSection.appendChild(makeHint("Fit keeps the whole photo inside the shape's box; the corners outside the shape are hidden. Fill usually looks better in shaped openings."));
     }
     left.appendChild(shapeSection);
@@ -3048,7 +3235,15 @@
 
   // ── Save / load ──
 
+  let _saving = null;  // the save in flight, so a reset or preset can wait for it
   async function saveConfig(savedMsg = 'Saved.') {
+    const run = (_saving || Promise.resolve()).then(() => postConfig(savedMsg));
+    _saving = run;
+    await run;
+    if (_saving === run) _saving = null;
+  }
+
+  async function postConfig(savedMsg) {
     try {
       const r = await fetch(`${API}/api/config`, {
         method: 'POST',
@@ -3066,31 +3261,269 @@
   function scheduleAutoSave(savedMsg) {
     refreshAdvancedHint();  // every edit path comes through here
     clearTimeout(_saveTimer);
-    _saveTimer = setTimeout(() => saveConfig(savedMsg), 500);
+    _saveTimer = setTimeout(() => { _saveTimer = null; saveConfig(savedMsg); }, 500);
+  }
+
+  // Save an edit still waiting for its autosave, and wait for any save in flight, so a reset or
+  // preset works on what's on screen and a late save can't overwrite it
+  async function flushAutoSave() {
+    if (_saveTimer) {
+      clearTimeout(_saveTimer);
+      _saveTimer = null;
+      await saveConfig();
+    }
+    while (_saving) await _saving;
   }
 
   async function reloadConfig() {
     try {
-      config = await fetchJSON(`${API}/api/config`);
-      config.slots = config.slots || [];
-      if (!config.source_path) config.source_path = config.slots[0]?.source_path || 'photos';
-      config.slots.forEach(migrateUseGlobal);
-      ensureTod();
-      migrateRotation();
-      ensureRotation();
-      if (rotationOn()) ensureReachableSlots();
-      selectedSlotId = null;
-      bindGlobalSettings();
-      bindGallerySettings();
-      buildLayoutPicker();
-      buildPreview();
-      refreshRotationUI();
-      renderSlotPanel();
-      refreshAdvancedHint();
-      setStatus('Changes discarded.', '');
+      applyLoadedConfig(await fetchJSON(`${API}/api/config`), 'Changes discarded.');
     } catch (e) {
       setStatus('Could not reload config.', 'error');
     }
+  }
+
+  // Show a config from the server (Discard, Reset, a preset, Undo) as if the editor had just opened
+  function applyLoadedConfig(cfg, msg) {
+    clearTimeout(_saveTimer);
+    _saveTimer = null;
+    config = cfg;
+    config.slots = config.slots || [];
+    if (!config.source_path) config.source_path = config.slots[0]?.source_path || 'photos';
+    config.slots.forEach(migrateUseGlobal);
+    ensureTod();
+    migrateRotation();
+    ensureRotation();
+    if (rotationOn()) ensureReachableSlots();
+    selectedSlotId = null;
+    bindGlobalSettings();
+    bindGallerySettings();
+    buildLayoutPicker();
+    buildPreview();
+    refreshRotationUI();
+    renderSlotPanel();
+    refreshAdvancedHint();
+    setStatus(msg, msg.endsWith('saved.') ? 'success' : '');
+  }
+
+  // ── My Settings: one saved preset, reset to defaults, and one step of undo (README → Presets and reset) ──
+  // The server does the work, so Undo and the preset are the same from every device.
+
+  const PRESET_ID = 'my-preset';
+  let _preset = null;
+
+  function formatWhen(iso) {
+    const d = new Date(iso);
+    return isNaN(d) ? '' : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  async function postJSON(url, body) {
+    const r = await fetch(url, { method: url.includes('/api/presets/') && !url.includes('/apply') ? 'PUT' : 'POST',
+                                 headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+    if (!r.ok) throw new Error(`${url} returned ${r.status}`);
+    return r.json();
+  }
+
+  async function refreshProfileUI() {
+    try {
+      const [{ presets }, backup] = await Promise.all([fetchJSON(`${API}/api/presets`), fetchJSON(`${API}/api/config/backup`)]);
+      _preset = presets.find(p => p.id === PRESET_ID) || null;
+      const apply = document.getElementById('preset-apply');
+      apply.disabled = !_preset;
+      apply.title = _preset ? '' : 'No preset saved yet';
+      document.getElementById('preset-status').textContent = _preset
+        ? `My preset: saved ${formatWhen(_preset.updated)}.` : 'No preset saved yet.';
+      document.getElementById('undo-row').hidden = !backup.exists;
+      document.getElementById('undo-text').textContent = backup.exists
+        ? `${backup.reason === 'preset' ? 'Preset applied' : 'Reset to defaults'} ${formatWhen(backup.saved_at)}` : '';
+      document.getElementById('undo-btn').dataset.reason = backup.reason || '';
+      document.getElementById('undo-btn').dataset.savedAt = backup.saved_at || '';
+    } catch (e) { /* the buttons still work; their status lines just aren't current */ }
+  }
+
+  // What a dry run would change, by group: "Frame (3)"
+  function changeGroups(changes) {
+    const counts = new Map();
+    for (const c of changes) counts.set(c.group, (counts.get(c.group) || 0) + 1);
+    return [...counts].map(([g, n]) => (n > 1 ? `${g} (${n})` : g));
+  }
+
+  const KEPT_NOTE = 'Kept: your media folders, each slot\'s folder and photo/video mode, and video settings.';
+
+  // A confirm dialog like Reset slots: title, text, an optional list, Cancel and a confirm button.
+  // onConfirm may be async; the buttons are disabled while it runs, and an error stays in the dialog.
+  function openConfirmModal({ title, body, listTitle, list = [], warnings = [], note, confirmLabel, danger = false, onConfirm, id }) {
+    document.querySelector('.modal-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay confirm-overlay';
+    if (id) overlay.id = id;
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.addEventListener('click', e => e.stopPropagation());
+    const h = document.createElement('h3');
+    h.textContent = title;
+    modal.appendChild(h);
+    for (const text of [].concat(body || [])) {
+      const p = document.createElement('p');
+      p.textContent = text;
+      modal.appendChild(p);
+    }
+    if (list.length || warnings.length) {
+      const box = document.createElement('div');
+      box.className = 'modal-note';
+      if (listTitle) {
+        const strong = document.createElement('strong');
+        strong.textContent = listTitle;
+        box.appendChild(strong);
+      }
+      const ul = document.createElement('ul');
+      for (const item of list) ul.appendChild(Object.assign(document.createElement('li'), { textContent: item }));
+      for (const w of warnings) ul.appendChild(Object.assign(document.createElement('li'), { textContent: w, className: 'warn' }));
+      box.appendChild(ul);
+      modal.appendChild(box);
+    }
+    if (note) {
+      const p = document.createElement('p');
+      p.className = 'modal-kept';
+      p.textContent = note;
+      modal.appendChild(p);
+    }
+    const error = document.createElement('p');
+    error.style.color = '#e74c3c';
+    error.hidden = true;
+    const row = document.createElement('div');
+    row.className = 'modal-btn-row';
+    const close = () => { overlay.remove(); document.removeEventListener('keydown', esc); };
+    const esc = e => { if (e.key === 'Escape' && !cancel.disabled) close(); };
+    const cancel = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn-secondary', textContent: onConfirm ? 'Cancel' : 'Close' });
+    cancel.onclick = close;
+    row.appendChild(cancel);
+    if (onConfirm) {
+      const ok = Object.assign(document.createElement('button'), { type: 'button', className: `btn ${danger ? 'btn-danger-solid' : 'btn-primary'}`, textContent: confirmLabel });
+      ok.onclick = async () => {
+        ok.disabled = cancel.disabled = true;
+        try {
+          await onConfirm();
+          close();
+        } catch (e) {
+          error.textContent = 'That didn\'t work — is the backend running? Nothing was changed.';
+          error.hidden = false;
+          ok.disabled = cancel.disabled = false;
+        }
+      };
+      row.appendChild(ok);
+    }
+    modal.append(error, row);
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', () => { if (!cancel.disabled) close(); });
+    document.addEventListener('keydown', esc);
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  function plural(n, word) { return `${n} ${word}${n === 1 ? '' : 's'}`; }
+
+  async function openResetDefaultsModal() {
+    await flushAutoSave();
+    let dry;
+    try { dry = await postJSON(`${API}/api/config/reset?dry_run=true`); }
+    catch (e) { setStatus('Could not reach the backend.', 'error'); return; }
+    if (dry.count === 0) {
+      openConfirmModal({ id: 'reset-defaults-modal', title: 'Reset everything to defaults?',
+                         body: 'Every setting is already at its default. Nothing to reset.' });
+      return;
+    }
+    openConfirmModal({
+      id: 'reset-defaults-modal',
+      title: 'Reset everything to defaults?',
+      body: `${plural(dry.count, 'setting')} differ${dry.count === 1 ? 's' : ''} from default.`,
+      listTitle: 'Back to defaults:',
+      list: changeGroups(dry.changes),
+      note: `${KEPT_NOTE} You can undo this.`,
+      confirmLabel: 'Reset to defaults',
+      danger: true,
+      onConfirm: async () => {
+        const r = await postJSON(`${API}/api/config/reset`);
+        applyLoadedConfig(r.config, 'Reset to defaults — saved.');
+        await refreshProfileUI();
+      },
+    });
+  }
+
+  async function savePresetNow() {
+    await flushAutoSave();
+    const r = await postJSON(`${API}/api/presets/${PRESET_ID}`, { name: _preset?.name || 'My preset' });
+    _preset = r.preset;
+    await refreshProfileUI();
+    setStatus('Saved as my preset.', 'success');
+  }
+
+  async function openSavePresetModal() {
+    if (!_preset) {
+      try { await savePresetNow(); } catch (e) { setStatus('Could not save the preset.', 'error'); }
+      return;
+    }
+    openConfirmModal({
+      id: 'save-preset-modal',
+      title: 'Replace my preset?',
+      body: [`Your preset from ${formatWhen(_preset.updated)} will be replaced by the current settings.`,
+             'A preset holds the look: layout, rotation, frames, gallery mat, metadata, Fill frames, and each slot\'s frame, metadata, timer and shape. Folders aren\'t saved in it.'],
+      confirmLabel: 'Replace my preset',
+      onConfirm: savePresetNow,
+    });
+  }
+
+  async function openApplyPresetModal() {
+    if (!_preset) return;
+    await flushAutoSave();
+    let dry;
+    try { dry = await postJSON(`${API}/api/presets/${PRESET_ID}/apply?dry_run=true`); }
+    catch (e) { setStatus('Could not reach the backend.', 'error'); return; }
+    openConfirmModal({
+      id: 'apply-preset-modal',
+      title: 'Apply my preset?',
+      body: dry.count ? `${plural(dry.count, 'setting')} will change to your preset from ${formatWhen(_preset.updated)}.`
+                      : 'The current settings already match your preset.',
+      listTitle: dry.count ? 'Changes:' : '',
+      list: changeGroups(dry.changes),
+      warnings: dry.warnings,
+      note: `${KEPT_NOTE} You can undo this.`,
+      confirmLabel: 'Apply my preset',
+      onConfirm: async () => {
+        const r = await postJSON(`${API}/api/presets/${PRESET_ID}/apply`);
+        applyLoadedConfig(r.config, 'Preset applied — saved.');
+        if (r.warnings.length) setStatus(`Preset applied — saved. ${r.warnings.join(' ')}`, '');
+        await refreshProfileUI();
+      },
+    });
+  }
+
+  function openUndoModal() {
+    const btn = document.getElementById('undo-btn');
+    const what = btn.dataset.reason === 'preset' ? 'applying your preset' : 'the reset';
+    openConfirmModal({
+      id: 'undo-modal',
+      title: `Undo ${what}?`,
+      body: [`Every setting goes back to how it was before ${what} (${formatWhen(btn.dataset.savedAt)}).`,
+             'Changes made since then are lost.'],
+      confirmLabel: 'Undo',
+      onConfirm: async () => {
+        await flushAutoSave();
+        const r = await postJSON(`${API}/api/config/undo`);
+        applyLoadedConfig(r.config, 'Undone — saved.');
+        await refreshProfileUI();
+      },
+    });
+  }
+
+  function bindProfileButtons() {
+    document.getElementById('preset-save').onclick = openSavePresetModal;
+    document.getElementById('preset-apply').onclick = openApplyPresetModal;
+    document.getElementById('reset-defaults').onclick = openResetDefaultsModal;
+    document.getElementById('undo-btn').onclick = openUndoModal;
+    refreshProfileUI();
   }
 
   // ── Init ──
@@ -3119,6 +3552,7 @@
     refreshRotationUI();
     renderSlotPanel();
     refreshAdvancedHint();
+    bindProfileButtons();
     PicMeSlotDrag.attach([document.getElementById('collage-preview'), document.getElementById('rotation-slot-hint')], {
       onDrop: onSlotDrop,
       // A gallery opening is drawn at display size inside a scaled stage: drag a plain stand-in
@@ -3139,12 +3573,171 @@
     refreshRotationUI();
   }, 60000);
 
+  // ── Per-browser view preferences (never in config): the divider and folded sections ──
+  // localStorage throws in some private / embedded browsers: the choice then lasts for this page
+  const _prefFallback = {};
+  function loadPref(key) {
+    try { const v = localStorage.getItem(key); if (v !== null) return v; } catch (e) { /* unavailable */ }
+    return _prefFallback[key] ?? null;
+  }
+  function savePref(key, value) {
+    if (value === null) delete _prefFallback[key]; else _prefFallback[key] = value;
+    try { value === null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch (e) { /* unavailable */ }
+  }
+
+  // The divider between the preview and the slot settings. Its position is the preview's share of
+  // the height they split (0–1), so it suits any window size. The preview keeps the display's
+  // 16:9 inside whatever height it gets, so it stays the display, smaller.
+  const SPLIT_KEY = 'picme.previewSplit';
+  const SPLIT_DEFAULT = 0.6;
+  const SPLIT_MIN_PREVIEW = 160, SPLIT_MIN_PANEL = 120;  // px
+  const SPLIT_STEP = 0.05;  // arrow keys
+
+  function splitRoom() {
+    const main = document.getElementById('main');
+    const cs = getComputedStyle(main);
+    const divider = document.getElementById('pane-divider').offsetHeight;
+    return Math.max(0, main.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - divider);
+  }
+
+  // Tallest useful preview: the full-width 16:9 preview plus the area's title, padding and hint
+  function splitNatural() {
+    const area = document.getElementById('preview-area');
+    const fit = document.getElementById('preview-fit');
+    return area.offsetHeight - fit.offsetHeight + fit.clientWidth * 9 / 16;
+  }
+
+  function storedSplit() {
+    const v = parseFloat(loadPref(SPLIT_KEY));
+    return v > 0 && v < 1 ? v : null;
+  }
+
+  function applySplit(fraction = storedSplit() ?? SPLIT_DEFAULT) {
+    const room = splitRoom();
+    const max = Math.max(SPLIT_MIN_PREVIEW, Math.min(room - SPLIT_MIN_PANEL, splitNatural()));
+    const h = Math.round(Math.min(max, Math.max(SPLIT_MIN_PREVIEW, fraction * room)));
+    document.getElementById('main').style.setProperty('--preview-h', `${h}px`);
+    const divider = document.getElementById('pane-divider');
+    divider.setAttribute('aria-valuenow', String(Math.round((100 * h) / (room || 1))));
+    divider.setAttribute('aria-valuemin', '0');
+    divider.setAttribute('aria-valuemax', '100');
+    fitPreview();
+    return h;
+  }
+
+  // Store where the preview ended up (after clamping), as a share of the room
+  function setSplit(fraction) {
+    const h = applySplit(fraction);
+    savePref(SPLIT_KEY, String(h / (splitRoom() || 1)));
+  }
+
+  // Size the preview to its box at 16:9; a separate-frames preview is re-drawn at the new size
+  // (decorative frame widths and pill sizes follow it; a gallery stage just re-scales)
+  let _fitWidth = 0;
+  function fitPreview() {
+    const fit = document.getElementById('preview-fit');
+    const preview = document.getElementById('collage-preview');
+    const w = Math.floor(Math.min(fit.clientWidth, (fit.clientHeight * 16) / 9));
+    if (!(w > 0) || w === _fitWidth) return;
+    _fitWidth = w;
+    preview.style.width = `${w}px`;
+    preview.style.height = `${(w * 9) / 16}px`;  // exactly 16:9, whatever the cells hold
+    if (config && layouts && !preview.classList.contains('gallery-preview') && !PicMeSlotDrag.isDragging()) buildPreview();
+  }
+
+  function bindPaneDivider() {
+    const divider = document.getElementById('pane-divider');
+    let drag = null;
+    divider.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      try { divider.setPointerCapture(e.pointerId); } catch (err) { /* moves still reach the divider */ }
+      drag = { y: e.clientY, h: document.getElementById('preview-area').offsetHeight, room: splitRoom() };
+      divider.classList.add('dragging');
+      document.body.classList.add('pane-resizing');
+    });
+    divider.addEventListener('pointermove', e => {
+      if (!drag) return;
+      applySplit((drag.h + e.clientY - drag.y) / (drag.room || 1));
+    });
+    const end = e => {
+      if (!drag) return;
+      setSplit((drag.h + e.clientY - drag.y) / (drag.room || 1));
+      drag = null;
+      divider.classList.remove('dragging');
+      document.body.classList.remove('pane-resizing');
+    };
+    divider.addEventListener('pointerup', end);
+    divider.addEventListener('pointercancel', end);
+    divider.addEventListener('dblclick', () => { savePref(SPLIT_KEY, null); applySplit(); });
+    divider.addEventListener('keydown', e => {
+      const now = document.getElementById('preview-area').offsetHeight / (splitRoom() || 1);
+      const to = { ArrowUp: now - SPLIT_STEP, ArrowDown: now + SPLIT_STEP, Home: 0, End: 1 }[e.key];
+      if (to === undefined) return;
+      e.preventDefault();
+      setSplit(to);
+    });
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => applySplit()).observe(document.getElementById('main'));
+      new ResizeObserver(() => fitPreview()).observe(document.getElementById('preview-fit'));
+    } else {
+      window.addEventListener('resize', () => applySplit());
+    }
+    applySplit();
+  }
+
+  // Sidebar sections fold at their title (open by default). The title becomes a button; the
+  // rest of the section goes into a body that's hidden when folded. Links beside the title
+  // (Layout: Select all / Deselect all) are separate controls and don't fold it.
+  const SECTIONS_KEY = 'picme.collapsedSections';
+
+  function collapsedSections() {
+    try { const v = JSON.parse(loadPref(SECTIONS_KEY) || '[]'); return new Set(Array.isArray(v) ? v : []); }
+    catch (e) { return new Set(); }
+  }
+
+  function setSectionOpen(section, open) {
+    section.classList.toggle('collapsed', !open);
+    section.querySelector(':scope > .section-body').hidden = !open;
+    section.querySelector('.section-toggle').setAttribute('aria-expanded', String(open));
+  }
+
+  function bindSidebarSections() {
+    const folded = collapsedSections();
+    for (const section of document.querySelectorAll('#sidebar .sidebar-section[data-section]')) {
+      const key = section.dataset.section;
+      const h3 = section.querySelector('h3');
+      const header = h3.parentElement === section ? h3 : h3.parentElement;  // the Layout header row
+      const body = document.createElement('div');
+      body.className = 'section-body';
+      body.id = `section-body-${key}`;
+      while (header.nextSibling) body.appendChild(header.nextSibling);
+      section.appendChild(body);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'section-toggle';
+      btn.setAttribute('aria-controls', body.id);
+      btn.append(...h3.childNodes);
+      h3.appendChild(btn);
+      btn.onclick = () => {
+        const open = section.classList.contains('collapsed');
+        setSectionOpen(section, open);
+        const now = collapsedSections();
+        if (open) now.delete(key); else now.add(key);
+        savePref(SECTIONS_KEY, JSON.stringify([...now]));
+      };
+      setSectionOpen(section, !folded.has(key));
+    }
+  }
+
   // Before the first render, so Basic never flashes the advanced controls
   editorMode = loadEditorMode();
   applySettingTiers(document);
   applyEditorMode();
   for (const btn of document.querySelectorAll('#editor-mode button')) btn.onclick = () => setEditorMode(btn.dataset.mode);
   document.getElementById('advanced-hint-show').onclick = () => setEditorMode('advanced');
+  bindSidebarSections();
+  bindPaneDivider();
 
   init();
 </script>

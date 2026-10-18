@@ -364,9 +364,9 @@ def test_shape_picker_is_basic_and_reset_all_leaves_shapes(write_cfg, open_page)
     page.click(_opening(2))
     assert page.locator("#slot-shape").is_visible() and page.locator("#slot-shape").input_value() == "circle"
     page.click("#editor-mode button[data-mode='advanced']")
-    page.get_by_role("button", name="Reset all slots to global").click()
+    page.get_by_role("button", name="Reset slots to global settings").click()
     assert "Opening shape" in page.locator(".modal-note").text_content()
-    page.get_by_role("button", name="Reset All Slots", exact=True).click()
+    page.get_by_role("button", name="Reset all slots", exact=True).click()
     page.click("#footer .btn-primary")
     cfg = _saved(write_cfg, lambda c: c["slots"][1].get("use_global", {}).get("source") is True)
     assert cfg["slots"][1]["shape"] == "circle"
