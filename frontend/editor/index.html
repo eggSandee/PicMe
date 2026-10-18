@@ -412,9 +412,11 @@
 
     .preview-slot:hover { border-color: var(--accent); background: #2a3a4a; }
     /* Under the slot number: the opening's aspect ratio and Fit / Fill ("3:2 · Fill") */
-    .slot-tags { font-size: 0.6em; font-weight: 500; color: #9a9a9a; line-height: 1.2; margin-top: 0.15em;
+    .slot-tags { font-size: 0.6em; font-weight: 500; color: #b0b0b0; line-height: 1.2; margin-top: 0.15em;
+                 position: relative; z-index: 1; background: rgba(30, 30, 30, 0.85); padding: 0 0.4em; border-radius: 3px;
                  text-align: center; white-space: nowrap; max-width: calc(100% - 4px); overflow: hidden; text-overflow: ellipsis; }
     .preview-slot .slot-tags { font-size: clamp(9px, 0.95vw, 12px); }
+    .slot-tags[hidden] { display: none; }
     .gallery-stage .slot-tags { font-size: 32px; margin: 0; padding: 2px 14px; border-radius: 24px; color: #ddd;
                                 background: rgba(0, 0, 0, 0.55); max-width: none; }
     .preview-slot.selected { border-color: var(--slot-selected); background: #1e3a5a; color: var(--accent); }
@@ -1389,20 +1391,21 @@
     return asset && (width ?? 8) < DECORATIVE_MIN_WIDTH ? asset.default_width : width;
   }
 
-  // The display's frame border (applyFrameStyle), minus time-of-day. Call once `el` is laid out:
-  // a decorative frame is capped at a sixth of the cell's short side, like a small slot.
-  function frameBorderStyle(el, frameCfg) {
+  // The display's frame border (applyFrameStyle), minus time-of-day, drawn `scale` preview px
+  // per display px. Call once `el` is laid out: a decorative frame is capped at a sixth of the
+  // cell's short side (in display px), like a small slot.
+  function frameBorderStyle(el, frameCfg, scale = 1) {
     const frameOn = frameCfg.show_frame ?? true;
-    const width = frameCfg.frame_width ?? 8;
+    const width = Number(frameCfg.frame_width ?? 8) || 0;
     const asset = frameOn ? frameAsset(frameCfg.frame_style ?? 'solid') : null;
     if (asset) {
-      const fit = Math.floor(Math.min(el.clientWidth, el.clientHeight) / 6);
-      const w = Math.min(Number(width) || 0, Math.max(4, fit));
+      const fit = Math.floor(Math.min(el.offsetWidth, el.offsetHeight) / scale / 6);
+      const w = Math.min(width, Math.max(4, fit)) * scale;
       el.style.border = `${w}px solid transparent`;
       el.style.borderImage = `url("${asset.src}") ${asset.slice} / ${w}px / 0 round`;
       el.style.backgroundClip = 'padding-box';
     } else {
-      el.style.border = frameOn ? `${width}px solid ${frameCfg.frame_color ?? '#2c2318'}` : 'none';
+      el.style.border = frameOn ? `${width * scale}px solid ${frameCfg.frame_color ?? '#2c2318'}` : 'none';
       el.style.borderImage = 'none';
       el.style.backgroundClip = '';
     }
@@ -1982,8 +1985,11 @@
     preview.classList.remove('gallery-preview');
     preview.style.gridTemplateColumns = layout.grid_template_columns;
     preview.style.gridTemplateRows = layout.grid_template_rows;
-    preview.style.gap = '4px';
-    preview.style.padding = '4px';
+    // At the display's proportions: #collage's 12 px gap and padding, the mat and frame, in
+    // preview px (`k` per display px), so a smaller preview is the same picture, smaller
+    const k = preview.clientWidth / 1920 || 0.5;
+    preview.style.gap = `${12 * k}px`;
+    preview.style.padding = `${12 * k}px`;
     preview.style.background = config.wall_color || '#1a1a1a';
     preview.innerHTML = '';
 
@@ -1999,7 +2005,7 @@
       div.className = 'preview-slot' + (slotCfg.id === selectedSlotId ? ' selected' : '');
       div.dataset.slot = div.dataset.dragKey = slotCfg.id ?? slotDef.id;
       div.style.gridArea  = slotDef.grid_area;
-      div.style.padding   = `${frameCfg.mat_width ?? 16}px`;
+      div.style.padding   = `${(Number(frameCfg.mat_width ?? 16) || 0) * k}px`;
       div.style.background = frameCfg.mat_color ?? '#000';
       div.style.position  = 'relative';
 
@@ -2033,7 +2039,7 @@
       div.appendChild(inner);
       div.addEventListener('click', () => selectSlot(slotCfg.id ?? slotDef.id));
       preview.appendChild(div);
-      frameBorderStyle(div, frameCfg);  // after appending: decorative widths fit the cell
+      frameBorderStyle(div, frameCfg, k);  // after appending: decorative widths fit the cell
       cells.push({ div, inner, tags, slotCfg, frameCfg, padded: !activeSlots[i] });
     }
 
@@ -2062,10 +2068,14 @@
     el.dataset.fit = fill ? 'fill' : 'fit';
     el.textContent = `${ratio ? `${ratio} · ` : ''}${fill ? 'Fill' : 'Fit'}`;
     // A small cell: ratio over Fit / Fill, rather than cutting the line short
+    el.hidden = false;
     if (ratio && el.isConnected && el.scrollWidth > el.clientWidth + 1) {
       el.textContent = '';
       el.append(ratio, document.createElement('br'), fill ? 'Fill' : 'Fit');
+      // Too small even so: leave the cell to its number; the tag's text is the cell's tooltip
+      if (el.scrollWidth > el.clientWidth + 1) el.hidden = true;
     }
+    if (el.parentElement) el.parentElement.title = el.hidden ? `${ratio} · ${fill ? 'Fill' : 'Fit'}. ${el.title}` : '';
     el.title = `Photo opening ${Math.round(opening.w)}×${Math.round(opening.h)} px on a 1920×1080 screen` +
       (near && !near.common ? ` — not a common photo shape (nearest ${near.ratio})` : '') + '. ' +
       (fill ? 'Fill: photos and videos are cropped to the opening, no black bars.'
@@ -2104,7 +2114,7 @@
       if (!sizes[i]) return;
       if (band > 0) {
         // The bottom mat grows by the band, and the caption sits in it, centred under the photo
-        const matPx = Number(frameCfg.mat_width ?? 16) || 0;
+        const matPx = (Number(frameCfg.mat_width ?? 16) || 0) * scale;
         div.style.paddingBottom = `${matPx + band * scale}px`;
         const bar = previewPills(slotCfg, { short, scale, room: geo[i].photo.w, caption: true });
         Object.assign(bar.style, { position: 'absolute', left: `${matPx}px`, right: `${matPx}px`, bottom: `${matPx}px`,
