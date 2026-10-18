@@ -2260,7 +2260,7 @@
     fillEl.onchange = e => {
       config.fill_mode = e.target.checked ? 'cover' : 'contain';
       buildPreview();  // each cell's Fit / Fill tag
-      renderSlotPanel();  // the slot's "Default — …" option
+      renderSlotPanel();  // the slot's "Default (global: …)" option
       scheduleAutoSave();
     };
     document.getElementById('g-date-format').onchange  = e => { config.date_format = e.target.value; scheduleAutoSave(); };
@@ -2576,7 +2576,7 @@
     // Fit — the global "Fill frames" unless this slot picks its own (photos and videos)
     const fillSection = tag(makeSection('Fit'), 'slot.fill_mode');
     const ownFill = slotCfg.fill_mode === 'cover' || slotCfg.fill_mode === 'contain' ? slotCfg.fill_mode : '';
-    const fillSelect = makeSelect([['', `Default — ${globalFill() === 'cover' ? 'Fill' : 'Fit'} (Fill frames)`],
+    const fillSelect = makeSelect([['', `Default (global: ${globalFill() === 'cover' ? 'Fill' : 'Fit'})`],
                                    ['contain', `Fit — full ${isVideo ? 'video' : 'photo'}, letterboxed`],
                                    ['cover', 'Fill — crop to fit, no bars']], ownFill);
     fillSelect.id = 'slot-fill-mode';

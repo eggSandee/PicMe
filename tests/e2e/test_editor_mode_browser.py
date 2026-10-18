@@ -561,14 +561,14 @@ def test_fill_frames_is_basic_and_a_slot_override_is_advanced(write_cfg, open_ed
     page.locator('#editor-mode button[data-mode="advanced"]').click()
     sel = page.locator("#slot-fill-mode")
     assert sel.input_value() == "contain"
-    assert sel.locator("option").first.text_content() == "Default — Fill (Fill frames)"
+    assert sel.locator("option").first.text_content() == "Default (global: Fill)"
     sel.select_option("")  # back to the global setting: the key goes, so it follows Fill frames
     cfg = _saved(write_cfg, lambda c: "fill_mode" not in c["slots"][1])
     assert cfg["fill_mode"] == "cover" and cfg["slots"][2]["fill_mode"] == "cover"
 
     page.locator(".toggle-row:has(#g-fill-mode) .toggle-track").click()
     _saved(write_cfg, lambda c: c["fill_mode"] == "contain")
-    assert page.locator("#slot-fill-mode option").first.text_content() == "Default — Fit (Fill frames)"
+    assert page.locator("#slot-fill-mode option").first.text_content() == "Default (global: Fit)"
     assert w.errors == []
 
 
