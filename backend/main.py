@@ -12,8 +12,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import media_index
+import profiles
 import transcode
-from layouts import load_layouts
+from layouts import KNOWN_SHAPES, load_layouts
 from heic import HEIC_EXTENSIONS, HeicConversionError, get_converted, is_heic
 from metadata.exif import get_metadata
 from metadata.video import get_video_metadata
@@ -224,6 +225,95 @@ def set_config(config: dict):
     media_index.invalidate()  # a just-added folder or a toggled include_subfolders lists afresh
     refresh_transcoder(config)
     return {"ok": True}
+
+
+# --- Reset to defaults, saved presets and one-step undo (README → Presets and reset) ---
+# Kept next to config.json: the previous config before a reset or preset (one step of undo, from
+# any device), and the saved presets.
+
+def backup_path() -> Path:
+    return CONFIG_PATH.with_name("config.backup.json")
+
+
+def presets_path() -> Path:
+    return CONFIG_PATH.with_name("presets.json")
+
+
+def _replace_config(new: dict, reason: str) -> None:
+    """Save ``new`` after keeping the current config as the undo backup."""
+    write_json_atomic(backup_path(), {"saved_at": profiles.now_iso(), "reason": reason, "config": load_config()})
+    set_config(new)
+
+
+def _changes(before: dict, after: dict) -> dict:
+    changes = profiles.changed_settings(before, after, DEFAULT_CONFIG)
+    return {"changes": changes, "count": len(changes)}
+
+
+@app.post("/api/config/reset")
+def reset_config(dry_run: bool = False):
+    """Every look setting back to the defaults; folders, photo/video modes, video settings and the
+    slot count are kept. ``dry_run`` only reports what would change."""
+    current = load_config()
+    new = profiles.reset_config(current, default_config())
+    if dry_run:
+        return _changes(current, new)
+    result = _changes(current, new)
+    _replace_config(new, "reset")
+    return {"config": new, "count": result["count"]}
+
+
+@app.get("/api/config/backup")
+def config_backup():
+    backup = profiles.read_json(backup_path())
+    if not isinstance(backup, dict) or not isinstance(backup.get("config"), dict):
+        return {"exists": False}
+    return {"exists": True, "reason": backup.get("reason"), "saved_at": backup.get("saved_at")}
+
+
+@app.post("/api/config/undo")
+def undo_config():
+    """Restore the config from before the last reset or preset. One step: the backup goes."""
+    backup = profiles.read_json(backup_path())
+    if not isinstance(backup, dict) or not isinstance(backup.get("config"), dict):
+        raise HTTPException(status_code=404, detail="Nothing to undo")
+    set_config(backup["config"])
+    backup_path().unlink(missing_ok=True)
+    return {"config": backup["config"], "reason": backup.get("reason")}
+
+
+@app.get("/api/presets")
+def get_presets():
+    return {"presets": profiles.read_presets(presets_path())}
+
+
+@app.put("/api/presets/{preset_id}")
+def save_preset(preset_id: str, body: dict | None = None):
+    """Save the current config's look as this preset (created, or replaced)."""
+    name = (body or {}).get("name")
+    presets = profiles.read_presets(presets_path())
+    old = next((p for p in presets if p["id"] == preset_id), None)
+    name = name if isinstance(name, str) and name.strip() else (old or {}).get("name") or "My preset"
+    presets, preset = profiles.upsert_preset(presets, preset_id, name, profiles.extract_look(load_config()))
+    write_json_atomic(presets_path(), profiles.presets_document(presets))
+    return {"preset": preset}
+
+
+@app.post("/api/presets/{preset_id}/apply")
+def apply_preset(preset_id: str, dry_run: bool = False):
+    """The preset's look on the current config (folders kept). Settings this version can't use
+    (removed layouts, unknown shapes or keys) are dropped and listed in ``warnings``."""
+    preset = next((p for p in profiles.read_presets(presets_path()) if p["id"] == preset_id), None)
+    if preset is None:
+        raise HTTPException(status_code=404, detail="No such preset")
+    current = load_config()
+    layout_ids = [l["id"] for l in load_layouts(LAYOUTS_PATH)]
+    new, warnings = profiles.apply_look(current, preset.get("settings"), default_config(), layout_ids, KNOWN_SHAPES)
+    result = {**_changes(current, new), "warnings": warnings}
+    if dry_run:
+        return result
+    _replace_config(new, "preset")
+    return {"config": new, "count": result["count"], "warnings": warnings}
 
 
 @app.get("/api/browse")
