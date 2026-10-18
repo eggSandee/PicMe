@@ -225,6 +225,16 @@ def test_ratio_labels(write_cfg, open_editor):
         ["3:2", "2:3", "16:9", "≈3:2", "≈4.1:1", "≈1:4.1", "1:1"]
 
 
+def test_close_cells_use_the_common_name_and_odd_ones_a_decimal(write_cfg, open_editor):
+    write_cfg()
+    page = open_editor().page
+    sizes = [[880, 1000], [850, 1000], [1160, 1000], [1106, 1000], [1111, 1000],
+             [2090, 1000], [2300, 1000], [2800, 1000], [3800, 1000], [4200, 1000], [1000, 2300]]
+    got = page.evaluate("(sizes) => sizes.map(([w, h]) => PicMeAspect.label(w, h))", sizes)
+    assert got == ["≈4:5", "≈4:5", "≈5:4", "≈1:1", "≈1:1",
+                   "≈2.1:1", "≈2.3:1", "≈2.8:1", "≈3.8:1", "≈4.2:1", "≈1:2.3"]
+
+
 def test_gallery_tags_use_the_opening_inside_the_bevel(write_cfg, open_editor):
     write_cfg(layout="gallery-cameo", slot_overrides={1: {"fill_mode": "contain"}})
     page = open_editor().page
@@ -349,3 +359,4 @@ def test_preview_stays_16_9_at_the_dividers_minimum(write_cfg, laptop, layout):
     assert p["width"] / p["height"] == pytest.approx(16 / 9, abs=0.01)
     f = _box(page, "#preview-fit")
     assert p["height"] <= f["height"] + 1 and p["width"] <= f["width"] + 1
+

@@ -11,7 +11,7 @@
   // 7:5 = 5x7) and square, each both ways round
   const COMMON = [[1, 1], [4, 3], [3, 4], [16, 9], [9, 16], [3, 2], [2, 3], [5, 4], [4, 5], [7, 5], [5, 7]];
   const EXACT = 0.015;     // within 1.5%: shown as the ratio itself ("3:2")
-  const TOLERANCE = 0.06;  // within 6%: "≈3:2" (a photo that shape loses at most ~6% to bars or cropping)
+  const TOLERANCE = 0.12;  // within ~12%: "≈3:2" (a photo that shape loses at most ~12% to bars or cropping)
 
   // "1fr 2fr" -> [1, 2] (layouts are fr tracks only: backend/layouts.py checks)
   function tracks(template) {
@@ -55,7 +55,7 @@
     return { w: Math.max(0, cell.w - 2 * edge), h: Math.max(0, cell.h - 2 * edge - (Number(band) || 0)) };
   }
 
-  // log-ratio distance: 0.06 ≈ 6% wider or taller
+  // log-ratio distance: 0.12 ≈ 12% wider or taller
   const distance = (a, b) => Math.abs(Math.log(a / b));
 
   // The common ratio closest to w:h: { ratio: '3:2', err, common: err <= TOLERANCE }
