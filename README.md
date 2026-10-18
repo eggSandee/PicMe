@@ -202,6 +202,7 @@ Each slot supports the following settings:
   "include_subfolders": false, // Only for a slot with its own folder: overrides the global setting (optional)
   "cycle_seconds": 60,         // How often this slot advances (seconds)
   "group": "A",                // Slots in the same group cycle together (optional)
+  "fill_mode": "contain",      // This slot's own Fit ("contain") or Fill ("cover"); omit to follow the global fill_mode (optional)
   "metadata": {
     "show_date": true,
     "show_location": true,
@@ -365,6 +366,7 @@ Top-level settings:
   "date_format": "long",         // "long" (July 4, 2019) | "medium" (Jul 4, 2019) | "short" (7/4/2019) | "iso" (2019-07-04)
   "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
   "label_position": "auto",      // "auto" | "photo" | "mat" — pills on the photo or in a caption on the mat (see Metadata pills below)
+  "fill_mode": "cover",          // "cover" = Fill (crop, no black bars) | "contain" = Fit (whole photo, bars); missing = contain (see Fit and Fill below)
   "frame_defaults": {            // mat and frame style applied to every slot; per-slot frame: {} overrides.
                                  // show_frame, frame_style and frame_color also style the gallery's outer frame
     "mat_color": "#000000",      // mat color behind the photo (any CSS color)
@@ -512,6 +514,15 @@ New installs start with wood frames (`frame_style: "wood"`, `frame_width: 28`). 
 
 `.gitignore` ignores `*.png` to keep photos out of the repo, with an exception for `frontend/assets/frames/`.
 
+#### Fit and Fill
+
+A photo or video rarely has exactly its frame's shape. **Fit** (`"contain"`) shows all of it, with bars of the mat backing where the shapes differ. **Fill** (`"cover"`) fills the frame and crops what doesn't fit, so there are no black bars. This helps most with layouts whose frames have unusual shapes (a wide strip, say).
+
+- **Fill frames.** The editor's Global Settings has **Fill frames (crop, no black bars)** (`"fill_mode"` at the top level). It applies to photos and videos, to separate frames and gallery mats, and inside shaped openings (a heart is filled edge to edge).
+- **New installs fill.** The first-run config has `"fill_mode": "cover"`. A `config.json` from before this setting has no `fill_mode`, which means Fit, so an existing setup looks the same until you turn Fill frames on.
+- **Per slot.** A slot can pick its own in its **Fit** section (Advanced): **Default** follows Fill frames, or choose Fit or Fill for that slot only (`"fill_mode"` in the slot; Default removes it). **Reset slots to global settings** puts every slot back on Default.
+- **In the preview.** Each slot shows **Fit** or **Fill** under its number, next to its size (see [Editor layout](#editor-layout)).
+
 #### Gallery mat
 
 Instead of a frame around every slot, a layout can show **one frame around the whole display and one mat** filling it, with each slot an opening cut into the mat — like a multi-photo frame from a shop. The openings are separated only by mat.
@@ -521,7 +532,7 @@ Instead of a frame around every slot, a layout can show **one frame around the w
 - **Mat and sizes.** The **Gallery Mat** section in the editor (or `"gallery"` in `config.json`) sets the mat colour, and in Advanced mode the outer frame width (`frame_width`, separate from slots' frame width because it frames the whole screen), the mat around the openings (`outer_margin`), the mat between openings (`gutter`), the wall around the frame (`wall_margin`) and the bevel. Sizes are px on a 1920×1080 screen. Gallery mode is designed for TVs and 1080p-or-larger monitors. On a smaller screen the margins, gutter and frame shrink somewhat (margin up to 12%, gutter 8%, frame a sixth of the shortest side), but the mat still takes a large share of the screen, so small displays are better served by a regular layout with fewer slots.
 - **Bevel.** Each opening gets a thin light edge, like the slanted cut of real mat board, lit from the top left, and the mat casts a soft shadow onto the photo. Turn it off with **Bevelled openings** (`"bevel": false`).
 - **Shapes.** `rect` (default), `rounded`, `ellipse` (oval), `circle`, `arch`, `hexagon` and `heart`. A gallery layout can give an opening a shape; pick **Opening shape** in a slot's settings to change it (`"shape"` in the slot), or **Layout default** to go back. Circles, hexagons and hearts keep their proportions and sit centred in their space; arches are never much wider than tall. The photo or video fills the shape; **Fill** usually looks best, since **Fit** keeps the whole photo inside the shape's box and the corners outside the shape are hidden.
-- **Shapes stay with the position.** The shape is the hole in the mat, not part of the photo, so dragging slots to swap them moves their photos and settings but not the shapes (see [Rearranging slots](#rearranging-slots)). **Reset all slots** leaves shapes alone too.
+- **Shapes stay with the position.** The shape is the hole in the mat, not part of the photo, so dragging slots to swap them moves their photos and settings but not the shapes (see [Rearranging slots](#rearranging-slots)). **Reset slots to global settings** leaves shapes alone too.
 - **Pills.** By default (label position **Auto**) the metadata is a caption on the mat under each opening, so it never covers a heart or a circle; see [Metadata pills](#metadata-pills). With **On the photo**, pills sit inside the shape and are fitted to the part of it they can use: a small heart shows fewer pills (never dropping the date), and long text scrolls inside the shape as on any slot.
 - **Upgrading.** The outer frame now follows the Frame section. If you had picked a different gallery frame (`gallery.frame_style`), it is kept but no longer used. To get it back, turn on **Use a different frame for gallery mats**, or pick the same style in the Frame section.
 - **Time of day.** Day and night periods change the gallery's mat colour, frame colour and frame style; widths stay as set in the Gallery Mat section.
@@ -559,14 +570,37 @@ Which settings each mode shows (the split lives in one table, `EDITOR_SETTINGS` 
 | | Basic | Advanced adds |
 |---|---|---|
 | **Layout** | Layout picker, Frames (Separate / Gallery mat), Rotate layout daily, the rotation checkboxes on the thumbnails, Select all / Deselect all, today's rotation status | Switch layout at, Mat chips (frames per rotated layout) |
-| **Global** | Default media folder, Wall color | Include subfolders, Reset all slots to global |
+| **My Settings** | Save as my preset, Apply my preset, Reset everything to defaults, Undo | — |
+| **Global** | Default media folder, Wall color, Fill frames | Include subfolders, Reset slots to global settings |
 | **Frame** | Mat color, Frame style | Mat width, Show frame border, Frame color, Frame width |
 | **Gallery Mat** | Mat color (the frame's style is in Frame) | Use a different frame for gallery mats (its style, show frame, colour), outer frame width, mat around and between the openings, wall around the frame, bevel |
 | **Metadata** | Show metadata; Text size, Pill size, Label position and the fields (Date, Location, Camera…) | Date format, Max metadata pills |
 | **Time-of-Day, Videos** | — | The whole sections (templates, max video size, Live Photo clips) |
-| **Each slot** | Media folder, Photos / Video (and the "no videos" warning), Change every (seconds), Fit / Fill, Opening shape, Show metadata | Use global toggles, Include subfolders, Group, Frame, the slot's own metadata settings, video loops and audio, conversion status |
+| **Preview** | Each slot's size (aspect ratio) and Fit / Fill | — |
+| **Each slot** | Media folder, Photos / Video (and the "no videos" warning), Change every (seconds), Opening shape, Show metadata | Use global toggles, Include subfolders, Group, Fit / Fill (the slot's own), Frame, the slot's own metadata settings, video loops and audio, conversion status |
 
 In Basic, a slot's media folder is always editable: typing a different folder gives the slot its own folder, and clearing it or typing the default folder (a trailing `/` makes no difference) makes it follow the default again. Like every folder box, it is saved when you press Enter, leave the box or pick a folder with **Browse…**, not while you type. A slot that follows the default shows the default folder, also right after the default changes. Picking Wood or Gold widens a thin frame to suit it; going back to Solid restores the previous width unless you changed it in between.
+
+#### Editor layout
+
+- **Resize the preview.** Drag the bar between the layout preview and the slot settings to give either more room; the preview keeps the screen's 16:9 shape, so it is still the display, smaller. On a touch screen drag it with a finger; with the keyboard, focus it (Tab) and use the arrow keys, Home (smallest preview) or End (largest). Double-click it to go back to the default (the preview takes 60% of the height, never more than its full width needs). The slot settings scroll on their own below it.
+- **Fold sidebar sections.** Click a section's title (My Settings, Layout, Global Settings, Videos, Frame, Gallery Mat, Time-of-Day, Default Metadata) to fold it; click again to open it. Every section starts open. The links beside the Layout title (Select all / Deselect all) work whether it is folded or not. Sections Basic hides (Videos, Time-of-Day) stay hidden in Basic, folded or not.
+- **Remembered per browser.** The divider position and folded sections are saved in the browser (`localStorage`), like the editor mode, never in `config.json`.
+- **Slot sizes.** Under each slot's number the preview shows its photo opening's aspect ratio and whether it fits or fills, in smaller type: **3:2 · Fill**. It is the opening on a 1920×1080 screen after the frame, mat, caption band, gallery margins, shape and bevel, written width:height (so portrait reads **2:3**, like a 4×6 print held upright). A plain ratio is that shape within 1.5%; **≈3:2** is within 6% of a common photo shape (1:1, 4:3, 3:2, 16:9, 5:4 and 7:5, either way round); anything else shows its own ratio, such as **≈2.4:1**. Hover a slot's tag for its size in px. Opening shapes are measured by their box. Small slots show the ratio above Fit / Fill.
+
+#### Presets and reset
+
+**My Settings**, at the top of the sidebar, saves and restores your settings:
+
+- **Save as my preset** saves the current look: layout, rotation, Frames per layout, wall colour, Fill frames, frame, gallery mat, metadata, label position, time of day, and each slot's frame, metadata, timer, group, Fit / Fill, opening shape and video loops and audio. It asks before replacing a saved preset.
+- **Apply my preset** puts that look back. The dialog says how many settings change and lists them. Anything the preset names that no longer exists (a removed layout, an unknown shape) is skipped and listed in the dialog; the current layout stays then.
+- **Reset everything to defaults…** puts every look setting back to the first-run defaults: Classic 4, daily rotation off, wood frames, Fill frames on, every slot on the global frame and metadata, 30 s timers. The dialog says how many settings differ from the defaults (counting what the display shows differently).
+- **Kept by both.** Your default media folder, each slot's folder and photo/video mode, Include subfolders, and the video settings (max video size, Live Photo clips), so the display never goes blank and the video library isn't converted again. All slots are kept too, including ones the layout doesn't show, so a bigger layout later still has their folders.
+- **Undo.** After a reset or applying the preset, an **Undo** link under the buttons restores the config from just before, exactly. There is one step of undo: it is used up once undone, and a second reset replaces it. Edits made after the reset are lost by Undo, and its dialog says so.
+- **From any device.** Presets, the reset and Undo run on the server: `presets.json` and `config.backup.json` sit next to `config.json` (both ignored by git), so another device's editor sees the same preset and can undo the same reset.
+- **Two different resets.** **Reset slots to global settings** (Advanced, Global Settings) only clears each slot's own overrides — folder, frame, metadata and Fit / Fill — and changes nothing else. **Reset everything to defaults** resets the look and keeps the folders.
+
+`presets.json` is a list, so more named presets can be added later without changing the file: `{"version": 1, "presets": [{"id": "my-preset", "name": "My preset", "created": "…", "updated": "…", "settings": {…}}]}`. The editor uses the one with id `my-preset`. A preset saves what the display showed: a config from before `fill_mode` saves Fit, for example. A missing or broken `presets.json` reads as no preset, and saving rewrites it.
 
 **Show metadata.** The **Default Metadata** section and each slot's **Metadata Overlays** section open and close with a **Show metadata** switch (instantly if the computer is set to reduce motion):
 
