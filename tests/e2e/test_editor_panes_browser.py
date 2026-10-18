@@ -336,3 +336,16 @@ def test_applying_a_preset_with_a_removed_layout_warns(write_cfg, open_editor):
     modal.get_by_role("button", name="Apply my preset").click()
     cfg = _saved(write_cfg, lambda c: c["wall_color"] == "#445566")
     assert cfg["layout"] == "classic-6"
+
+
+@pytest.mark.parametrize("layout", ["classic-4", "classic-6", "hero-center", "gallery-12"])
+def test_preview_stays_16_9_at_the_dividers_minimum(write_cfg, laptop, layout):
+    write_cfg(layout=layout)
+    page = laptop().page
+    page.locator("#pane-divider").focus()
+    page.keyboard.press("Home")
+    assert _box(page, "#preview-area")["height"] == pytest.approx(160, abs=1)
+    p = _box(page, "#collage-preview")
+    assert p["width"] / p["height"] == pytest.approx(16 / 9, abs=0.01)
+    f = _box(page, "#preview-fit")
+    assert p["height"] <= f["height"] + 1 and p["width"] <= f["width"] + 1

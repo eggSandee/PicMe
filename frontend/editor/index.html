@@ -390,6 +390,7 @@
       width: 100%;
       flex-shrink: 0;
       aspect-ratio: 16/9;
+      min-height: 0;
       display: grid;
       gap: 4px;
       background: #1a1a1a;
@@ -3640,6 +3641,7 @@
     if (!(w > 0) || w === _fitWidth) return;
     _fitWidth = w;
     preview.style.width = `${w}px`;
+    preview.style.height = `${(w * 9) / 16}px`;  // exactly 16:9, whatever the cells hold
     if (config && layouts && !preview.classList.contains('gallery-preview') && !PicMeSlotDrag.isDragging()) buildPreview();
   }
 
