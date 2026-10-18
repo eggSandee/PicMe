@@ -217,6 +217,7 @@
     /* Why a control is disabled: it changes nothing on the layouts the display can show */
     .scope-hint { font-size: 11px; color: var(--text-muted); margin: -6px 0 10px; line-height: 1.4; }
     .scope-hint[hidden] { display: none; }
+    .field-hint { font-size: 11px; color: var(--text-muted); margin: 2px 0 4px; line-height: 1.4; }
     #rotation-status { font-size: 12px; color: var(--text); line-height: 1.4; margin-top: 8px; }
     #rotation-slot-hint { font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.5; }
     #rotation-slot-hint .btn { padding: 2px 8px; font-size: 11px; margin: 0 4px 0 0; }
@@ -708,8 +709,18 @@
         <input type="color" id="g-wall-color" />
       </div>
 
-      <button class="btn btn-danger" style="width:100%;margin-top:14px;padding:7px 12px;" onclick="openResetAllModal()" data-setting="slots.reset_all">
-        Reset all slots to global
+      <div class="toggle-row" data-setting="global.fill_mode">
+        <label for="g-fill-mode">Fill frames (crop, no black bars)</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-fill-mode" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <p class="field-hint" data-setting="global.fill_mode">Off: whole photos and videos, with bars where their shape differs from the frame. A slot can choose its own (Advanced).</p>
+
+      <button class="btn btn-danger" style="width:100%;margin-top:14px;padding:7px 12px;" onclick="openResetAllModal()" data-setting="slots.reset_all"
+              title="Clears each slot's own overrides only. To start over, use Reset everything to defaults (My settings).">
+        Reset slots to global settings
       </button>
     </div>
 
@@ -1006,6 +1017,13 @@
     return { ...getGlobalMeta(), ...(slotCfg.metadata || {}) };
   }
 
+  // Fit ('contain') or Fill ('cover'): the slot's own choice, else the global one. A config from
+  // before the global setting has none, which means Fit (same rule as the display's applyFit).
+  function globalFill() { return config.fill_mode === 'cover' ? 'cover' : 'contain'; }
+  function effectiveFill(slotCfg) {
+    return slotCfg?.fill_mode === 'cover' || slotCfg?.fill_mode === 'contain' ? slotCfg.fill_mode : globalFill();
+  }
+
   function hasCustomSettings(slotCfg) {
     return slotCfg.use_global?.frame     === false ||
            slotCfg.use_global?.metadata  === false ||
@@ -1076,6 +1094,7 @@
     'global.include_subfolders': { tier: 'advanced', label: 'Include subfolders',
                             active: () => config.include_subfolders === false },
     'global.wall_color':  { tier: 'basic',    label: 'Wall color' },
+    'global.fill_mode':   { tier: 'basic',    label: 'Fill frames' },
     'frame.mat_color':    { tier: 'basic',    label: 'Mat color' },
     'frame.frame_style':  { tier: 'basic',    label: 'Frame style' },
     'frame.mat_width':    { tier: 'advanced', label: 'Mat width',
@@ -1119,7 +1138,7 @@
                             active: () => config.time_of_day?.enabled === true },
     'videos':             { tier: 'advanced', label: 'Video settings',
                             active: () => (config.video_max_edge ?? 1920) !== 1920 || config.include_live_photos === true },
-    'slots.reset_all':    { tier: 'advanced', label: 'Reset all slots' },
+    'slots.reset_all':    { tier: 'advanced', label: 'Reset slots to global settings' },
     'slots.rearrange':    { tier: 'basic',    label: 'Drag slots to swap' },
     'slot.source':        { tier: 'basic',    label: 'Media folder' },
     'slot.source_adopt':  { tier: 'advanced', label: 'Media folder: use global' },
@@ -1135,7 +1154,9 @@
     'slot.cycle_seconds': { tier: 'basic',    label: 'Change every' },
     'slot.group':         { tier: 'advanced', label: 'Group',
                             slotActive: s => !!s.group },
-    'slot.fill_mode':     { tier: 'basic',    label: 'Fit / fill' },
+    // A slot's own Fit / Fill, overriding the global "Fill frames"
+    'slot.fill_mode':     { tier: 'advanced', label: 'Fit / fill',
+                            slotActive: s => s.fill_mode != null && s.fill_mode !== globalFill() },
     'slot.opening_shape': { tier: 'basic',    label: 'Opening shape' },  // gallery mat (shape stays with the position)
     'slot.frame':         { tier: 'advanced', label: 'Frame',
                             slotActive: s => s.use_global?.frame === false &&
@@ -2085,6 +2106,14 @@
       openFolderBrowser(inp.value, path => { inp.value = path; config.source_path = path; _followGlobalFolder?.(); scheduleAutoSave(); });
     };
     document.getElementById('g-wall-color').oninput    = e => { config.wall_color = e.target.value; buildPreview(); scheduleAutoSave(); };
+    const fillEl = document.getElementById('g-fill-mode');
+    fillEl.checked = globalFill() === 'cover';
+    fillEl.onchange = e => {
+      config.fill_mode = e.target.checked ? 'cover' : 'contain';
+      buildPreview();  // each cell's Fit / Fill tag
+      renderSlotPanel();  // the slot's "Default — …" option
+      scheduleAutoSave();
+    };
     document.getElementById('g-date-format').onchange  = e => { config.date_format = e.target.value; scheduleAutoSave(); };
     document.getElementById('g-max-pills').oninput     = e => {
       const v = parseInt(e.target.value);
@@ -2183,11 +2212,11 @@
     title.textContent = 'Reset all slots to global settings?';
 
     const body = document.createElement('p');
-    body.textContent = 'This removes all per-slot frame and metadata overrides. Every slot will inherit from the global defaults.';
+    body.textContent = 'This removes every slot\'s own folder, frame, metadata and Fit / Fill choices. Every slot will follow the global settings. Other settings are unchanged (to reset everything, use Reset everything to defaults).';
 
     const note = document.createElement('div');
     note.className = 'modal-note';
-    note.innerHTML = '<strong>Always per-slot — not affected:</strong><ul><li>Slot mode (photos / video), video loops and audio</li><li>Cycle timer</li><li>Group assignment</li><li>Fit mode (contain / fill)</li><li>Opening shape (gallery mat)</li></ul>';
+    note.innerHTML = '<strong>Always per-slot — not affected:</strong><ul><li>Slot mode (photos / video), video loops and audio</li><li>Cycle timer</li><li>Group assignment</li><li>Opening shape (gallery mat)</li></ul>';
 
     const cbRow = document.createElement('label');
     cbRow.className = 'modal-cb-row';
@@ -2207,7 +2236,7 @@
 
     const confirmBtn = document.createElement('button');
     confirmBtn.className = 'btn btn-danger-solid';
-    confirmBtn.textContent = 'Reset All Slots';
+    confirmBtn.textContent = 'Reset all slots';
     confirmBtn.onclick = () => {
       for (const slot of config.slots) {
         if (!slot.use_global) slot.use_global = {};
@@ -2218,6 +2247,7 @@
         slot.metadata    = {};
         slot.source_path = null;
         delete slot.include_subfolders;
+        delete slot.fill_mode;  // follow the global Fill frames
         if (cb.checked) {
           slot.cycle_seconds = 30;
           slot.group = null;
@@ -2226,8 +2256,7 @@
       document.body.removeChild(overlay);
       buildPreview();
       renderSlotPanel();
-      refreshAdvancedHint();
-      setStatus('All slots reset to global settings.', '');
+      scheduleAutoSave('All slots reset to global settings — saved.');
     };
 
     btnRow.append(cancelBtn, confirmBtn);
@@ -2395,10 +2424,19 @@
     if (isVideo) schedSection.appendChild(tag(makeHint('Video slots advance after their loops finish.'), 'slot.cycle_seconds'));
     left.appendChild(schedSection);
 
-    // Fit — always per-slot (applies to photos and videos)
+    // Fit — the global "Fill frames" unless this slot picks its own (photos and videos)
     const fillSection = tag(makeSection('Fit'), 'slot.fill_mode');
-    const fillSelect = makeSelect([['contain', `Fit — full ${isVideo ? 'video' : 'photo'}, letterboxed`], ['cover', 'Fill — crop to fit, no bars']], slotCfg.fill_mode || 'contain');
-    fillSelect.onchange = e => { slotCfg.fill_mode = e.target.value; renderSlotPanel(); scheduleAutoSave(); };
+    const ownFill = slotCfg.fill_mode === 'cover' || slotCfg.fill_mode === 'contain' ? slotCfg.fill_mode : '';
+    const fillSelect = makeSelect([['', `Default — ${globalFill() === 'cover' ? 'Fill' : 'Fit'} (Fill frames)`],
+                                   ['contain', `Fit — full ${isVideo ? 'video' : 'photo'}, letterboxed`],
+                                   ['cover', 'Fill — crop to fit, no bars']], ownFill);
+    fillSelect.id = 'slot-fill-mode';
+    fillSelect.onchange = e => {
+      if (e.target.value) slotCfg.fill_mode = e.target.value; else delete slotCfg.fill_mode;
+      buildPreview();
+      renderSlotPanel();
+      scheduleAutoSave();
+    };
     fillSection.appendChild(fillSelect);
     left.appendChild(fillSection);
 
@@ -2421,7 +2459,7 @@
     const shownShape = PicMeGallery.slotShape(slotCfg, base.slots[slotCfg.id - 1]);
     if (!baseGallery) {
       shapeSection.appendChild(makeHint('Shapes show on gallery-mat layouts (set Frames to Gallery mat).'));
-    } else if (shownShape !== 'rect' && slotCfg.fill_mode !== 'cover') {
+    } else if (shownShape !== 'rect' && effectiveFill(slotCfg) !== 'cover') {
       shapeSection.appendChild(makeHint("Fit keeps the whole photo inside the shape's box; the corners outside the shape are hidden. Fill usually looks better in shaped openings."));
     }
     left.appendChild(shapeSection);

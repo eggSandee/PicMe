@@ -59,6 +59,22 @@ def test_existing_config_keeps_its_own_frame_defaults(client, config_path):
     assert json.loads(config_path.read_text()) == saved
 
 
+def test_new_installs_fill_frames_and_existing_configs_keep_fit(client, config_path):
+    """fill_mode is cover in the first-run config; a saved config without it isn't given one
+    (the display reads a missing fill_mode as contain)."""
+    assert client.get("/api/config").json()["fill_mode"] == "cover"
+    saved = make_config("photos")
+    config_path.write_text(json.dumps(saved))
+    assert "fill_mode" not in client.get("/api/config").json()
+    assert "fill_mode" not in json.loads(config_path.read_text())
+
+
+def test_saving_config_leaves_no_temp_file(client, config_path):
+    client.post("/api/config", json=make_config("photos"))
+    assert json.loads(config_path.read_text()) == make_config("photos")
+    assert [p.name for p in config_path.parent.iterdir()] == ["config.json"]
+
+
 def test_wood_default_width_matches_frames_js():
     frames = (REPO_ROOT / "frontend" / "assets" / "frames" / "frames.js").read_text(encoding="utf-8")
     wood = re.search(r"wood: \{[^}]*default_width: (\d+)", frames)

@@ -65,6 +65,9 @@ DEFAULT_CONFIG = {
     "max_metadata_pills": 3,
     # Pills on the photo, or in a caption on the mat under it; auto = on the mat for gallery mats
     "label_position": "auto",  # auto | photo | mat (README → Metadata pills)
+    # cover = Fill (crop, no black bars) for new installs; a config without it means contain
+    # (Fit). A slot's own fill_mode overrides it (README → Fit and Fill).
+    "fill_mode": "cover",
     # Also the outer frame of gallery mats, unless gallery.frame_override (README → Gallery mat).
     # New installs start with wood; existing config.json files keep their own frame_defaults.
     "frame_defaults": {
@@ -127,8 +130,16 @@ def load_config() -> dict:
     return default_config()
 
 
+def write_json_atomic(path: Path, data) -> None:
+    """Write via a temp file and rename, so a reader (the display polls config.json) never sees
+    a half-written file."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    os.replace(tmp, path)
+
+
 def save_config(config: dict) -> None:
-    CONFIG_PATH.write_text(json.dumps(config, indent=2))
+    write_json_atomic(CONFIG_PATH, config)
 
 
 def effective_subfolders(slot: dict, config: dict) -> bool:

@@ -786,3 +786,37 @@ def test_time_of_day_frame_style_applies_in_both_modes(write_cfg, open_display):
     write_cfg(layout="classic-4", slots=4, time_of_day=tod, frame_defaults=_frame_defaults(frame_style="wood"))
     _until(page, "() => !document.getElementById('collage').classList.contains('gallery') && document.querySelector('#slot-1 .mat-frame')", timeout=8)
     _until(page, "() => getComputedStyle(document.querySelector('#slot-1 .mat-frame')).borderImageSource.includes('gold.png')")
+
+
+# --- Global Fill frames (README → Fit and Fill) ---
+
+FITS_JS = """() => Object.fromEntries([...document.querySelectorAll('.slot')].map(s => {
+  const m = s.querySelector(s.classList.contains('video-mode') ? 'video.visible' : 'img.visible');
+  return [s.id, m ? m.tagName.toLowerCase() + ':' + getComputedStyle(m).objectFit : null];
+}))"""
+
+
+@pytest.mark.parametrize("mode", ["gallery", "slots"])
+def test_global_fill_mode_applies_to_photos_videos_and_shapes(write_cfg, open_display, e2e_config_path, mode):
+    """fill_mode at the top level fills every slot without its own; a slot's own Fit wins; a config
+    without the key (one from before the setting) keeps Fit."""
+    video = {"mode": "video", "video_loops": 50} if FFMPEG else {}
+    cfg = write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": mode}, fill_mode="cover",
+                    slot_overrides={1: {"shape": "heart"}, 2: {"fill_mode": "contain"}, 3: video},
+                    folders={3: "video" if FFMPEG else "c3"})
+    for slot in cfg["slots"]:
+        if slot["id"] != 2:
+            del slot["fill_mode"]  # follow the global setting
+    e2e_config_path.write_text(json.dumps(cfg))
+    w = open_display()
+    page = w.page
+    kind3 = "video" if FFMPEG else "img"
+    assert page.evaluate(FITS_JS) == {"slot-1": "img:cover", "slot-2": "img:contain",
+                                      "slot-3": f"{kind3}:cover", "slot-4": "img:cover"}
+
+    del cfg["fill_mode"]
+    e2e_config_path.write_text(json.dumps(cfg))
+    _until(page, "() => getComputedStyle(document.querySelector('#slot-1 img.visible')).objectFit === 'contain'")
+    assert page.evaluate(FITS_JS) == {"slot-1": "img:contain", "slot-2": "img:contain",
+                                      "slot-3": f"{kind3}:contain", "slot-4": "img:contain"}
+    assert w.errors == []
