@@ -424,10 +424,23 @@ def serve_video(path: str):
     return FileResponse(str(clip.serve), media_type="video/mp4")
 
 
+class RevalidatingStaticFiles(StaticFiles):
+    """Static files the browser must re-check on every load (``Cache-Control: no-cache``).
+
+    Without it a browser (or TV) may keep using an old copy of a script after PicMe is updated,
+    so the editor or display runs a mix of old and new code. Unchanged files still come back as a
+    cheap 304 via their ETag."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # Serve the display and editor frontends
-app.mount("/display", StaticFiles(directory=str(FRONTEND_DISPLAY), html=True), name="display")
-app.mount("/editor",  StaticFiles(directory=str(FRONTEND_EDITOR),  html=True), name="editor")
-app.mount("/assets",  StaticFiles(directory=str(FRONTEND_ASSETS)), name="assets")
+app.mount("/display", RevalidatingStaticFiles(directory=str(FRONTEND_DISPLAY), html=True), name="display")
+app.mount("/editor",  RevalidatingStaticFiles(directory=str(FRONTEND_EDITOR),  html=True), name="editor")
+app.mount("/assets",  RevalidatingStaticFiles(directory=str(FRONTEND_ASSETS)), name="assets")
 
 # Serve a simple root redirect
 @app.get("/")
