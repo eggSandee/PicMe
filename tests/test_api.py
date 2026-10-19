@@ -658,3 +658,12 @@ def test_static_rejects_traversal(client, mount):
 
 def test_unknown_api_route_404(client):
     assert client.get("/api/nope").status_code == 404
+
+
+@pytest.mark.parametrize("url", ["/display/", "/display/aspect.js", "/editor/", "/assets/frames/frames.js"])
+def test_frontend_files_are_revalidated_not_served_stale(client, url):
+    """After an update the browser must not keep running an old cached script (owner hit this)."""
+    r = client.get(url)
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
+    again = client.get(url, headers={"If-None-Match": r.headers["etag"]})
+    assert again.status_code == 304
