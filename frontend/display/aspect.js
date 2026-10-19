@@ -72,14 +72,14 @@
 
   const trim = n => n.toFixed(1).replace(/\.0$/, '');
 
-  // '3:2' when it's that, '≈3:2' when close, else '≈2.4:1' / '≈1:2.1' (always width:height,
-  // so portrait reads 2:3 — like phone and print sizes, "4x6" being 2:3)
+  // '3:2' when it's that or close to it, else '2.4:1' / '1:2.1' (always width:height, so portrait
+  // reads 2:3, like phone and print sizes, "4x6" being 2:3). No "≈": the owner prefers the plain
+  // name even when the opening isn't exactly that shape; the tooltip has the exact size.
   function label(w, h) {
     const n = nearest(w, h);
     if (!n) return '';
-    if (n.err <= EXACT) return n.ratio;
-    if (n.common) return `≈${n.ratio}`;
-    return w >= h ? `≈${trim(w / h)}:1` : `≈1:${trim(h / w)}`;
+    if (n.common) return n.ratio;
+    return w >= h ? `${trim(w / h)}:1` : `1:${trim(h / w)}`;
   }
 
   window.PicMeAspect = { REFERENCE, COMMON, EXACT, TOLERANCE, tracks, cells, framedOpening, nearest, label };
