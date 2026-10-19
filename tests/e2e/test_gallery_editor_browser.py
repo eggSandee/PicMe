@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from conftest import LANDSCAPE, _make_image, editor_mode_init_js, make_config
+from conftest import LANDSCAPE, _exif_bytes, _make_image, editor_mode_init_js, make_config
 
 pytestmark = pytest.mark.e2e
 
@@ -30,7 +30,8 @@ def e2e_config_path(tmp_path_factory):
     root = tmp_path_factory.mktemp("e2e-gallery-editor")
     for i in range(1, 13):
         (root / f"c{i}").mkdir()
-        _make_image(root / f"c{i}" / "photo.jpg", size=LANDSCAPE, fmt="JPEG", color=(20 * i, 60, 120))
+        _make_image(root / f"c{i}" / "photo.jpg", size=LANDSCAPE, fmt="JPEG", color=(20 * i, 60, 120),
+                    exif=_exif_bytes(date=True, camera=True))  # so the display has pills to compare
     path = root / "config.json"
     path.write_text(json.dumps(make_config(root / "c1"), indent=2))
     return path
@@ -438,8 +439,53 @@ def test_editor_preview_captions_match_the_display(write_cfg, open_page, layout)
         shown, preview = display.evaluate(js, "#collage"), editor.evaluate(js, "#collage-preview")
         assert len(shown) == len(preview)
         for a, b in zip(shown, preview):
-            for key in ("y", "h") if js is caption_js else ("x", "y", "w", "h"):  # captions are as wide as their pills
+            for key in ("x", "y", "h") if js is caption_js else ("x", "y", "w", "h"):  # captions are as wide as their pills
                 assert b[key] == pytest.approx(a[key], abs=3), (key, a, b)
+
+
+# Each opening's caption row and photo (.mat-frame) left edges, in 1920x1080 stage px
+CAPTION_LEFT_JS = """sel => {
+  const root = document.querySelector(sel).getBoundingClientRect();
+  const k = root.width / 1920;
+  return [...document.querySelectorAll(`${sel} .opening`)].map(o => {
+    const pills = [...o.querySelectorAll('.slot-overlay > *')].filter(p => p.getBoundingClientRect().width > 0);
+    const left = Math.min(...pills.map(p => p.getBoundingClientRect().left));
+    const right = Math.max(...pills.map(p => p.getBoundingClientRect().right));
+    const photo = o.querySelector('.mat-frame').getBoundingClientRect(), cell = o.getBoundingClientRect();
+    return { id: +o.dataset.slotId, shape: o.dataset.shape, n: pills.length,
+             row: (left - root.x) / k, rowRight: (right - root.x) / k, photo: (photo.left - root.x) / k,
+             cellLeft: (cell.left - root.x) / k, cellRight: (cell.right - root.x) / k };
+  });
+}"""
+
+
+@pytest.mark.parametrize("shape", ["rect", "heart", "circle", "hexagon", "arch"])
+def test_editor_preview_captions_are_left_aligned_like_the_display(write_cfg, open_page, shape):
+    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, show_metadata=True,
+              metadata_defaults={"show_date": True, "show_camera": True},
+              slot_overrides={i: {"shape": shape} for i in range(1, 5)})
+    display = open_page("/display/").page
+    _until(display, MEDIA_READY_JS)
+    _until(display, "() => [...document.querySelectorAll('.slot-overlay.caption')].filter(o => o.querySelector('.overlay-pill.visible')).length === 4")
+    editor = open_page().page
+    shown, preview = display.evaluate(CAPTION_LEFT_JS, "#collage"), editor.evaluate(CAPTION_LEFT_JS, "#collage-preview")
+    assert len(shown) == len(preview) == 4
+    for a, b in zip(shown, preview):
+        for o in (a, b):
+            assert o["shape"] == shape and o["n"] >= 1, o
+            assert o["row"] == pytest.approx(o["photo"], abs=1.5), o  # starts at the photo's left edge
+            assert o["cellLeft"] - 0.5 <= o["row"] and o["rowRight"] <= o["cellRight"] + 0.5, o  # in its own cell
+        assert b["row"] == pytest.approx(a["row"], abs=3), (a, b)
+
+
+def test_editor_preview_bevel_is_even_with_no_shadow(write_cfg, open_page):
+    write_cfg(layout="gallery-salon", slots=8, slot_overrides={1: {"shape": "heart"}})
+    page = open_page().page
+    deco = page.evaluate("""() => [...document.querySelectorAll('#collage-preview .opening-deco')].map(d => ({
+        bevels: [...d.querySelectorAll('.bevel')].map(p => p.getAttribute('fill')),
+        shadow: !!d.querySelector('filter, linearGradient, radialGradient, [filter], [transform]') }))""")
+    assert len(deco) == 8
+    assert all(d["bevels"] == ["#ffffff"] and not d["shadow"] for d in deco), deco
 
 
 # --- Rotation: per-layout mode chips ---
