@@ -274,13 +274,14 @@ def test_reset_shows_the_count_resets_keeps_folders_and_undoes(write_cfg, open_e
     assert cfg["source_path"] == before["source_path"]
     assert cfg["slots"][1]["source_path"] == other and cfg["slots"][1]["use_global"]["source"] is False
     assert "group" not in cfg["slots"][1] and len(cfg["slots"]) == len(before["slots"])
+    # The server saves before it replies, so wait for the editor to take in its reply
+    _until(page, "() => !document.getElementById('undo-row').hidden")
     assert page.locator("#g-wall-color").input_value() == "#1a1a1a"  # the editor shows the reset config
-    assert page.locator("#undo-row").is_visible()
 
     page.locator("#undo-btn").click()
     _modal(page).get_by_role("button", name="Undo").click()
     _saved(write_cfg, lambda c: c == before)
-    assert not page.locator("#undo-row").is_visible()
+    _until(page, "() => document.getElementById('undo-row').hidden")
     assert page.locator("#g-wall-color").input_value() == "#123456"
     assert w.errors == []
 
@@ -320,7 +321,7 @@ def test_preset_save_apply_keeps_folders_and_is_shared(write_cfg, open_editor):
     modal.get_by_role("button", name="Apply my preset").click()
     cfg = _saved(write_cfg, lambda c: c["wall_color"] == "#224466")
     assert cfg["fill_mode"] == "contain" and cfg["label_position"] == "mat" and cfg["source_path"] == other
-    assert page.locator("#undo-text").text_content().startswith("Preset applied")
+    _until(page, "() => document.getElementById('undo-text').textContent.startsWith('Preset applied')")
 
     # Saving again asks first
     page.locator("#preset-save").click()

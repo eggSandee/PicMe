@@ -5,7 +5,7 @@ Pixel checks screenshot the display at device scale 1 with a test palette — ma
 solid frame, cyan mat, white bevel — and each slot showing its own solid-colour photo. Shape
 checks walk out from each opening's centre to where its outline (PicMeShapes, the same outline
 the display clips with) ends, then sample a few px outside (must be mat) and inside the photo's
-own outline, past the cast shadow (must be photo). The green frame comes from frame_defaults: the
+own outline (must be photo). The green frame comes from frame_defaults: the
 gallery's outer frame follows the Frame section unless gallery.frame_override is on.
 """
 from __future__ import annotations
@@ -247,10 +247,11 @@ def test_rect_opening_edges_are_exact(write_cfg, open_display):
     for i in range(1, 5):
         b = opening(page, i)["box"]
         right, bottom, cy, cx = b["x"] + b["w"], b["y"] + b["h"], b["y"] + b["h"] / 2, b["x"] + b["w"] / 2
-        # The cast shadow falls on the top and left; the bottom and right edges are crisp
+        # Every edge is crisp: photo 2 px inside, mat 2 px outside, no shadow on any side
         assert near(pixel(img, right - 2, cy), SLOT_COLORS[i - 1], 20) and near(pixel(img, right + 2, cy), MAT)
         assert near(pixel(img, cx, bottom - 2), SLOT_COLORS[i - 1], 20) and near(pixel(img, cx, bottom + 2), MAT)
-        assert near(pixel(img, b["x"] - 2, cy), MAT) and near(pixel(img, cx, b["y"] - 2), MAT)
+        assert near(pixel(img, b["x"] + 2, cy), SLOT_COLORS[i - 1], 20) and near(pixel(img, b["x"] - 2, cy), MAT)
+        assert near(pixel(img, cx, b["y"] + 2), SLOT_COLORS[i - 1], 20) and near(pixel(img, cx, b["y"] - 2), MAT)
     assert w.errors == []
 
 
@@ -286,18 +287,41 @@ def test_layout_shapes_and_slot_shape_override(write_cfg, open_display):
     assert w.errors == []
 
 
-def test_bevel_is_lit_from_the_top_left_and_can_be_turned_off(write_cfg, open_display):
+def _edge_points(b, m, along):
+    """Mid-bevel and just-inside-the-photo points on each side of box `b` (photo rect `m`), at
+    `along` (0–1) of the way along that side."""
+    bevel = {"top": (b["x"] + along * b["w"], (b["y"] + m["y"]) / 2),
+             "bottom": (b["x"] + along * b["w"], (b["y"] + b["h"] + m["y"] + m["h"]) / 2),
+             "left": ((b["x"] + m["x"]) / 2, b["y"] + along * b["h"]),
+             "right": ((b["x"] + b["w"] + m["x"] + m["w"]) / 2, b["y"] + along * b["h"])}
+    photo = {"top": (m["x"] + along * m["w"], m["y"] + 1.5), "bottom": (m["x"] + along * m["w"], m["y"] + m["h"] - 1.5),
+             "left": (m["x"] + 1.5, m["y"] + along * m["h"]), "right": (m["x"] + m["w"] - 1.5, m["y"] + along * m["h"])}
+    return bevel, photo
+
+
+def test_bevel_is_even_with_no_shadow_and_can_be_turned_off(write_cfg, open_display):
     write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, gallery={"bevel_width": 8})
     page = open_display().page
     img = shot(page)
     b = opening(page, 1)["box"]
-    top_left = pixel(img, b["x"] + 0.1 * b["w"], b["y"] + 4)
-    bottom_right = pixel(img, b["x"] + 0.9 * b["w"], b["y"] + b["h"] - 4)
-    assert min(top_left) >= 235, top_left
-    assert 160 <= min(bottom_right) and sum(top_left) - sum(bottom_right) >= 45, (top_left, bottom_right)
-    # The photo sits inside the bevel
     m = opening(page, 1)["media"]
+    # The photo sits inside the bevel
     assert m["x"] - b["x"] == pytest.approx(8, abs=0.5) and b["w"] - m["w"] == pytest.approx(16, abs=0.5)
+    # No blur, gradient or offset shadow in the opening's decoration: just the ring and the cut line
+    assert page.evaluate("""() => [...document.querySelectorAll('.opening-deco')].every(d =>
+        !d.querySelector('filter, linearGradient, radialGradient, [filter], [transform]'))""")
+    for along in (0.1, 0.5, 0.9):
+        bevel, photo = _edge_points(b, m, along)
+        # The same light edge on all four sides: no darker bottom / right
+        for side, p in bevel.items():
+            assert near(pixel(img, *p), BEVEL, 6), (side, along, pixel(img, *p))
+        # The photo right up to the bevel on every side: no shadow cast onto it
+        for side, p in photo.items():
+            assert near(pixel(img, *p), SLOT_COLORS[0], 20), (side, along, pixel(img, *p))
+    # Just outside the cut on every side: mat, the same all round (no shadow below or right)
+    outside = [pixel(img, b["x"] + 0.5 * b["w"], b["y"] - 3), pixel(img, b["x"] + 0.5 * b["w"], b["y"] + b["h"] + 3),
+               pixel(img, b["x"] - 3, b["y"] + 0.5 * b["h"]), pixel(img, b["x"] + b["w"] + 3, b["y"] + 0.5 * b["h"])]
+    assert all(near(px, MAT, 6) for px in outside), outside
 
     write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, gallery={"bevel": False})
     _until(page, "() => !document.querySelector('.opening-deco .bevel')")
@@ -308,6 +332,27 @@ def test_bevel_is_lit_from_the_top_left_and_can_be_turned_off(write_cfg, open_di
     for p in ((b["x"] + 0.1 * b["w"], b["y"] + 4), (b["x"] + 0.9 * b["w"], b["y"] + b["h"] - 4)):
         px = pixel(img, *p)
         assert not near(px, BEVEL, 60) and near(px, SLOT_COLORS[0], 70), px
+
+
+def test_bevel_reads_as_an_even_line_on_a_white_mat(write_cfg, open_display):
+    """The default (near-white) bevel on a white mat: a faint cut line, equally dark on every side."""
+    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"},
+              gallery={"mat_color": "#ffffff", "bevel_color": "#fbfaf6", "bevel_width": 6})
+    page = open_display().page
+    img = shot(page)
+    b = opening(page, 1)["box"]
+    # Darkest pixel across each side's cut (a few px either side of the box edge), mid-side
+    cx, cy = b["x"] + b["w"] / 2, b["y"] + b["h"] / 2
+    lines = {
+        "top": min((pixel(img, cx, b["y"] + d) for d in range(-2, 3)), key=sum),
+        "bottom": min((pixel(img, cx, b["y"] + b["h"] + d) for d in range(-3, 2)), key=sum),
+        "left": min((pixel(img, b["x"] + d, cy) for d in range(-2, 3)), key=sum),
+        "right": min((pixel(img, b["x"] + b["w"] + d, cy) for d in range(-3, 2)), key=sum),
+    }
+    sums = [sum(px) for px in lines.values()]
+    assert all(sum(px) <= 3 * 255 - 45 for px in lines.values()), lines  # visible against the white mat
+    assert all(min(px) >= 150 for px in lines.values()), lines  # but faint: a line, not a shadow
+    assert max(sums) - min(sums) <= 24, lines  # and even all round
 
 
 def test_contain_in_an_ellipse_letterboxes_inside_the_shape(write_cfg, open_display):
@@ -478,8 +523,14 @@ def test_captions_sit_under_the_opening_and_never_cover_the_photo(write_cfg, ope
             assert r["y"] >= box["bottom"] - 0.5, (shape, i, r, box)  # under the opening, in the mat
             assert r["x"] >= cell["x"] - 0.5 and r["right"] <= cell["right"] + 0.5 and r["bottom"] <= cell["bottom"] + 0.5
             assert abs(r["y"] - date["rect"]["y"]) < 1  # one row
-        row_mid = (min(p["rect"]["x"] for p in info["pills"]) + max(p["rect"]["right"] for p in info["pills"])) / 2
-        assert row_mid == pytest.approx(box["x"] + box["w"] / 2, abs=2)  # centred under the shape
+        # Left-aligned: the row starts at the photo's left edge (the shape's box inside the bevel)
+        row_left = min(p["rect"]["x"] for p in info["pills"])
+        assert row_left == pytest.approx(info["media"]["x"], abs=1), (shape, i, row_left, info["media"])
+        assert max(p["rect"]["right"] for p in info["pills"]) <= cell["right"] - 10 + 0.5  # in its own cell
+        # On screen: mat just left of the row, a pill just right of its start
+        mid_y = date["rect"]["y"] + date["rect"]["h"] / 2
+        assert near(pixel(img, row_left - 3, mid_y), MAT, 30)
+        assert not near(pixel(img, row_left + 3, mid_y), MAT, 60), pixel(img, row_left + 3, mid_y)
         assert_photo_uncovered(img, info, SLOT_COLORS[i - 1], i)
         # Between the photo and the caption: mat
         assert near(pixel(img, box["x"] + box["w"] / 2, box["bottom"] + 2), MAT, 30)

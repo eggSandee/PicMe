@@ -204,47 +204,21 @@
     return el;
   }
 
-  // The bevel ring (outer outline minus the photo's outline), lit from the top left, and the
-  // shadow the mat's cut edge casts onto the photo
+  // The bevel ring (outer outline minus the photo's outline): one even light edge all round,
+  // with no light direction and no shadow on the photo
   function drawDeco(deco, id, shape, w, h, b, gcfg, opts) {
     const S = window.PicMeShapes;
     deco.innerHTML = '';
     if (opts.deco === false) return;
     deco.setAttribute('viewBox', `0 0 ${w} ${h}`);
     const outer = S.get(shape).svgPath(0, 0, w, h);
-    const inner = S.insetPath(shape, 0, 0, w, h, b);
-    const uid = `${opts.idPrefix || 'pm'}-${id}`;
-    const defs = svg('defs', {});
-    const clip = svg('clipPath', { id: `${uid}-in` });
-    clip.appendChild(svg('path', { d: inner }));
-    const blur = svg('filter', { id: `${uid}-blur`, x: '-10%', y: '-10%', width: '120%', height: '120%' });
-    blur.appendChild(svg('feGaussianBlur', { stdDeviation: Math.max(1, Math.min(3, w / 120)) }));
-    const light = svg('linearGradient', { id: `${uid}-light`, x1: '0', y1: '0', x2: '1', y2: '1' });
-    light.append(svg('stop', { offset: '0', 'stop-color': '#fff', 'stop-opacity': '0.45' }),
-                 svg('stop', { offset: '0.5', 'stop-color': '#fff', 'stop-opacity': '0' }),
-                 svg('stop', { offset: '0.5', 'stop-color': '#000', 'stop-opacity': '0' }),
-                 svg('stop', { offset: '1', 'stop-color': '#000', 'stop-opacity': '0.22' }));
-    defs.append(clip, blur, light);
-    deco.appendChild(defs);
-
-    // Inner shadow: everything outside the photo's outline, nudged down-right, blurred, and
-    // clipped to the photo — the mat edge's shadow falls on the top and left of the photo
-    const shadow = svg('g', { 'clip-path': `url(#${uid}-in)` });
-    const pad = 40;
-    shadow.appendChild(svg('path', {
-      d: `M${-pad} ${-pad} H${w + pad} V${h + pad} H${-pad} Z ${inner}`,
-      'fill-rule': 'evenodd', fill: '#000', opacity: '0.4',
-      transform: 'translate(1.5 2)', filter: `url(#${uid}-blur)`,
-    }));
-    deco.appendChild(shadow);
-
     if (b > 0) {
-      const ring = `${outer} ${inner}`;
-      deco.appendChild(svg('path', { class: 'bevel', d: ring, 'fill-rule': 'evenodd', fill: gcfg.bevel_color }));
-      deco.appendChild(svg('path', { d: ring, 'fill-rule': 'evenodd', fill: `url(#${uid}-light)` }));
+      const inner = S.insetPath(shape, 0, 0, w, h, b);
+      deco.appendChild(svg('path', { class: 'bevel', d: `${outer} ${inner}`, 'fill-rule': 'evenodd', fill: gcfg.bevel_color }));
     }
-    // The crisp line where the knife entered the mat board
-    deco.appendChild(svg('path', { d: outer, fill: 'none', stroke: 'rgba(0,0,0,0.18)', 'stroke-width': '1' }));
+    // The crisp line where the knife entered the mat board, the same all round: on a light mat
+    // it is what shows the (light) bevel
+    deco.appendChild(svg('path', { class: 'cut-line', d: outer, fill: 'none', stroke: 'rgba(0,0,0,0.2)', 'stroke-width': '1' }));
     if (opts.selectedId === id) {
       deco.appendChild(svg('path', { class: 'opening-selected', d: outer, fill: 'none',
                                      stroke: opts.selectColor || '#4a90d9', 'stroke-width': opts.selectWidth || 8 }));
@@ -286,8 +260,11 @@
       const s = def.safe(iw, ih);
       const safe = { x: b + s.x, y: b + s.y, w: s.w, h: s.h };
       const inset = parseFloat(getComputedStyle(opening).getPropertyValue('--pill-inset')) || 10;
-      // On the mat: one row under the box, as wide as the cell less --pill-inset, centred
-      const caption = band ? { x: inset, y: box.y + box.h, w: Math.max(0, cell.w - 2 * inset), h: band } : null;
+      // On the mat: one row under the box, starting at the photo's left edge (the shape's box
+      // inside the bevel), like pills at the bottom left of a photo; it may run on past the
+      // shape's right edge, up to --pill-inset from the cell's (never into the next opening)
+      const captionX = Math.min(box.x + b, Math.max(0, cell.w - inset));
+      const caption = band ? { x: captionX, y: box.y + box.h, w: Math.max(0, cell.w - captionX - inset), h: band } : null;
       const overlay = opening.querySelector('.slot-overlay');
       if (overlay && opts.placeOverlays !== false) {
         overlay.classList.toggle('caption', !!caption);
@@ -295,8 +272,8 @@
           // In the cell, not the box: the band is outside the box
           if (overlay.parentElement !== opening) opening.appendChild(overlay);
           Object.assign(overlay.style, {
-            left: `${caption.x}px`, right: `${caption.x}px`, top: `${caption.y}px`, bottom: '',
-            height: `${caption.h}px`, width: 'fit-content', margin: '0 auto', maxWidth: `${caption.w}px`, maxHeight: '',
+            left: `${caption.x}px`, right: '', top: `${caption.y}px`, bottom: '',
+            height: `${caption.h}px`, width: 'fit-content', margin: '', maxWidth: `${caption.w}px`, maxHeight: '',
           });
         } else {
           // On the photo: inside its safe rect, --pill-inset in from its edges
