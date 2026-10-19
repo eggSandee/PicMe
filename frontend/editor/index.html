@@ -413,13 +413,12 @@
 
     .preview-slot:hover { border-color: var(--accent); background: #2a3a4a; }
     /* Under the slot number: the opening's aspect ratio and Fit / Fill ("3:2 · Fill") */
-    .slot-tags { font-size: 0.6em; font-weight: 500; color: #b0b0b0; line-height: 1.2; margin-top: 0.15em;
-                 position: relative; z-index: 1; background: rgba(30, 30, 30, 0.85); padding: 0 0.4em; border-radius: 3px;
-                 text-align: center; white-space: nowrap; max-width: calc(100% - 4px); overflow: hidden; text-overflow: ellipsis; }
+    /* Plain text in the slot number's colour, font and weight, just smaller */
+    .slot-tags { font-size: 0.6em; font-family: inherit; font-weight: inherit; color: inherit; line-height: 1.2; margin-top: 0.15em;
+                 position: relative; z-index: 1; text-align: center; white-space: nowrap; max-width: calc(100% - 4px); overflow: hidden; }
     .preview-slot .slot-tags { font-size: clamp(9px, 0.95vw, 12px); }
     .slot-tags[hidden] { display: none; }
-    .gallery-stage .slot-tags { font-size: 32px; margin: 0; padding: 2px 14px; border-radius: 24px; color: #ddd;
-                                background: rgba(0, 0, 0, 0.55); max-width: none; }
+    .gallery-stage .slot-tags { font-size: 32px; margin: 0; font-weight: 600; color: var(--text-muted); max-width: none; }
     .preview-slot.selected { border-color: var(--slot-selected); background: #1e3a5a; color: var(--accent); }
 
     /* Drag a slot onto another to swap them (slot-drag.js); a long press starts it on touch */
