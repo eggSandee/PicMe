@@ -30,7 +30,7 @@ FIELDS = {"show_date": True, "show_location": True, "show_camera": True, "show_f
 ORDER = ["location", "camera", "megapixels", "fstop", "shutter_speed", "iso", "focal_length"]
 LIGHT, DARK, MID = "#f4f1ea", "#1b1b1b", "#8a8478"
 MIN_TEXT_PX = 16
-MODES = {"gallery": "gallery-salon", "slots": "hero-left", "gallery-12": "gallery-12"}
+MODES = {"gallery": "gallery-salon", "slots": "hero-left", "gallery-12": "gallery-12", "classic-4": "classic-4"}
 
 
 @pytest.fixture(scope="module")
@@ -54,7 +54,7 @@ def write_cfg(e2e_config_path):
 
     def _write(style="pill", mode="gallery", mat=LIGHT, meta=None, **extra) -> dict:
         layout = MODES[mode]
-        slots = {"gallery": 8, "slots": 5, "gallery-12": 12}[mode]
+        slots = {"gallery": 8, "slots": 5, "gallery-12": 12, "classic-4": 4}[mode]
         cfg = make_config(root / "photos", layout=layout, slots=slots, cycle_seconds=300)
         cfg["label_style"] = style
         cfg["max_metadata_pills"] = None
@@ -130,6 +130,11 @@ GEOMETRY_JS = """() => {
     return { x: r.x + parseFloat(cs.borderLeftWidth), y: r.y + parseFloat(cs.borderTopWidth),
              r: r.r - parseFloat(cs.borderRightWidth), b: r.b - parseFloat(cs.borderBottomWidth) }; };
   const gallery = !!document.querySelector('#collage.gallery');
+  // The photo you see: the img box, less the bars Fit (object-fit: contain) leaves
+  const content = img => { const r = box(img), w = r.r - r.x, h = r.b - r.y;
+    if (getComputedStyle(img).objectFit !== 'contain' || !img.naturalWidth) return r;
+    const k = Math.min(w / img.naturalWidth, h / img.naturalHeight), cw = img.naturalWidth * k, ch = img.naturalHeight * k;
+    return { x: r.x + (w - cw) / 2, y: r.y + (h - ch) / 2, r: r.x + (w + cw) / 2, b: r.y + (h + ch) / 2 }; };
   const matEl = gallery ? document.querySelector('.gallery-mat') : null;
   return [...document.querySelectorAll('.slot')].map(slot => {
     const ov = slot.querySelector('.slot-overlay');
@@ -141,7 +146,7 @@ GEOMETRY_JS = """() => {
                color: cs.color, family: cs.fontFamily, italic: cs.fontStyle === 'italic', width: i.getBoundingClientRect().width }; });
     const out = {
       id: slot.id, style: ov.dataset.labelStyle, where: ov.dataset.labelWhere, label: box(root), items,
-      hidden: Number(ov.dataset.hidden || 0), photo: gallery ? box(mf) : box(img),
+      hidden: Number(ov.dataset.hidden || 0), photo: gallery ? box(mf) : box(img), content: content(img),
       frameInside: gallery ? inset(matEl) : inset(mf),
       matColor: getComputedStyle(gallery ? matEl : mf).backgroundColor,
       cardColor: getComputedStyle(root).backgroundColor,
@@ -215,7 +220,7 @@ def test_style_places_legible_labels_clear_of_neighbours_frames_and_bevels(write
         assert inside(s["label"], s["frameInside"]), s
         if style == "whisper":
             assert s["where"] == "photo"
-            assert inside(s["label"], s["photo"]), s  # on the photo, inside the bevel
+            assert inside(s["label"], s["content"]), s  # on the photo you see, inside the bevel
             if mode == "gallery":
                 assert inside(s["label"], s["safe"]), s  # inside a heart's, circle's, hexagon's safe area
             assert s["scrim"] and "linear-gradient" in s["scrimImage"] and "radial" not in s["scrimImage"], s
@@ -223,8 +228,8 @@ def test_style_places_legible_labels_clear_of_neighbours_frames_and_bevels(write
             assert s["where"] == "mat"
             # Under the photo (in gallery mode, under the opening and its bevel), never on it
             assert s["label"]["y"] >= (s["box"] if mode == "gallery" else s["photo"])["b"] - 0.5, s
-            # Left-aligned to the photo's left edge
-            assert abs(s["label"]["x"] - s["photo"]["x"]) <= 1.5, s
+            # Left-aligned to the left edge of the photo you see
+            assert abs(s["label"]["x"] - s["content"]["x"]) <= 1.5, s
             assert not s["scrim"]
     # Clear of every other slot's label and photo (and, in a gallery, every other opening)
     for a in info:
@@ -380,7 +385,8 @@ PREVIEW_JS = """sel => [...document.querySelectorAll(sel)].map(o => {
 
 @pytest.mark.parametrize("style", STYLES)
 def test_editor_preview_matches_the_display(write_cfg, open_page, style):
-    write_cfg(style=style, mode="gallery")
+    # Fill: the editor has no photo, so in Fit it can't know where the display's photo ends
+    write_cfg(style=style, mode="gallery", fill_mode="cover")
     display = open_page().page
     shown = display.evaluate(PREVIEW_JS, "#collage .opening")
     editor = open_page("/editor/", ready=None).page
@@ -470,3 +476,40 @@ def test_whisper_long_place_alone_scrolls_and_never_clips_its_start(write_cfg, o
     for ln in page.evaluate(LINE_JS):
         assert ln["animation"] == "none", ln
         assert abs(ln["runLeft"] - ln["lineLeft"]) <= 1 and ln["runWidth"] > ln["lineRight"] - ln["lineLeft"], ln
+
+
+# --- Fit (contain): labels follow the photo you see, not the opening ---
+
+# classic-4's separate frames are wider than 3:2, so its photos have bars at the sides
+@pytest.mark.parametrize("mode", ["gallery", "classic-4"])
+@pytest.mark.parametrize("style", STYLES)
+def test_fit_labels_follow_the_visible_photo(write_cfg, open_page, mode, style):
+    write_cfg(style=style, mode=mode, fill_mode="contain")
+    info = geometry(open_page().page)
+    # 3:2 photos in wider openings: some have bars beside them, or the test proves nothing
+    assert any(s["content"]["x"] > s["photo"]["x"] + 20 for s in info)
+    for s in info:
+        if style == "whisper":
+            assert inside(s["label"], s["content"]), s
+        else:
+            assert abs(s["label"]["x"] - s["content"]["x"]) <= 1.5, s
+    if style == "whisper":
+        # The scrim covers the photo, not the bars
+        scrims = open_page().page.evaluate("""() => [...document.querySelectorAll('.slot')].map(s => {
+          const r = s.querySelector('.lbl-scrim').getBoundingClientRect(); return { x: r.x, r: r.right }; })""")
+        for s, sc in zip(info, scrims):
+            assert sc["x"] >= s["content"]["x"] - 1 and sc["r"] <= s["content"]["r"] + 1, (s["id"], sc)
+
+
+def test_fit_gallery_pill_captions_start_at_the_visible_photo(write_cfg, open_page):
+    write_cfg(style="pill", mode="gallery", fill_mode="contain", label_position="mat")
+    page = open_page(ready=PILLS_READY_JS).page
+    rows = page.evaluate("""() => [...document.querySelectorAll('.slot')].map(slot => {
+      const img = slot.querySelector('.mat-frame img.visible'), r = img.getBoundingClientRect();
+      const k = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight);
+      // The leftmost pill (the date comes first by CSS order, last in the DOM)
+      const xs = [...slot.querySelectorAll('.overlay-pill')].map(p => p.getBoundingClientRect()).filter(b => b.width > 0).map(b => b.x);
+      return { content: r.x + (r.width - img.naturalWidth * k) / 2, box: r.x, pill: Math.min(...xs) }; })""")
+    assert any(r["content"] > r["box"] + 20 for r in rows)
+    for r in rows:
+        assert abs(r["pill"] - r["content"]) <= 1.5, r

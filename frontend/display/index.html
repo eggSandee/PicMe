@@ -580,7 +580,20 @@
       const matFrame = slotEl.querySelector('.mat-frame');
       const area = geo.gallery ? PicMeLabels.openingArea(geo.gallery, where, matFrame)
                                : PicMeLabels.frameArea(geo.slots, where, matFrame);
-      return area && { ...area, where, fontPx: PicMeLabels.fontPx(style, pillPx), matColor: geo.matColor };
+      return area && PicMeLabels.visibleArea({ ...area, where, fontPx: PicMeLabels.fontPx(style, pillPx), matColor: geo.matColor },
+                                             fitMediaSize(slotEl));
+    }
+
+    // In Fit (contain), the natural size of the photo or video on screen, so labels follow the
+    // photo you see rather than the opening (README → Metadata label styles); null in Fill or
+    // before it has loaded
+    function fitMediaSize(slotEl) {
+      const slotCfg = activeSlots.find(s => `slot-${s.id}` === slotEl.id);
+      if (!slotCfg || (slotCfg.fill_mode ?? config.fill_mode) === 'cover') return null;
+      const video = slotEl.classList.contains('video-mode');
+      const el = slotEl.querySelector(video ? '.mat-frame video.visible' : '.mat-frame img.visible');
+      const w = video ? el?.videoWidth : el?.naturalWidth, h = video ? el?.videoHeight : el?.naturalHeight;
+      return w > 0 && h > 0 ? { w, h } : null;
     }
 
     // Position and fit a styled label (not pills) in its slot
@@ -631,6 +644,12 @@
       if (pills.length === 0) return;
 
       const caption = overlay.classList.contains('caption');
+      // A gallery caption starts at the left edge of the photo you see (Fit leaves bars beside it)
+      const opening = slotEl._labelGeo?.gallery;
+      if (caption && opening?.caption && window.PicMeLabels) {
+        const a = PicMeLabels.visibleArea(PicMeLabels.openingArea(opening, 'mat', null), fitMediaSize(slotEl));
+        Object.assign(overlay.style, { left: `${Math.round(a.rect.x)}px`, maxWidth: `${Math.max(0, Math.floor(a.rect.w))}px` });
+      }
       const overflows = caption
         ? () => overlay.scrollWidth > overlay.clientWidth + 0.5
         : () => overlay.scrollHeight > overlay.clientHeight + 0.5;

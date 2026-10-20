@@ -117,26 +117,67 @@
   // bottom of the shape's safe rect inside o.inset (centred in a shape that isn't a rectangle,
   // so a whisper stays inside a heart or a circle). matFrame: the opening's photo element.
   function openingArea(o, where, matFrame) {
-    if (where === 'mat') return o.caption ? { rect: { ...o.caption }, align: 'start' } : null;
-    const i = o.inset;
+    const b = o.bevel, i = o.inset;
+    if (where === 'mat') {
+      if (!o.caption) return null;
+      const region = { x: o.box.x + b, y: o.box.y + b, w: o.box.w - 2 * b, h: o.box.h - 2 * b };
+      return { rect: { ...o.caption }, align: 'start', region, inset: i };
+    }
     return {
       rect: { x: o.safe.x + i, y: o.safe.y + i, w: o.safe.w - 2 * i, h: o.safe.h - 2 * i },
       align: o.shape === 'rect' || o.shape === 'rounded' ? 'end' : 'center',
-      scrim: { host: matFrame, left: 0, right: 0, bottom: 0, photoBottom: o.box.h - o.bevel },
+      scrim: { host: matFrame, left: 0, right: 0, bottom: 0, photoBottom: o.box.h - b },
+      region: { x: b, y: b, w: o.box.w - 2 * b, h: o.box.h - 2 * b }, inset: i,
     };
   }
 
   // In a separate frame, in px of the overlay's parent: g = { edge (frame + mat), mat, band, w, h }.
   // host: the element whose padding box holds the photo at `mat` from its edges (the scrim's parent).
   function frameArea(g, where, host, inset = 10) {
+    const region = { x: g.edge, y: g.edge, w: g.w - 2 * g.edge, h: g.h - 2 * g.edge - (g.band || 0) };
     if (where === 'mat') {
-      return g.band > 0 ? { rect: { x: g.edge, y: g.h - g.edge - g.band, w: g.w - 2 * g.edge, h: g.band }, align: 'start' } : null;
+      return g.band > 0 ? { rect: { x: g.edge, y: g.h - g.edge - g.band, w: g.w - 2 * g.edge, h: g.band }, align: 'start',
+                            region, inset } : null;
     }
     const e = g.edge + inset;
     return {
       rect: { x: e, y: e, w: g.w - 2 * e, h: g.h - 2 * e },
       align: 'end',
       scrim: { host, left: g.mat, right: g.mat, bottom: g.mat, photoBottom: g.h - g.edge },
+      region, inset,
+    };
+  }
+
+  // The part of `region` a photo or video of natural size nw x nh fills under object-fit: contain
+  // (centred, as object-position's default)
+  function containRect(region, nw, nh) {
+    if (!(nw > 0 && nh > 0) || !(region.w > 0 && region.h > 0)) return region;
+    const k = Math.min(region.w / nw, region.h / nh);
+    const w = nw * k, h = nh * k;
+    return { x: region.x + (region.w - w) / 2, y: region.y + (region.h - h) / 2, w, h };
+  }
+
+  // Fit (contain): narrow an area from the opening to the photo you see. A label on the mat starts
+  // at the visible photo's left edge; a whisper and its scrim stay on the photo, off the bars.
+  // natural: the media's { w, h }, or null (Fill, or not loaded yet) to leave the area as it is.
+  function visibleArea(area, natural) {
+    if (!area || !area.region || !natural) return area;
+    const reg = area.region, c = containRect(reg, natural.w, natural.h);
+    if (c.w >= reg.w - 0.5 && c.h >= reg.h - 0.5) return area;
+    const r = { ...area.rect };
+    if (area.where === 'mat' || !area.scrim) {
+      const x = Math.max(r.x, c.x);
+      return { ...area, rect: { ...r, x, w: Math.max(0, r.w - (x - r.x)) } };
+    }
+    const i = area.inset || 0;
+    const x0 = Math.max(r.x, c.x + i), y0 = Math.max(r.y, c.y + i);
+    const x1 = Math.min(r.x + r.w, c.x + c.w - i), y1 = Math.min(r.y + r.h, c.y + c.h - i);
+    const s = area.scrim;
+    return {
+      ...area,
+      rect: { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) },
+      scrim: { ...s, left: s.left + (c.x - reg.x), right: s.right + (reg.x + reg.w - c.x - c.w),
+               bottom: s.bottom + (reg.y + reg.h - c.y - c.h), photoBottom: c.y + c.h },
     };
   }
 
@@ -360,7 +401,7 @@
 
   window.PicMeLabels = {
     SPEC, STYLES, DEFAULT_STYLE, MIN_TEXT_PX, INK_DARK, INK_LIGHT, LIFT_BELOW, SAMPLE,
-    resolveStyle, placement, fontPx, captionBand, maxBand, fields, formatDate, openingArea, frameArea,
+    resolveStyle, placement, fontPx, captionBand, maxBand, fields, formatDate, openingArea, frameArea, containRect, visibleArea,
     parseColor, luminance, contrast, inkFor,
     render, clear, place, fit, show,
   };
