@@ -167,12 +167,17 @@
     return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
   }
 
-  // { ink, rule, lift } for text straight on a mat of colour `mat`
+  // { ink, rule, lift } for text straight on a mat of colour `mat`: the warm inks when one reads
+  // well (LIFT_BELOW:1 or more), else pure black or white, whichever contrasts more (always at
+  // least 4.58:1, the most any mat allows), set heavier
   function inkFor(mat) {
     const cd = contrast(mat, INK_DARK), cl = contrast(mat, INK_LIGHT);
-    const dark = cd >= cl;
+    let dark = cd >= cl, ink = dark ? INK_DARK : INK_LIGHT;
     const lift = Math.max(cd, cl) < LIFT_BELOW;
-    const ink = lift ? (dark ? '#000000' : '#ffffff') : (dark ? INK_DARK : INK_LIGHT);
+    if (lift) {
+      dark = contrast(mat, '#000000') >= contrast(mat, '#ffffff');
+      ink = dark ? '#000000' : '#ffffff';
+    }
     return { ink, rule: dark ? 'rgba(0, 0, 0, 0.55)' : 'rgba(255, 255, 255, 0.6)', lift };
   }
 

@@ -407,3 +407,34 @@ def test_editor_separate_frame_preview_draws_the_style(write_cfg, open_page):
       const inner = [...c.children].find(e => e.textContent.trim().length && !e.classList.contains('slot-overlay'));
       const r = c.querySelector('.lbl').getBoundingClientRect(), p = inner.getBoundingClientRect();
       return r.top >= p.bottom - 0.5 && Math.abs(r.left - p.left) <= 1; })""")
+
+
+# --- Caption ink on any mat (QA: saturated mid-tones) ---
+
+SATURATED = ["#0f87a5", "#008787", "#0078e1"]
+
+
+def test_caption_ink_contrast_sweep_over_mat_colours(write_cfg, open_page):
+    """PicMeLabels.inkFor over a 17-step RGB grid (4,913 mats) and the QA's saturated mid-tones:
+    the ink it picks is at least 4.5:1 against every one (contrast computed here, not by the module)."""
+    write_cfg(style="caption", mode="slots")
+    page = open_page().page
+    steps = [round(i * 255 / 16) for i in range(17)]
+    mats = [f"#{r:02x}{g:02x}{b:02x}" for r in steps for g in steps for b in steps] + SATURATED
+    inks = page.evaluate("mats => mats.map(m => PicMeLabels.inkFor(m).ink)", mats)
+    worst = sorted((contrast(_css(ink), _css(mat)), mat, ink) for mat, ink in zip(mats, inks))[:5]
+    assert worst[0][0] >= 4.5, worst
+
+
+def _css(hex_color: str) -> str:
+    h = hex_color.lstrip("#")
+    return "rgb({}, {}, {})".format(*(int(h[i:i + 2], 16) for i in (0, 2, 4)))
+
+
+@pytest.mark.parametrize("mat", SATURATED)
+@pytest.mark.parametrize("mode", ["gallery", "slots"])
+def test_caption_on_saturated_mid_tone_mats_reads_at_4_5(write_cfg, open_page, mode, mat):
+    write_cfg(style="caption", mode=mode, mat=mat)
+    for s in geometry(open_page().page):
+        for item in s["items"]:
+            assert contrast(item["color"], s["matColor"]) >= 4.5, (s["id"], item, s["matColor"])
