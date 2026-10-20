@@ -15,7 +15,7 @@ def customised(folder="/media/family", other="/media/videos") -> dict:
     cfg = make_config(folder, layout="gallery-salon", slots=6)
     cfg |= {
         "source_path": folder, "include_subfolders": False, "video_max_edge": 3840, "include_live_photos": True,
-        "wall_color": "#123456", "date_format": "iso", "max_metadata_pills": 5, "label_position": "photo",
+        "wall_color": "#123456", "date_format": "iso", "tap_for_details": False, "max_metadata_pills": 5, "label_position": "photo",
         "frame_defaults": {"mat_color": "#ff0000", "mat_width": 30, "show_frame": True, "frame_color": "#00ff00",
                            "frame_width": 12, "frame_style": "solid"},
         "metadata_defaults": {"show_date": True, "show_location": True, "text_size": "large"},
@@ -59,7 +59,8 @@ def test_reset_puts_looks_back_and_keeps_media(client, config_path, saved):
     assert_media_kept(saved, after)
     d = main.DEFAULT_CONFIG
     for key in ("layout", "wall_color", "date_format", "max_metadata_pills", "label_position", "fill_mode",
-                "frame_defaults", "metadata_defaults", "layout_rotation", "gallery", "layout_modes"):
+                "frame_defaults", "metadata_defaults", "layout_rotation", "gallery", "layout_modes",
+                "tap_for_details"):
         assert after[key] == d[key], key
     assert after["layout"] == "classic-4" and after["layout_rotation"]["enabled"] is False
     assert "time_of_day" not in after
@@ -78,7 +79,7 @@ def test_reset_dry_run_counts_and_writes_nothing(client, config_path, saved):
     assert not main.backup_path().exists()
     groups = {c["group"] for c in r["changes"]}
     assert {"Layout", "Daily rotation", "Frame", "Gallery mat", "Metadata", "Wall color", "Fill frames",
-            "Time-of-day", "Frames per layout", "Slot 2", "Slot 3"} <= groups
+            "Tap for details", "Time-of-day", "Frames per layout", "Slot 2", "Slot 3"} <= groups
     assert r["count"] == len(r["changes"])
     # The count matches what the reset then changes
     assert client.post("/api/config/reset").json()["count"] == r["count"]

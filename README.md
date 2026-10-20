@@ -109,6 +109,7 @@ PicMe/
 - [x] Configurable metadata pill size and text size
 - [x] Basic / Advanced editor mode — Basic hides less-common settings so the editor stays approachable for users who don't need full configurability (see [Editor modes](#editor-modes))
 - [x] Media folders include their subfolders (opt-out globally or per slot; see [Subfolders](#subfolders))
+- [x] Tap a photo on the display to see it larger with all its metadata (see [Photo details](#photo-details))
 
 ---
 
@@ -367,6 +368,7 @@ Top-level settings:
   "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
   "label_position": "auto",      // "auto" | "photo" | "mat" — pills on the photo or in a caption on the mat (see Metadata pills below)
   "fill_mode": "cover",          // "cover" = Fill (crop, no black bars) | "contain" = Fit (whole photo, bars); missing = contain (see Fit and Fill below)
+  "tap_for_details": true,       // click, tap or Enter on a photo shows it larger with its metadata; false for kiosk screens; missing = true (see Photo details below)
   "frame_defaults": {            // mat and frame style applied to every slot; per-slot frame: {} overrides.
                                  // show_frame, frame_style and frame_color also style the gallery's outer frame
     "mat_color": "#000000",      // mat color behind the photo (any CSS color)
@@ -534,6 +536,17 @@ A photo or video rarely has exactly its frame's shape. **Fit** (`"contain"`) sho
 - **Per slot.** A slot can pick its own in its **Fit** section (Advanced): **Default** follows Fill frames, or choose Fit or Fill for that slot only (`"fill_mode"` in the slot; Default removes it). **Reset slots to global settings** puts every slot back on Default.
 - **In the preview.** Each slot shows **Fit** or **Fill** under its number, next to its size (see [Editor layout](#editor-layout)).
 
+#### Photo details
+
+Click or tap a photo or video on the display to see it larger, with everything PicMe knows about it.
+
+- **What it shows.** The whole photo, about 85% of the screen, over the dimmed collage. Gallery shapes and Fill don't apply here, so a heart opening's photo shows as the full rectangle. Beside it (under it on a portrait screen) are the photo's Date, Location, Camera, Megapixels, Aperture, Shutter speed, ISO and Focal length, and then its file name. Only the fields the file has are listed. A video shows its date. The list ignores the pill settings, so it shows everything even with **Show metadata** off.
+- **TV remotes and keyboards.** The arrow keys move a white ring between the slots (the first press picks the top-left one), and Enter opens the ringed slot. The ring goes away after 45 seconds without a key press.
+- **Videos keep playing.** A video loops in the details instead of moving on.
+- **Cycling pauses.** While the details are open, that slot and the slots in its group keep their photos. The other slots carry on. Cycling resumes at the next change after closing.
+- **Closing.** Click or tap outside the photo, press **×**, or press Esc, Backspace or the remote's Back button. With no input for 45 seconds it closes by itself, so a TV never gets stuck on it.
+- **Turning it off.** For a kiosk screen, turn off **Tap a photo for details** in the editor's Global Settings (`"tap_for_details": false`). The display picks the change up without reloading.
+
 #### Gallery mat
 
 Instead of a frame around every slot, a layout can show **one frame around the whole display and one mat** filling it, with each slot an opening cut into the mat — like a multi-photo frame from a shop. The openings are separated only by mat.
@@ -582,7 +595,7 @@ Which settings each mode shows (the split lives in one table, `EDITOR_SETTINGS` 
 |---|---|---|
 | **Layout** | Layout picker, Frames (Separate / Gallery mat), Rotate layout daily, the rotation checkboxes on the thumbnails, Select all / Deselect all, today's rotation status | Switch layout at, Mat chips (frames per rotated layout) |
 | **My Settings** | Save as my preset, Apply my preset, Reset everything to defaults, Undo | — |
-| **Global** | Default media folder, Wall color, Fill frames | Include subfolders, Reset slots to global settings |
+| **Global** | Default media folder, Wall color, Fill frames, Tap a photo for details | Include subfolders, Reset slots to global settings |
 | **Frame** | Mat color, Frame style | Mat width, Show frame border, Frame color, Frame width |
 | **Gallery Mat** | Mat color (the frame's style is in Frame) | Use a different frame for gallery mats (its style, show frame, colour), outer frame width, mat around and between the openings, wall around the frame, bevel |
 | **Metadata** | Show metadata; Text size, Pill size, Label position and the fields (Date, Location, Camera…) | Date format, Max metadata pills |
@@ -603,9 +616,9 @@ In Basic, a slot's media folder is always editable: typing a different folder gi
 
 **My Settings**, at the top of the sidebar, saves and restores your settings:
 
-- **Save as my preset** saves the current look: layout, rotation, Frames per layout, wall colour, Fill frames, frame, gallery mat, metadata, label position, time of day, and each slot's frame, metadata, timer, group, Fit / Fill, opening shape and video loops and audio. It asks before replacing a saved preset.
+- **Save as my preset** saves the current look: layout, rotation, Frames per layout, wall colour, Fill frames, Tap a photo for details, frame, gallery mat, metadata, label position, time of day, and each slot's frame, metadata, timer, group, Fit / Fill, opening shape and video loops and audio. It asks before replacing a saved preset.
 - **Apply my preset** puts that look back. The dialog says how many settings change and lists them. Anything the preset names that no longer exists (a removed layout, an unknown shape) is skipped and listed in the dialog; the current layout stays then.
-- **Reset everything to defaults…** puts every look setting back to the first-run defaults: Classic 4, daily rotation off, wood frames, Fill frames on, every slot on the global frame and metadata, 30 s timers. The dialog says how many settings differ from the defaults (counting what the display shows differently).
+- **Reset everything to defaults…** puts every look setting back to the first-run defaults: Classic 4, daily rotation off, wood frames, Fill frames on, Tap a photo for details on, every slot on the global frame and metadata, 30 s timers. The dialog says how many settings differ from the defaults (counting what the display shows differently).
 - **Kept by both.** Your default media folder, each slot's folder and photo/video mode, Include subfolders, and the video settings (max video size, Live Photo clips), so the display never goes blank and the video library isn't converted again. All slots are kept too, including ones the layout doesn't show, so a bigger layout later still has their folders.
 - **Undo.** After a reset or applying the preset, an **Undo** link under the buttons restores the config from just before, exactly. There is one step of undo: it is used up once undone, and a second reset replaces it. Edits made after the reset are lost by Undo, and its dialog says so.
 - **From any device.** Presets, the reset and Undo run on the server: `presets.json` and `config.backup.json` sit next to `config.json` (both ignored by git), so another device's editor sees the same preset and can undo the same reset.
