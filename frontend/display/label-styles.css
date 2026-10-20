@@ -1,0 +1,102 @@
+/* Metadata label styles (README → Metadata label styles); markup and placement in label-styles.js.
+   Shared by the display and the editor. Sizes are em of --label-font-size (set per slot from
+   the screen's pill size), so one size holds for every slot on screen. */
+
+/* Source Serif 4 (SIL Open Font License, /assets/fonts/SourceSerif4-OFL.txt): one variable font
+   per style and subset, weights 200 to 900. TV browsers have no Georgia. */
+@font-face {
+  font-family: 'PicMe Serif';
+  src: url('/assets/fonts/source-serif-4-latin-wght-normal.woff2') format('woff2');
+  font-weight: 200 900; font-style: normal; font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'PicMe Serif';
+  src: url('/assets/fonts/source-serif-4-latin-wght-italic.woff2') format('woff2');
+  font-weight: 200 900; font-style: italic; font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'PicMe Serif';
+  src: url('/assets/fonts/source-serif-4-latin-ext-wght-normal.woff2') format('woff2');
+  font-weight: 200 900; font-style: normal; font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'PicMe Serif';
+  src: url('/assets/fonts/source-serif-4-latin-ext-wght-italic.woff2') format('woff2');
+  font-weight: 200 900; font-style: italic; font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* The overlay is the area the label may use (place() sizes it); the label sits at its start
+   (on the mat) or at its bottom (on the photo) */
+.slot-overlay.label-styled {
+  position: absolute; z-index: 10; pointer-events: none;
+  display: flex; flex-direction: row; align-items: center; justify-content: flex-start;
+  gap: 0; overflow: hidden; font-size: var(--label-font-size, 18px);
+  opacity: 0; transition: opacity 0.5s ease;
+}
+.slot-overlay.label-styled.label-visible { opacity: 1; }
+.slot-overlay.label-styled[data-label-where=photo] { flex-direction: column; justify-content: flex-end; align-items: flex-end; }
+.slot-overlay.label-styled[data-label-where=photo][data-label-align=center] { align-items: center; }
+
+.lbl { flex: none; box-sizing: border-box; }
+.lbl-line { display: block; overflow: hidden; white-space: nowrap; }
+.lbl-run { display: inline-block; vertical-align: top; width: -webkit-max-content; width: max-content; }
+.lbl-item { white-space: nowrap; }
+/* Soft edges while a line scrolls */
+.lbl-line.scrolling {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 0.4em, #000 calc(100% - 0.4em), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 0.4em, #000 calc(100% - 0.4em), transparent 100%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lbl-run { animation: none !important; }
+}
+
+/* Serif caption: one line on the mat, the date in italic, the rest upright at the same size,
+   dark hairlines between; the ink follows the mat (label-styles.js inkFor) */
+.lbl-caption {
+  font-family: 'PicMe Serif', Georgia, 'Times New Roman', serif;
+  font-weight: 500; line-height: 1.3; color: var(--lbl-ink, #2a241c);
+}
+.label-lift .lbl-caption { font-weight: 600; }
+.lbl-caption .lbl-item[data-key=date] { font-style: italic; }
+.lbl-caption .lbl-item + .lbl-item::before {
+  content: ''; display: inline-block; width: 1.1em; height: 0; vertical-align: 0.32em; margin: 0 0.55em;
+  border-top: 1.5px solid var(--lbl-rule, rgba(0, 0, 0, 0.55));
+}
+
+/* Museum placard: a printed label on the mat at the photo's left edge, a hairline border and a
+   warm card tone, no shadow. The place in italic, then the date and details. */
+.lbl-placard {
+  font-family: 'PicMe Serif', Georgia, 'Times New Roman', serif;
+  color: #231d15; background: #f7f1e3; border: 1px solid rgba(70, 52, 30, 0.42); border-radius: 1px;
+  padding: 0.32em 0.62em 0.38em; line-height: 1.2; text-align: left;
+}
+.lbl-placard .lbl-title { font-size: 1.15em; font-style: italic; font-weight: 500; }
+.lbl-placard .lbl-details { margin-top: 0.08em; line-height: 1.25; font-weight: 600; color: #453a2d; }
+.lbl-placard .lbl-details .lbl-item + .lbl-item::before { content: '\00b7'; margin: 0 0.4em; color: #6f6150; }
+
+/* Corner whisper: bare type at the bottom of the photo over a soft linear scrim */
+.lbl-whisper {
+  display: flex; flex-direction: column; align-items: flex-end; text-align: right;
+  color: #fff; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; line-height: 1.15;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 8px rgba(0, 0, 0, 0.35);
+}
+[data-label-align=center] > .lbl-whisper { align-items: center; text-align: center; }
+.lbl-whisper .lbl-place { font-size: 0.8em; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
+.lbl-whisper .lbl-date { font-size: 1.4em; font-weight: 400; }
+.lbl-whisper.lbl-compact .lbl-date { font-size: 1em; font-weight: 500; }
+.lbl-whisper .lbl-details { font-size: 0.8em; font-weight: 500; letter-spacing: 0.03em; margin-top: 0.15em; }
+.lbl-whisper .lbl-details .lbl-item + .lbl-item { margin-left: 0.8em; }
+.lbl-scrim {
+  position: absolute; z-index: 5; pointer-events: none;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.28) 55%, rgba(0, 0, 0, 0));
+  opacity: 0; transition: opacity 0.5s ease;
+}
+.lbl-scrim.visible { opacity: 1; }
