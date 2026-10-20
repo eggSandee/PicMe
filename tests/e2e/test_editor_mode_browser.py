@@ -586,3 +586,17 @@ def test_reset_slots_to_global_clears_slot_fill(write_cfg, open_editor):
     page.locator(".modal").get_by_role("button", name="Reset all slots").click()
     cfg = _saved(write_cfg, lambda c: "fill_mode" not in c["slots"][1])
     assert cfg["fill_mode"] == "cover"
+
+
+def test_tap_for_details_is_basic_and_saves(write_cfg, open_editor):
+    write_cfg()  # from before the setting: no tap_for_details, which means on
+    w = open_editor(editor_mode="basic")
+    page = w.page
+    assert _visible(page, ".toggle-row:has(#g-tap-details)")
+    assert page.locator("#g-tap-details").is_checked()
+    assert not page.locator("#advanced-hint").is_visible()
+    page.locator(".toggle-row:has(#g-tap-details) .toggle-track").click()
+    _saved(write_cfg, lambda c: c.get("tap_for_details") is False)
+    page.locator(".toggle-row:has(#g-tap-details) .toggle-track").click()
+    _saved(write_cfg, lambda c: c.get("tap_for_details") is True)
+    assert w.errors == []

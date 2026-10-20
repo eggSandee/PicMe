@@ -155,6 +155,93 @@
       display: none;
       z-index: 999;
     }
+
+    /* ── Photo details (README → Photo details): the photo or video, whole and unclipped, over
+       a dim collage with its metadata beside it. Sized by fitDetailMedia. ── */
+    #collage[data-details="on"] .mat-frame { cursor: pointer; }
+    .slot:focus { outline: none; }
+    /* Arrow keys on a TV remote: a ring on the slot that Enter opens (on the shape's box in a
+       gallery mat, not the whole cell) */
+    #collage:not(.gallery) .slot:focus-visible,
+    #collage.gallery .slot:focus-visible .opening-box { outline: 4px solid #fff; outline-offset: -4px; }
+
+    #detail {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.75);
+      animation: detail-fade 0.2s ease;
+    }
+    #detail[hidden] { display: none; }
+    .detail-card {
+      display: flex;
+      align-items: center;
+      gap: 2.5vmin;
+      max-width: 85vw;
+      max-height: 85vh;
+      animation: detail-grow 0.2s ease;
+    }
+    .detail-media { flex: 0 0 auto; display: flex; }
+    .detail-media img, .detail-media video {
+      display: block;
+      max-width: 85vw;
+      max-height: 85vh;
+      object-fit: contain;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+    }
+    /* The pill look (palette, faint light edge, blur), as a list sized for across the room */
+    .detail-panel {
+      flex: 0 0 auto;
+      width: clamp(220px, 24vw, 420px);
+      max-height: 85vh;
+      overflow: auto;
+      padding: 1em 1.2em;
+      background: rgba(20, 20, 20, 0.62);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(4px);
+      border-radius: 12px;
+      color: #fff;
+      font-size: clamp(14px, 2.2vmin, 28px);
+      line-height: 1.25;
+    }
+    .detail-panel dl > div + div { margin-top: 0.6em; }
+    .detail-panel dt { font-size: 0.68em; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.6; }
+    .detail-panel dd { overflow-wrap: anywhere; }
+    .detail-note { opacity: 0.7; }
+    .detail-file { margin-top: 0.8em; font-size: 0.68em; opacity: 0.55; overflow-wrap: anywhere; }
+    .detail-panel dl:empty + .detail-note:empty + .detail-file { margin-top: 0; }
+    .detail-close {
+      position: fixed;
+      top: 2.5vmin;
+      right: 2.5vmin;
+      width: clamp(36px, 6vmin, 72px);
+      height: clamp(36px, 6vmin, 72px);
+      border: 0;
+      border-radius: 50%;
+      background: rgba(20, 20, 20, 0.62);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+      color: #fff;
+      font-size: clamp(22px, 3.6vmin, 44px);
+      line-height: 1;
+      cursor: pointer;
+    }
+    .detail-close:focus { outline: none; }
+    .detail-close:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+    /* Portrait screens: the details go under the photo, two columns */
+    @media (orientation: portrait) {
+      .detail-card { flex-direction: column; }
+      .detail-panel { width: auto; min-width: min(85vw, 420px); align-self: stretch; }
+      .detail-panel dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6em 1.2em; }
+      .detail-panel dl > div + div { margin-top: 0; }
+    }
+    @keyframes detail-fade { from { opacity: 0; } }
+    @keyframes detail-grow { from { transform: scale(0.96); } }
+    @media (prefers-reduced-motion: reduce) {
+      #detail, .detail-card { animation: none; }
+    }
   </style>
   <link rel="stylesheet" href="/display/label-styles.css" />
 </head>
@@ -162,6 +249,17 @@
   <div id="collage"></div>
   <div id="error-banner"></div>
   <a id="editor-btn" href="/editor">⚙ Editor</a>
+  <div id="detail" hidden role="dialog" aria-modal="true" aria-label="Photo details">
+    <div class="detail-card">
+      <div class="detail-media"></div>
+      <div class="detail-panel">
+        <dl></dl>
+        <p class="detail-note"></p>
+        <p class="detail-file"></p>
+      </div>
+    </div>
+    <button type="button" class="detail-close" aria-label="Close">×</button>
+  </div>
 
   <script src="/display/layout-rotation.js"></script>
   <script src="/display/pill-size.js"></script>
@@ -747,6 +845,8 @@
       // Release this slot's old image
       if (state.currentPath) releasePath(state.currentPath);
       state.currentPath = path;
+      // Only an editor folder move swaps an open slot's photo: don't keep showing the old one
+      if (detail?.slotCfg.id === slotCfg.id) closeDetail();
 
       next.className = 'visible';
       current.className = 'hidden';
@@ -832,10 +932,10 @@
     }
 
     function videoEls(slotCfg) {
-      const slotEl = document.getElementById(`slot-${slotCfg.id}`);
-      if (!slotEl) return null;
-      const [vidA, vidB] = slotEl.querySelectorAll('.mat-frame video');
+      // The pair found by initVideoSlot: the detail view borrows one, out of the slot
       const state = slotState[slotCfg.id];
+      if (!state?.vids) return null;
+      const [vidA, vidB] = state.vids;
       return state.activeVid === 'A' ? { current: vidA, next: vidB } : { current: vidB, next: vidA };
     }
 
@@ -870,6 +970,8 @@
       clearTimeout(state.watchdog);
       const seconds = (isFinite(v.duration) ? v.duration : 300) + 30;
       state.watchdog = setTimeout(() => {
+        // Looping in the detail view: check again later rather than cut it off
+        if (detail?.slotCfg.id === slotCfg.id) { armWatchdog(slotCfg, v); return; }
         console.warn(`Slot ${slotCfg.id}: playback watchdog fired — advancing`);
         loadNextVideo(slotCfg);
       }, seconds * 1000);
@@ -904,6 +1006,8 @@
     async function loadNextVideo(slotCfg) {
       const state = slotState[slotCfg.id];
       if (!state || state.videoLoading) return;
+      // An error or stall on the open video: put it back in the slot before advancing
+      if (detail?.slotCfg.id === slotCfg.id) closeDetail();
       const els = videoEls(slotCfg);
       if (!els) return;
       const { current, next } = els;
@@ -998,13 +1102,15 @@
       if (!slotEl) return;
       slotEl.classList.add('video-mode');
       const state = slotState[slotCfg.id];
+      state.vids = [...slotEl.querySelectorAll('.mat-frame video')];
       const isActive = v => videoEls(slotCfg)?.current === v && !!v.getAttribute('src') && !state.videoLoading;
 
-      slotEl.querySelectorAll('.mat-frame video').forEach(v => {
+      state.vids.forEach(v => {
         v.addEventListener('ended', () => {
           if (!isActive(v)) return;
-          // video_loops is read live so editor changes apply to the current video
-          if (++state.playCount < videoLoops(slotCfg)) {
+          // video_loops is read live so editor changes apply to the current video. Open in the
+          // detail view, it loops until closed.
+          if (detail?.slotCfg.id === slotCfg.id || ++state.playCount < videoLoops(slotCfg)) {
             v.currentTime = 0;
             playVideo(v, slotCfg).then(() => armWatchdog(slotCfg, v), () => loadNextVideo(slotCfg));
           } else {
@@ -1043,13 +1149,13 @@
     // Non-date fields in priority order. max_metadata_pills applies to these only.
     // Date is handled separately — always rendered last (bottom) if enabled.
     const METADATA_FIELDS = [
-      { flag: 'show_location',      key: 'location' },
-      { flag: 'show_camera',        key: 'camera' },
-      { flag: 'show_megapixels',    key: 'megapixels' },
-      { flag: 'show_fstop',         key: 'fstop' },
-      { flag: 'show_shutter_speed', key: 'shutter_speed' },
-      { flag: 'show_iso',           key: 'iso' },
-      { flag: 'show_focal_length',  key: 'focal_length' },
+      { flag: 'show_location',      key: 'location',      label: 'Location' },
+      { flag: 'show_camera',        key: 'camera',        label: 'Camera' },
+      { flag: 'show_megapixels',    key: 'megapixels',    label: 'Megapixels' },
+      { flag: 'show_fstop',         key: 'fstop',         label: 'Aperture' },
+      { flag: 'show_shutter_speed', key: 'shutter_speed', label: 'Shutter speed' },
+      { flag: 'show_iso',           key: 'iso',           label: 'ISO' },
+      { flag: 'show_focal_length',  key: 'focal_length',  label: 'Focal length' },
     ];
 
     // date_format (long | medium | short | iso), shared with the editor's previews
@@ -1061,6 +1167,18 @@
     // then METADATA_FIELDS order up to maxFields (PicMeLabels.fields, shared with the editor)
     function slotFields(data, meta, maxFields = Infinity) {
       return PicMeLabels.fields(data, meta, { order: METADATA_FIELDS, maxFields, formatDate });
+    }
+
+    // Every field an /api/metadata reply has, as { key, label, text }: the date first, then
+    // METADATA_FIELDS order. The server formats the values (f/2.8, 1/250s, ISO 400, 35mm,
+    // 12.2 MP); only the date is formatted here (date_format).
+    function metadataEntries(data) {
+      const out = [];
+      if (data?.date_iso) out.push({ key: 'date', label: 'Date', text: formatDate(data.date_iso) });
+      for (const { key, label } of METADATA_FIELDS) {
+        if (data?.[key]) out.push({ key, label, text: String(data[key]) });
+      }
+      return out;
     }
 
     // The text sits in a clip box so a long pill can scroll inside its padding
@@ -1108,6 +1226,7 @@
       try {
         const data = await fetchJSON(`${API}/api/metadata?path=${encodeURIComponent(imagePath)}`);
         if (seq !== state.overlaySeq || config.show_metadata === false) return;
+        state.meta = { path: imagePath, data };  // the detail view reuses it
 
         // The date, then the other fields in priority order up to the cap (not counting the date)
         const fields = slotFields(data, meta, maxPills);
@@ -1150,6 +1269,254 @@
         return false;
       }
     }
+
+    // ── Photo details (README → Photo details) ──
+    // Click, tap, or Enter on a slot focused with the arrow keys, opens its photo or video over
+    // the collage with every metadata field the file has. While open, the slot and its group
+    // don't cycle and a video loops; cycling carries on at the next tick after it closes.
+
+    const DETAIL_IDLE_MS = 45000;  // no input for this long closes it, so a TV never gets stuck
+    let detail = null;             // the open view: { slotCfg, path, token, video, placeholder, returnFocus }
+    let detailToken = 0;
+    let detailIdleTimer = null;
+    let focusIdleTimer = null;
+
+    function detailsEnabled() {
+      return !!config && config.tap_for_details !== false;
+    }
+
+    function slotCfgOf(slotEl) {
+      return activeSlots.find(s => `slot-${s.id}` === slotEl?.id) || null;
+    }
+
+    // The open slot and the slots in its group stop cycling
+    function isHeld(slotCfg) {
+      if (!detail) return false;
+      const open = detail.slotCfg;
+      return open.id === slotCfg.id || (!!open.group && slotCfg.group === open.group);
+    }
+
+    // Slots take focus (arrow keys) and show a pointer only while the setting is on
+    function applyDetailsSetting() {
+      const on = detailsEnabled();
+      const collage = document.getElementById('collage');
+      if (on) collage.dataset.details = 'on';
+      else delete collage.dataset.details;
+      for (const s of activeSlots) {
+        const el = document.getElementById(`slot-${s.id}`);
+        if (!el) continue;
+        if (on) el.tabIndex = 0;
+        else el.removeAttribute('tabindex');
+      }
+      if (!on) closeDetail();
+    }
+
+    function openDetail(slotCfg, { keyboard = false } = {}) {
+      const state = slotState[slotCfg?.id];
+      const slotEl = slotCfg && document.getElementById(`slot-${slotCfg.id}`);
+      if (!detailsEnabled() || detail || !state?.currentPath || !slotEl) return;
+      const root = document.getElementById('detail');
+      const media = root.querySelector('.detail-media');
+      const path = state.currentPath;
+      let video = null;
+      if (slotCfg.mode === 'video') {
+        // Mid-swap the next video isn't on screen yet
+        video = state.videoLoading ? null : videoEls(slotCfg)?.current;
+        if (!video?.getAttribute('src')) return;
+      }
+      detail = { slotCfg, path, token: ++detailToken, returnFocus: keyboard ? slotEl : null };
+
+      if (video) {
+        // Move the playing element itself: it keeps its place and its decoder (a second
+        // <video> of the same file would need another hardware decoder)
+        detail.video = video;
+        detail.placeholder = document.createComment('detail');
+        video.replaceWith(detail.placeholder);
+        media.appendChild(video);
+        video.style.objectFit = 'contain';
+        playVideo(video, slotCfg).catch(() => {});
+      } else {
+        const img = document.createElement('img');
+        img.alt = '';
+        img.addEventListener('load', fitDetailMedia);
+        img.src = imageUrl(path);  // already cached: the slot shows it
+        media.appendChild(img);
+      }
+      renderDetailPanel(slotCfg, path);
+      root.hidden = false;
+      fitDetailMedia();
+      root.querySelector('.detail-close').focus({ preventScroll: true });
+      bumpDetailIdle();
+    }
+
+    function closeDetail() {
+      if (!detail) return;
+      const { slotCfg, video, placeholder, returnFocus } = detail;
+      detail = null;
+      clearTimeout(detailIdleTimer);
+      const root = document.getElementById('detail');
+      root.hidden = true;
+      if (video) {
+        if (placeholder.parentNode) placeholder.replaceWith(video);
+        video.style.width = video.style.height = '';
+        const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+        if (slotEl) applyFit(slotEl, slotCfg);
+        if (video.getAttribute('src') && videoEls(slotCfg)?.current === video) {
+          playVideo(video, slotCfg).catch(() => {});
+          armWatchdog(slotCfg, video);
+        }
+      }
+      root.querySelector('.detail-media').innerHTML = '';
+      root.querySelector('.detail-panel dl').innerHTML = '';
+      if (returnFocus?.isConnected) {
+        returnFocus.focus({ preventScroll: true });
+        armFocusIdle();
+      } else if (root.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
+    }
+
+    function bumpDetailIdle() {
+      clearTimeout(detailIdleTimer);
+      detailIdleTimer = setTimeout(closeDetail, DETAIL_IDLE_MS);
+    }
+
+    // The arrow-key ring goes away after the same idle time, so it doesn't sit on a TV forever
+    function armFocusIdle() {
+      clearTimeout(focusIdleTimer);
+      focusIdleTimer = setTimeout(() => {
+        const el = document.activeElement;
+        if (!detail && el?.matches?.('#collage .slot')) el.blur();
+      }, DETAIL_IDLE_MS);
+    }
+
+    // Every field the file has, whatever the pill settings (show_metadata, show_*): the slot's
+    // last metadata reply if it is for this file, else a fetch
+    async function renderDetailPanel(slotCfg, path) {
+      const root = document.getElementById('detail');
+      const list = root.querySelector('.detail-panel dl');
+      const note = root.querySelector('.detail-note');
+      root.querySelector('.detail-file').textContent = path.split(/[\\/]/).pop();
+      list.innerHTML = '';
+      note.textContent = '';
+      const token = detail.token;
+      const cached = slotState[slotCfg.id]?.meta;
+      let data = cached?.path === path ? cached.data : null;
+      if (!data) {
+        note.textContent = 'Loading details…';
+        try {
+          data = await fetchJSON(`${API}/api/metadata?path=${encodeURIComponent(path)}`);
+        } catch (e) {
+          data = {};  // just the file name
+        }
+        if (detail?.token !== token) return;  // closed or reopened meanwhile
+        note.textContent = '';
+      }
+      for (const { key, label, text } of metadataEntries(data)) {
+        const row = document.createElement('div');
+        row.dataset.field = key;
+        const dt = document.createElement('dt');
+        dt.textContent = label;
+        const dd = document.createElement('dd');
+        dd.textContent = text;
+        row.append(dt, dd);
+        list.appendChild(row);
+      }
+      fitDetailMedia();  // the panel's size changed (under the photo on a portrait screen)
+    }
+
+    // The largest size with the media's shape that fits 85% of the screen beside (or, portrait,
+    // above) the panel, upscaling small photos. The card hugs it, so a click next to the photo
+    // is outside.
+    function fitDetailMedia() {
+      const root = document.getElementById('detail');
+      const m = detail && root.querySelector('.detail-media > img, .detail-media > video');
+      if (!m) return;
+      const w = m.naturalWidth || m.videoWidth, h = m.naturalHeight || m.videoHeight;
+      if (!w || !h) return;
+      const card = root.querySelector('.detail-card'), panel = root.querySelector('.detail-panel');
+      const cs = getComputedStyle(card);
+      const gap = parseFloat(cs.columnGap) || 0;
+      const maxW = window.innerWidth * 0.85, maxH = window.innerHeight * 0.85;
+      const column = cs.flexDirection === 'column';
+      const availW = column ? maxW : maxW - panel.offsetWidth - gap;
+      const availH = column ? maxH - panel.offsetHeight - gap : maxH;
+      const s = Math.max(0, Math.min(availW / w, availH / h));
+      m.style.width = `${Math.floor(w * s)}px`;
+      m.style.height = `${Math.floor(h * s)}px`;
+    }
+
+    const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    const BACK_KEYS = new Set(['Escape', 'Backspace', 'GoBack', 'BrowserBack']);
+    const BACK_KEY_CODES = new Set([461, 10009]);  // the Back button on webOS and Tizen remotes
+
+    // Focus the nearest slot in the arrow's direction (off-axis distance counts double); with
+    // none focused, the top-left one
+    function moveSlotFocus([dx, dy]) {
+      const slots = activeSlots.map(s => document.getElementById(`slot-${s.id}`)).filter(Boolean);
+      const rect = el => el.getBoundingClientRect();
+      const centre = el => { const r = rect(el); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+      const from = slots.includes(document.activeElement) ? document.activeElement : null;
+      let best = null;
+      if (!from) {
+        let bestScore = Infinity;
+        for (const el of slots) {
+          const r = rect(el);
+          if (r.left + r.top < bestScore) { bestScore = r.left + r.top; best = el; }
+        }
+      } else {
+        const c = centre(from);
+        let bestScore = Infinity;
+        for (const el of slots) {
+          if (el === from) continue;
+          const p = centre(el);
+          const along = (p.x - c.x) * dx + (p.y - c.y) * dy;
+          if (along < 1) continue;
+          const across = Math.abs((p.x - c.x) * dy + (p.y - c.y) * dx);
+          if (along + 2 * across < bestScore) { bestScore = along + 2 * across; best = el; }
+        }
+      }
+      best?.focus({ preventScroll: true });
+    }
+
+    document.addEventListener('keydown', e => {
+      if (!detailsEnabled()) return;
+      if (detail) {
+        bumpDetailIdle();
+        if (BACK_KEYS.has(e.key) || BACK_KEY_CODES.has(e.keyCode)) {
+          e.preventDefault();  // Backspace / Back must not leave the page
+          closeDetail();
+        } else if (e.key === 'Tab') {
+          e.preventDefault();  // the close button is the only control
+          document.querySelector('#detail .detail-close').focus();
+        }
+        return;  // Enter on the close button clicks it
+      }
+      const dir = ARROWS[e.key];
+      if (dir) {
+        e.preventDefault();
+        moveSlotFocus(dir);
+        armFocusIdle();
+      } else if ((e.key === 'Enter' || e.key === ' ') && document.activeElement?.matches?.('#collage .slot')) {
+        e.preventDefault();
+        openDetail(slotCfgOf(document.activeElement), { keyboard: true });
+      }
+    });
+
+    for (const type of ['pointermove', 'pointerdown', 'wheel']) {
+      document.addEventListener(type, () => { if (detail) bumpDetailIdle(); }, { passive: true });
+    }
+
+    // Only the photo itself opens it: a gallery opening's cell also covers the mat around its
+    // shape, and clip-path keeps clicks outside the shape off .mat-frame
+    document.getElementById('collage').addEventListener('click', e => {
+      const slotEl = e.target.closest('.mat-frame')?.closest('.slot');
+      if (slotEl && detailsEnabled()) openDetail(slotCfgOf(slotEl));
+    });
+
+    document.getElementById('detail').addEventListener('click', e => {
+      if (e.target.closest('.detail-close') || !e.target.closest('.detail-media > *, .detail-panel')) closeDetail();
+    });
 
     // Config polling — apply changes live when config.json is updated by the editor
     let configHash = '';
@@ -1208,7 +1575,8 @@
         Object.assign(config, fresh);
         config.slots = oldSlots;
         // checkRotation() and the gallery read these, so a removed key must not linger
-        for (const key of ['layout_rotation', 'daily_layout_rotation', 'gallery', 'layout_modes', 'label_position', 'label_style', 'fill_mode']) {
+        for (const key of ['layout_rotation', 'daily_layout_rotation', 'gallery', 'layout_modes', 'label_position', 'label_style',
+                           'fill_mode', 'tap_for_details']) {
           if (!(key in fresh)) delete config[key];
         }
         // Replace each slot's settings, so a key the editor dropped (e.g. after swapping two
@@ -1222,6 +1590,7 @@
 
         // Re-apply wall color + frame (TOD template re-evaluated after config patch)
         applyTodStyles();
+        applyDetailsSetting();
 
         activeSlots.forEach((slotCfg, i) => {
           if (slotCfg.mode === 'video') applyVideoAudio(slotCfg);
@@ -1254,11 +1623,12 @@
           // Find all on-screen photo slots in this group
           const groupSlots = activeSlots.filter(s => s.group === group && s.mode !== 'video');
           groupTimers[group] = setInterval(() => {
-            groupSlots.forEach(s => loadNextImage(s));
+            // Paused while one of them is open in the detail view (or a video in the group is)
+            if (!groupSlots.some(isHeld)) groupSlots.forEach(s => loadNextImage(s));
           }, seconds * 1000);
         }
       } else {
-        setInterval(() => loadNextImage(slotCfg), seconds * 1000);
+        setInterval(() => { if (!isHeld(slotCfg)) loadNextImage(slotCfg); }, seconds * 1000);
       }
     }
 
@@ -1328,6 +1698,7 @@
 
       // Apply wall color and frame styles (respects TOD template if enabled)
       applyTodStyles();
+      applyDetailsSetting();
 
       // Initialize state and load first image/video for each slot
       for (const slotCfg of activeSlots) {
@@ -1361,7 +1732,7 @@
     let resizeTimer = null;
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => { if (config) applyTodStyles(); }, 150);
+      resizeTimer = setTimeout(() => { if (config) applyTodStyles(); fitDetailMedia(); }, 150);
     });
 
     // A label style's serif arrives after its first fit (font-display: swap): fit again with it

@@ -822,6 +822,15 @@
       </div>
       <p class="field-hint" data-setting="global.fill_mode">Off: whole photos and videos, with bars where their shape differs from the frame. A slot can choose its own (Advanced).</p>
 
+      <div class="toggle-row" data-setting="global.tap_for_details">
+        <label for="g-tap-details">Tap a photo for details</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-tap-details" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <p class="field-hint" data-setting="global.tap_for_details">Click, tap or press Enter on a photo on the display to see it larger with its date, place and camera details. Turn off for kiosk screens.</p>
+
       <button class="btn btn-danger" style="width:100%;margin-top:14px;padding:7px 12px;" onclick="openResetAllModal()" data-setting="slots.reset_all"
               title="Clears each slot's own overrides only. To start over, use Reset everything to defaults (My settings).">
         Reset slots to global settings
@@ -1209,6 +1218,7 @@
                             active: () => config.include_subfolders === false },
     'global.wall_color':  { tier: 'basic',    label: 'Wall color' },
     'global.fill_mode':   { tier: 'basic',    label: 'Fill frames' },
+    'global.tap_for_details': { tier: 'basic', label: 'Tap a photo for details' },
     'frame.mat_color':    { tier: 'basic',    label: 'Mat color' },
     'frame.frame_style':  { tier: 'basic',    label: 'Frame style' },
     'frame.mat_width':    { tier: 'advanced', label: 'Mat width',
@@ -2418,6 +2428,9 @@
       renderSlotPanel();  // the slot's "Default (global: …)" option
       scheduleAutoSave();
     };
+    const tapEl = document.getElementById('g-tap-details');
+    tapEl.checked = config.tap_for_details !== false;
+    tapEl.onchange = e => { config.tap_for_details = e.target.checked; scheduleAutoSave(); };
     document.getElementById('g-date-format').onchange  = e => { config.date_format = e.target.value; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-max-pills').oninput     = e => {
       const v = parseInt(e.target.value);
