@@ -706,7 +706,27 @@
       gap: 8px;
       justify-content: flex-end;
     }
+
+    /* Label style picker (README → Metadata label styles): each option is a live mini preview,
+       drawn by the display's renderer (/display/label-styles.js) */
+    .label-style-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .field .label-style-option { position: relative; display: block; margin: 0; cursor: pointer; border: 2px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; background: var(--surface2); }
+    .label-style-option:hover { border-color: var(--text-muted); }
+    .label-style-option.selected { border-color: var(--accent); }
+    .label-style-option input { position: absolute; opacity: 0; pointer-events: none; }
+    .label-style-option:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .label-style-swatch { position: relative; height: 78px; overflow: hidden; }
+    .label-style-swatch .swatch-photo { position: absolute; overflow: hidden;
+      background: linear-gradient(180deg, #4b6a9a 0%, #e59a6a 58%, #5a3d4a 60%, #2c2230 100%); }
+    .label-style-swatch .swatch-pill { position: absolute; left: 6px; bottom: 6px; padding: 1px 6px; border-radius: 999px;
+      background: rgba(20, 20, 20, 0.62); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18); color: #fff;
+      font-size: 10px; line-height: 1.25; white-space: nowrap; }
+    .label-style-name { display: block; padding: 4px 6px; font-size: 12px; color: var(--text); }
+    .label-style-note { font-size: 12px; color: var(--text-muted); margin: 6px 0 0; }
+    .label-style-note:empty { display: none; }
   </style>
+  <link rel="stylesheet" href="/display/label-styles.css" />
 </head>
 <body>
 <div id="app" class="mode-basic">
@@ -962,6 +982,11 @@
       </div>
       <div id="g-meta-body" class="collapsible open">
         <div class="collapsible-inner">
+          <div class="field" data-setting="metadata.style">
+            <label id="g-label-style-label">Label style</label>
+            <div id="g-label-style" class="label-style-picker" role="radiogroup" aria-labelledby="g-label-style-label"></div>
+            <p id="g-label-style-note" class="label-style-note"></p>
+          </div>
           <div class="field" data-setting="metadata.sizes">
             <label>Text size</label>
             <select id="g-text-size"></select>
@@ -1031,6 +1056,7 @@
 </div>
 <script src="/display/layout-rotation.js"></script>
 <script src="/display/pill-size.js"></script>
+<script src="/display/label-styles.js"></script>
 <script src="/assets/frames/frames.js"></script>
 <script src="/display/shapes.js"></script>
 <script src="/display/gallery.js"></script>
@@ -1216,6 +1242,7 @@
                                      g.bevel_color.toLowerCase() !== GALLERY_DEFAULTS.bevel_color; } },
     'metadata.show':      { tier: 'basic',    label: 'Show metadata' },
     'metadata.sizes':     { tier: 'basic',    label: 'Text and pill size' },
+    'metadata.style':     { tier: 'basic',    label: 'Label style' },
     'metadata.position':  { tier: 'basic',    label: 'Label position' },
     'metadata.fields':    { tier: 'basic',    label: 'Metadata fields' },
     'metadata.date_format': { tier: 'advanced', label: 'Date format',
@@ -1359,6 +1386,109 @@
     return window.PicMePills ? PicMePills.resolve(meta)
       : { text_size: meta?.text_size || 'medium', pill_size: meta?.pill_size || 'medium' };
   }
+
+  // ── Label styles (README → Metadata label styles; the display's renderer: /display/label-styles.js) ──
+
+  const LABEL_STYLE_OPTIONS = [['pill', 'Pills'], ['caption', 'Serif caption'], ['placard', 'Museum placard'], ['whisper', 'Corner whisper']];
+  // The display's METADATA_FIELDS order: { flag: 'show_location', key: 'location' }, ...
+  const LABEL_ORDER = META_FIELDS.filter(f => f.key !== 'show_date').map(f => ({ flag: f.key, key: f.key.slice(5) }));
+
+  function labelStyle() { return PicMeLabels.resolveStyle(config.label_style); }
+
+  function sampleDate() { return PicMeLabels.formatDate(PicMeLabels.SAMPLE.date_iso, config.date_format || 'long'); }
+
+  // A slot's label in the current style with sample text, as the display draws it: the same
+  // fields (max pills, video slots date only), renderer, placement and fit.
+  // area: PicMeLabels.openingArea / frameArea, plus where, fontPx and matColor.
+  function previewLabel(overlay, slotCfg, area) {
+    let meta = getSlotMeta(slotCfg);
+    if (slotCfg.mode === 'video') meta = { show_date: meta.show_date };
+    const max = config.max_metadata_pills > 0 ? config.max_metadata_pills : Infinity;
+    const fields = PicMeLabels.fields(PicMeLabels.SAMPLE, meta, { order: LABEL_ORDER, maxFields: max, formatDate: sampleDate });
+    if (!area || !fields.length) return;
+    PicMeLabels.render(overlay, labelStyle(), fields);
+    PicMeLabels.place(overlay, area);
+    PicMeLabels.show(overlay);
+  }
+
+  // The mat the labels sit on now: the gallery mat on a gallery layout, else the Frame section's
+  function currentMatColor() {
+    const layout = layouts?.find(l => l.id === config.layout) || layouts?.[0];
+    return layout && layoutMode(layout) === 'gallery' ? galleryCfg().mat_color : (getGlobalFrame().mat_color || '#000000');
+  }
+
+  // The picker: one live mini preview per style, on the current mat, with the date format
+  function renderLabelStylePicker() {
+    const picker = document.getElementById('g-label-style');
+    if (!picker || !config) return;
+    const current = labelStyle();
+    const mat = currentMatColor();
+    picker.innerHTML = '';
+    for (const [style, name] of LABEL_STYLE_OPTIONS) {
+      const opt = document.createElement('label');
+      opt.className = 'label-style-option' + (style === current ? ' selected' : '');
+      opt.dataset.style = style;
+      const input = document.createElement('input');
+      Object.assign(input, { type: 'radio', name: 'g-label-style', value: style, checked: style === current });
+      input.onchange = () => setLabelStyle(style);
+      const swatch = document.createElement('div');
+      swatch.className = 'label-style-swatch';
+      swatch.style.background = mat;
+      const label = document.createElement('span');
+      label.className = 'label-style-name';
+      label.textContent = name;
+      opt.append(input, swatch, label);
+      picker.appendChild(opt);
+      drawSwatch(swatch, style, mat);
+    }
+    const note = document.getElementById('g-label-style-note');
+    note.textContent = current === 'whisper' ? 'Corner whisper always sits on the photo. Label position and pill size are for pills.'
+      : current !== 'pill' ? 'Caption and placard always sit on the mat, under the photo. Label position and pill size are for pills.' : '';
+    document.getElementById('g-label-position').disabled = current !== 'pill';
+    document.getElementById('g-pill-size').disabled = current !== 'pill';
+  }
+
+  // A sample photo on the mat with the style's label (date and place)
+  function drawSwatch(swatch, style, mat) {
+    const W = swatch.clientWidth, H = swatch.clientHeight;
+    if (!W || !H) return;  // a folded section: drawn again when it opens (labelPickerResize)
+    const onMat = PicMeLabels.SPEC[style].where === 'mat';
+    const photo = { x: 8, y: 6, w: W - 16, h: H - (style === 'placard' ? 42 : onMat ? 32 : 12) };
+    const photoEl = document.createElement('div');
+    photoEl.className = 'swatch-photo';
+    Object.assign(photoEl.style, { left: `${photo.x}px`, top: `${photo.y}px`, width: `${photo.w}px`, height: `${photo.h}px` });
+    swatch.appendChild(photoEl);
+    if (style === 'pill') {
+      const pill = document.createElement('span');
+      pill.className = 'swatch-pill';
+      pill.textContent = sampleDate();
+      photoEl.appendChild(pill);
+      return;
+    }
+    const overlay = document.createElement('div');
+    overlay.className = 'slot-overlay';
+    swatch.appendChild(overlay);
+    const fields = [{ key: 'date', text: sampleDate(), prio: 0 }, { key: 'location', text: 'Lake Tahoe', prio: 1 }];
+    PicMeLabels.render(overlay, style, fields);
+    const area = onMat
+      ? { where: 'mat', rect: { x: photo.x, y: photo.y + photo.h, w: photo.w, h: H - photo.y - photo.h }, align: 'start' }
+      : { where: 'photo', rect: { x: photo.x + 4, y: photo.y + 4, w: photo.w - 8, h: photo.h - 8 }, align: 'end',
+          scrim: { host: photoEl, left: 0, right: 0, bottom: 0, photoBottom: photo.y + photo.h } };
+    PicMeLabels.place(overlay, { ...area, fontPx: style === 'whisper' ? 9 : 10, matColor: mat });
+    PicMeLabels.show(overlay);
+  }
+
+  function setLabelStyle(style) {
+    config.label_style = PicMeLabels.resolveStyle(style);
+    buildPreview();
+    scheduleAutoSave();
+  }
+
+  // The picker measures its swatches, so draw it again once it has a size (a folded section opening)
+  const labelPickerResize = window.ResizeObserver ? new ResizeObserver(entries => {
+    const w = Math.round(entries[0].contentRect.width);
+    if (w && w !== labelPickerResize.width) { labelPickerResize.width = w; renderLabelStylePicker(); }
+  }) : null;
 
   // ── Frame styles ──
   // Decorative styles (wood, gold) come from frames.js; without it only solid frames are offered.
@@ -1616,10 +1746,12 @@
         return { matFrame, overlay };
       },
     });
-    // The display's labels: one pill size for every opening, captions on the mat by default
-    const placement = PicMePills.labelPlacement(config.label_position, 'gallery');
+    // The display's labels: one pill size for every opening, captions on the mat by default, and
+    // the label style's placement and band
+    const style = labelStyle();
+    const placement = PicMeLabels.placement(style, config.label_position, 'gallery');
     const sizes = layout.slots.map((d, i) => (previewShowsPills(slotAt(i)) ? pillSizes(getSlotMeta(slotAt(i))) : null));
-    const { openings, short } = PicMeGallery.layoutWithLabels(stage, galleryCfg(), layout, activeSlots, { placement, sizes }, {
+    const { openings, short } = PicMeGallery.layoutWithLabels(stage, galleryCfg(), layout, activeSlots, { placement, sizes, style }, {
       idPrefix: 'pv', selectedId: selectedSlotId, selectWidth: Math.max(6, 3 / k),
     });
 
@@ -1654,7 +1786,12 @@
         play.style.cssText = `left:${o.safe.x + 12}px;top:${o.safe.y + 8}px;font-size:26px;color:#aaa;`;
         boxEl.appendChild(play);
       }
-      if (sizes[i]) {
+      if (sizes[i] && style !== 'pill') {
+        // Stage px are display px: the display's area for the opening, and its font
+        const area = PicMeLabels.openingArea(o, placement, el.querySelector('.mat-frame'));
+        const fontPx = PicMeLabels.fontPx(style, PicMePills.fontSize(sizes[i], short, short));
+        previewLabel(el.querySelector('.slot-overlay'), slotCfg, area && { ...area, where: placement, fontPx, matColor: galleryCfg().mat_color });
+      } else if (sizes[i]) {
         // Stage px are display px; the overlay is placed by gallery.js, on the photo or in the caption
         const room = o.caption ? o.caption.w : o.safe.h - 2 * o.inset;
         el.querySelector('.slot-overlay').appendChild(previewPills(slotCfg, { short, scale: 1, room, caption: !!o.caption }));
@@ -1981,6 +2118,7 @@
   function buildPreview() {
     const layout = layouts.find(l => l.id === config.layout) || layouts[0];
     const preview = document.getElementById('collage-preview');
+    renderLabelStylePicker();  // its swatches show the current mat and date format
     if (layoutMode(layout) === 'gallery') { buildGalleryPreview(layout, preview); return; }
     preview.classList.remove('gallery-preview');
     preview.style.gridTemplateColumns = layout.grid_template_columns;
@@ -2089,7 +2227,8 @@
   function buildPreviewPills(preview, cells) {
     const scale = preview.clientWidth / 1920;
     if (!(scale > 0) || !window.PicMePills) return 0;
-    const placement = PicMePills.labelPlacement(config.label_position, 'slots');
+    const style = labelStyle();
+    const placement = PicMeLabels.placement(style, config.label_position, 'slots');
     const geo = cells.map(({ div, frameCfg }) => {
       const w = div.offsetWidth / scale, h = div.offsetHeight / scale;
       const mat = Number(frameCfg.mat_width ?? 16) || 0;
@@ -2107,11 +2246,25 @@
     if (shown.length === 0) return 0;
     const short = PicMePills.sharedShort(shown.map(area));
     const band = placement === 'mat'
-      ? Math.min(Math.max(...sizes.filter(Boolean).map(sz => PicMePills.captionBand(sz, short))),
-                 Math.floor(PicMePills.CAPTION_MAX_FRACTION * Math.min(...geo.map(g => g.photo.h))))
+      ? Math.min(Math.max(...sizes.filter(Boolean).map(sz => PicMeLabels.captionBand(style, sz, short))),
+                 PicMeLabels.maxBand(style, Math.min(...geo.map(g => g.photo.h))))
       : 0;
     cells.forEach(({ div, inner, slotCfg, frameCfg }, i) => {
       if (!sizes[i]) return;
+      if (style !== 'pill') {
+        // The display's renderer: the cell's padding box is the display's mat-frame (the photo at
+        // the mat width from its edges), in preview px
+        const matPx = (Number(frameCfg.mat_width ?? 16) || 0) * scale;
+        if (band > 0) div.style.paddingBottom = `${matPx + band * scale}px`;
+        const overlay = document.createElement('div');
+        overlay.className = 'slot-overlay';
+        div.appendChild(overlay);
+        const g = { edge: matPx, mat: matPx, band: band * scale, w: div.clientWidth, h: div.clientHeight };
+        const area = PicMeLabels.frameArea(g, placement, div, 10 * scale);
+        const fontPx = PicMeLabels.fontPx(style, PicMePills.fontSize(sizes[i], short, short)) * scale;
+        previewLabel(overlay, slotCfg, area && { ...area, where: placement, fontPx, matColor: frameCfg.mat_color ?? '#000000' });
+        return;
+      }
       if (band > 0) {
         // The bottom mat grows by the band, and the caption sits in it, centred under the photo
         const matPx = (Number(frameCfg.mat_width ?? 16) || 0) * scale;
@@ -2262,12 +2415,15 @@
       renderSlotPanel();  // the slot's "Default (global: …)" option
       scheduleAutoSave();
     };
-    document.getElementById('g-date-format').onchange  = e => { config.date_format = e.target.value; scheduleAutoSave(); };
+    document.getElementById('g-date-format').onchange  = e => { config.date_format = e.target.value; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-max-pills').oninput     = e => {
       const v = parseInt(e.target.value);
       config.max_metadata_pills = v > 0 ? v : null;
+      buildPreview();
       scheduleAutoSave();
     };
+    renderLabelStylePicker();
+    if (labelPickerResize) labelPickerResize.observe(document.getElementById('g-label-style'));
     // The display's kill switch: off hides every pill and keeps the metadata settings as they are
     showMeta.onchange = e => {
       config.show_metadata = e.target.checked;
