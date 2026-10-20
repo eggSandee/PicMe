@@ -1484,6 +1484,9 @@
     scheduleAutoSave();
   }
 
+  // The label styles' serif arrives after the first fit (font-display: swap): fit the previews again
+  if (document.fonts) document.fonts.addEventListener('loadingdone', () => { if (config && layouts) buildPreview(); });
+
   // The picker measures its swatches, so draw it again once it has a size (a folded section opening)
   const labelPickerResize = window.ResizeObserver ? new ResizeObserver(entries => {
     const w = Math.round(entries[0].contentRect.width);
