@@ -427,8 +427,10 @@ def test_editor_preview_matches_the_display(write_cfg, open_page, layout):
 
 @pytest.mark.parametrize("layout", ["gallery-salon", "gallery-cameo"])
 def test_editor_preview_captions_match_the_display(write_cfg, open_page, layout):
+    # Fill: the editor has no photo, so in Fit it can't know where the display's photo ends (Fit
+    # captions follow the visible photo: test_label_styles_browser.py)
     write_cfg(layout=layout, slots=12, show_metadata=True, metadata_defaults={"show_date": True, "show_camera": True},
-              slot_overrides={1: {"shape": "heart"}})
+              slot_overrides={1: {"shape": "heart"}}, fill_mode="cover")
     display = open_page("/display/").page
     _until(display, MEDIA_READY_JS)
     _until(display, "() => document.querySelector('.slot-overlay.caption')")
@@ -463,7 +465,7 @@ CAPTION_LEFT_JS = """sel => {
 def test_editor_preview_captions_are_left_aligned_like_the_display(write_cfg, open_page, shape):
     write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, show_metadata=True,
               metadata_defaults={"show_date": True, "show_camera": True},
-              slot_overrides={i: {"shape": shape} for i in range(1, 5)})
+              slot_overrides={i: {"shape": shape} for i in range(1, 5)}, fill_mode="cover")  # Fill: see above
     display = open_page("/display/").page
     _until(display, MEDIA_READY_JS)
     _until(display, "() => [...document.querySelectorAll('.slot-overlay.caption')].filter(o => o.querySelector('.overlay-pill.visible')).length === 4")
