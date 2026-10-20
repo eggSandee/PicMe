@@ -3,4 +3,8 @@
 window.PICME_FRAMES = {
   wood: { label: 'Wood', src: '/assets/frames/wood.png', slice: 96, tile: 192, default_width: 28 },
   gold: { label: 'Gold', src: '/assets/frames/gold.png', slice: 96, tile: 192, default_width: 36 },
+  black: { label: 'Black gallery', src: '/assets/frames/black.png', slice: 96, tile: 192, default_width: 24 },
+  silver: { label: 'Brushed silver', src: '/assets/frames/silver.png', slice: 96, tile: 192, default_width: 16 },
+  white: { label: 'White modern', src: '/assets/frames/white.png', slice: 96, tile: 192, default_width: 24 },
+  barnwood: { label: 'Rustic barnwood', src: '/assets/frames/barnwood.png', slice: 96, tile: 576, default_width: 36 },
 };
