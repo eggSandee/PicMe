@@ -1413,7 +1413,7 @@
       const fit = Math.floor(Math.min(el.offsetWidth, el.offsetHeight) / scale / 6);
       const w = Math.min(width, Math.max(4, fit)) * scale;
       el.style.border = `${w}px solid transparent`;
-      el.style.borderImage = `url("${asset.src}") ${asset.slice} / ${w}px / 0 round`;
+      el.style.borderImage = `url("${asset.src}") ${asset.slice} / ${w}px / 0 ${asset.repeat || 'round'}`;
       el.style.backgroundClip = 'padding-box';
     } else {
       el.style.border = frameOn ? `${width * scale}px solid ${frameCfg.frame_color ?? '#2c2318'}` : 'none';

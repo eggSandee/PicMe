@@ -27,7 +27,7 @@ EXPECTED = {
     "black": ("Black gallery", 24, 192),
     "silver": ("Brushed silver", 16, 192),
     "white": ("White modern", 24, 192),
-    "barnwood": ("Rustic barnwood", 36, 576),
+    "barnwood": ("Rustic barnwood", 36, 1536),
 }
 SIDES = ("top", "bottom", "left", "right")
 
@@ -118,12 +118,14 @@ def test_manifest_describes_the_assets():
     for name, e in entries.items():
         assert e["src"] == f"/assets/frames/{name}.png"
         assert (e["label"], e["default_width"], e["tile"]) == EXPECTED[name]
+        # Barnwood's one long board is stretched along each edge; the rest tile with `round`
+        assert e["repeat"] == ("stretch" if name == "barnwood" else "round")
         assert 16 <= e["default_width"] <= e["slice"]
         with Image.open(FRAMES_DIR / f"{name}.png") as img:
             # A square 9-slice: slice-px corners around one tile-px edge tile
             assert img.size == (2 * e["slice"] + e["tile"],) * 2
             assert img.mode == "RGB"  # opaque — no see-through wall behind the moulding
-        assert (FRAMES_DIR / f"{name}.png").stat().st_size < 300_000
+        assert (FRAMES_DIR / f"{name}.png").stat().st_size < (600_000 if name == "barnwood" else 300_000)
 
 
 @pytest.mark.parametrize("name", STYLES)
@@ -214,12 +216,14 @@ def test_white_has_a_tinted_lip_and_an_inner_shadow(renders, side):
     assert b / r < fb / fr
 
 
-def test_barnwood_does_not_repeat_every_192_px(renders):
-    """QA in the design vote: barnwood's cracks and knot recurred every ~120 px on screen.
-    Its edge tile is three times as long, and holds no 192 px repeat inside it."""
+def test_barnwood_is_one_long_board_without_a_repeat(renders):
+    """QA: barnwood's cracks and knot recurred along a gallery edge, first with a 192 px tile
+    (every ~120 px on screen), then with a 576 px one (every ~300 px). Each side is now one
+    1536 px board, stretched to fit rather than repeated, with no shorter repeat inside it."""
     img = renders["barnwood"]
-    S, T = manifest_entries()["barnwood"]["slice"], manifest_entries()["barnwood"]["tile"]
-    assert T == 576 and img.size == (2 * S + T,) * 2
+    e = manifest_entries()["barnwood"]
+    S, T = e["slice"], e["tile"]
+    assert T == 1536 and e["repeat"] == "stretch" and img.size == (2 * S + T,) * 2
 
     def diff(side_a, side_b, shift):
         us, vs = range(S, S + T, 4), range(8, 88, 2)
@@ -229,7 +233,7 @@ def test_barnwood_does_not_repeat_every_192_px(renders):
 
     neighbour = diff("top", "top", 1)
     for side in SIDES:
-        for shift in (T // 3, 2 * T // 3):
+        for shift in (192, 576, T // 3, T // 2, 2 * T // 3):
             assert diff(side, side, shift) > 3 * neighbour, (side, shift)
     # Each side is cut from a different stretch of the board
     assert diff("top", "bottom", 0) > 3 * neighbour

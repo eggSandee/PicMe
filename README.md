@@ -512,11 +512,11 @@ Each slot has a mat (`mat_color`, `mat_width`) around the photo or video and a f
 | `"black"` | Black gallery | 24 px | Matte soft-black flat face with a light hairline, so it still shows on a dark wall or at night |
 | `"silver"` | Brushed silver | 16 px | Thin aluminium profile with a visible step and a brushed sheen |
 | `"white"` | White modern | 24 px | Satin white with a tinted inner lip and a soft shadow, so it stands apart from an ivory mat |
-| `"barnwood"` | Rustic barnwood | 36 px | Weathered reclaimed wood with cracks and a knot; a long texture, so it doesn't visibly repeat |
+| `"barnwood"` | Rustic barnwood | 36 px | Weathered reclaimed wood with cracks and a knot; each side is one long board stretched to fit, so nothing repeats along an edge |
 
 Set it under **Frame** in the editor, per slot in the slot's Frame section, or per time-of-day period (**Same as default** keeps the slot's usual style). `frame_width` sets the moulding's thickness, too. Choosing a decorative style when the width is under 16 px sets it to that style's own default (the table above), since a thinner moulding loses its detail. The default widths are for separate frames; a gallery mat's outer frame keeps its own width (48 px unless changed under Gallery Mat), and about 30 px suits brushed silver there. The frame never takes more than a sixth of a small slot's shortest side, and corners keep their shape at any size. Time-of-day periods have their own frame width (8 px unless changed), so raise it there if a decorative frame looks thin at night.
 
-**Frame assets.** The frame images in `frontend/assets/frames/` are original renders made by `tools/frames/generate_frames.py` (Pillow only, no third-party images; MIT like the rest of PicMe). It also writes `frames.js`, the list of styles the display and editor load. To change or add a style, edit the script and re-run it; `--check` verifies the committed files match, and `--preview /tmp/frames.png` writes a contact sheet to look at:
+**Frame assets.** The frame images in `frontend/assets/frames/` are original renders made by `tools/frames/generate_frames.py` (Pillow only, no third-party images; MIT like the rest of PicMe). It also writes `frames.js`, the list of styles the display and editor load, with each style's edge tile and how it fills an edge (`repeat`: `round` tiles it; barnwood's `stretch` stretches one long board). To change or add a style, edit the script and re-run it; `--check` verifies the committed files match, and `--preview /tmp/frames.png` writes a contact sheet to look at:
 
 ```bash
 .venv/bin/python tools/frames/generate_frames.py

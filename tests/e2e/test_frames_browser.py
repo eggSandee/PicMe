@@ -29,13 +29,15 @@ from test_browser import VIEWPORT, PageWatcher, browser, server  # noqa: E402,F4
 
 FRAMES_DIR = REPO_ROOT / "frontend" / "assets" / "frames"
 MANIFEST = {
-    name: {k: int(v) for k, v in re.findall(r"(slice|tile|default_width): (\d+)", body)}
+    name: {"repeat": "round"} | {k: int(v) if v.isdigit() else v.strip("'")
+                                 for k, v in re.findall(r"(slice|tile|default_width|repeat): ('\w+'|\d+)", body)}
     for name, body in re.findall(r"^\s*(\w+): \{(.*?)\},?$", (FRAMES_DIR / "frames.js").read_text(), re.M)
 }
 S, T = MANIFEST["wood"]["slice"], MANIFEST["wood"]["tile"]
 # The design-vote styles (2026-10-20), after wood and gold
 NEW_STYLES = ["black", "silver", "white", "barnwood"]
 ALL_STYLES = ["wood", "gold", *NEW_STYLES]
+ROUND_STYLES = [s for s in ALL_STYLES if MANIFEST[s]["repeat"] == "round"]  # barnwood: stretch
 MAGENTA, GREEN, CYAN = (255, 0, 255), (0, 255, 0), (0, 255, 255)
 PHOTO_COLORS = [(200, 80, 40), (40, 120, 200), (40, 200, 80), (180, 180, 40)]
 NOON_UTC = dt.datetime(2026, 10, 13, 12, 0, tzinfo=dt.timezone.utc)
@@ -192,12 +194,12 @@ def corner_mads(shot: Image.Image, src: Image.Image, w: int) -> list[float]:
     return out
 
 
-def expected_edge(src: Image.Image, side: str, length: int, w: int) -> Image.Image:
+def expected_edge(src: Image.Image, side: str, length: int, w: int, repeat: str = "round") -> Image.Image:
     """An edge of a `w` px border-image frame, `length` px long between the corners, built the
     way `round` lays it out: the asset's edge tile scaled to `w` deep and repeated a whole
-    number of times, each copy squeezed to fit."""
+    number of times, each copy squeezed to fit (`stretch`: one copy, stretched)."""
     tile = src.width - 2 * S
-    n = max(1, int(length / (tile * w / S) + 0.5))  # rounds half up, like the browser
+    n = 1 if repeat == "stretch" else max(1, int(length / (tile * w / S) + 0.5))  # half up, like the browser
     crops = {"top": (S, 0, S + tile, S), "bottom": (S, S + tile, S + tile, src.width),
              "left": (0, S, S, S + tile), "right": (S + tile, S, src.width, S + tile)}
     piece = src.crop(crops[side])
@@ -210,12 +212,12 @@ def expected_edge(src: Image.Image, side: str, length: int, w: int) -> Image.Ima
     return out
 
 
-def edge_mads(shot: Image.Image, src: Image.Image, w: int) -> dict[str, float]:
-    """MAD of each edge of a framed slot against the asset's edge tile repeated with `round`."""
+def edge_mads(shot: Image.Image, src: Image.Image, w: int, repeat: str = "round") -> dict[str, float]:
+    """MAD of each edge of a framed slot against the asset's edge tile laid out with `repeat`."""
     W, H = shot.size
     boxes = {"top": (w, 0, W - w, w), "bottom": (w, H - w, W - w, H),
              "left": (0, w, w, H - w), "right": (W - w, w, W, H - w)}
-    return {side: mad(shot.crop(box), expected_edge(src, side, (W if side in ("top", "bottom") else H) - 2 * w, w))
+    return {side: mad(shot.crop(box), expected_edge(src, side, (W if side in ("top", "bottom") else H) - 2 * w, w, repeat))
             for side, box in boxes.items()}
 
 
@@ -259,13 +261,15 @@ def test_corners_scale_uniformly_at_the_default_width(write_cfg, open_display, s
     shot = slot_shot(w.page, 1)
     mads = corner_mads(shot, asset(style), width)
     assert max(mads) <= 12, mads
-    # The edges between them are the asset's edge tile, repeated (no seams, no stretched tile)
-    edges = edge_mads(shot, asset(style), width)
+    # The edges between them are the asset's edge tile, repeated with `round` (no seams), or for
+    # barnwood one long board stretched to fit
+    assert frame(w.page, 1)["repeat"] == MANIFEST[style]["repeat"]
+    edges = edge_mads(shot, asset(style), width, MANIFEST[style]["repeat"])
     assert max(edges.values()) <= 12, edges
     assert w.errors == []
 
 
-@pytest.mark.parametrize("style", ALL_STYLES)
+@pytest.mark.parametrize("style", ROUND_STYLES)
 def test_edges_repeat_the_tile_rather_than_stretch(write_cfg, open_display, style):
     tile = MANIFEST[style]["tile"]
     fw = S * T // tile  # the width at which this style's edge tile is T px long on screen
@@ -282,7 +286,7 @@ def test_edges_repeat_the_tile_rather_than_stretch(write_cfg, open_display, styl
     }
     # Only the grained woods have one clear period to find: gold's beads repeat every 24 px, and
     # the flat styles have almost no texture along the board
-    if style in ("wood", "barnwood"):
+    if style == "wood":
         for side, line in edges.items():
             period, diff = _best_period(line, T // 2 + 10, T * 3 // 2)
             # The texture repeats about every tile length, a whole number of times along the edge
@@ -297,6 +301,38 @@ def test_edges_repeat_the_tile_rather_than_stretch(write_cfg, open_display, styl
     # Every edge, tile after tile
     edges = edge_mads(shot, asset(style), fw)
     assert max(edges.values()) <= 10, edges
+    assert w.errors == []
+
+
+def _peak_autocorrelation(line: list[float], min_lag: int = 100) -> tuple[float, int]:
+    """The strongest normalised autocorrelation of `line` at a lag of `min_lag` px or more (a
+    repeated tile gives ~1.0 at its period), and that lag."""
+    n = len(line)
+    mean = sum(line) / n
+    d = [x - mean for x in line]
+    var = sum(x * x for x in d)
+    return max((sum(d[i] * d[i + k] for i in range(n - k)) / var * n / (n - k), k) for k in range(min_lag, n // 2))
+
+
+@pytest.mark.parametrize("width", [36, 48])
+def test_barnwood_does_not_repeat_along_a_gallery_edge(write_cfg, open_display, width):
+    """QA on PR #27: with a repeated 576 px tile the knot and cracks recurred about every 300 px
+    along a 1920 px gallery edge (autocorrelation 1.0). Now each edge is one board, stretched."""
+    write_cfg({"frame_style": "barnwood", "frame_width": 36}, layout="gallery-salon", slots=8,
+              gallery={"frame_width": width})
+    w = open_display()
+    g = w.page.evaluate(GALLERY_FRAME_JS)
+    assert g["style"] == "barnwood" and g["widths"] == [width] * 4 and g["repeat"] == "stretch"
+    shot = Image.open(io.BytesIO(w.page.screenshot(clip=rect(w.page, ".gallery-frame"), animations="disabled"))).convert("RGB")
+    # The edges are the asset's one board each, and the corners the asset's corners
+    edges = edge_mads(shot, asset("barnwood"), width, "stretch")
+    assert max(edges.values()) <= 12, edges
+    assert max(corner_mads(shot, asset("barnwood"), width)) <= 12
+    # No repeat along the long top edge: luminance down the middle of the moulding
+    band = shot.convert("L").crop((width, width // 4, shot.width - width, 3 * width // 4))
+    line = [sum(band.getpixel((x, y)) for y in range(band.height)) / band.height for x in range(band.width)]
+    peak, lag = _peak_autocorrelation(line)
+    assert peak < 0.6, (peak, lag)
     assert w.errors == []
 
 
@@ -514,10 +550,10 @@ def test_new_style_frames_the_gallery_mat(write_cfg, open_display, style):
     w = open_display()
     g = w.page.evaluate(GALLERY_FRAME_JS)
     assert g["style"] == style and f"/assets/frames/{style}.png" in g["image"]
-    assert g["widths"] == [48] * 4 and "round" in g["repeat"]
+    assert g["widths"] == [48] * 4 and g["repeat"] == MANIFEST[style]["repeat"]
     shot = Image.open(io.BytesIO(w.page.screenshot(clip=rect(w.page, ".gallery-frame"), animations="disabled"))).convert("RGB")
     assert max(corner_mads(shot, asset(style), 48)) <= 12
-    edges = edge_mads(shot, asset(style), 48)
+    edges = edge_mads(shot, asset(style), 48, MANIFEST[style]["repeat"])
     assert max(edges.values()) <= 12, edges
     assert w.errors == []
 

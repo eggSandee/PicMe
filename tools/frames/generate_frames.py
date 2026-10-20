@@ -10,8 +10,9 @@ float maths), so the committed files can always be regenerated and checked.
 Each asset is a square 9-slice of ``2*S + tile`` px for CSS ``border-image``: ``S`` px corners
 (the slice) around a ``tile`` px edge tile (``T`` unless a style sets a longer one). Texture is a
 function of ``(u, v)`` (``u`` along the board, ``v`` from the outer edge in towards the picture)
-that repeats every ``tile`` px along ``u``, so ``border-image-repeat: round`` tiles the edges seamlessly and continuously with the
-corners. Each pixel belongs to its nearest side, which gives 45° mitre joints. Lighting comes
+that repeats every ``tile`` px along ``u``, so ``border-image-repeat: round`` tiles the edges
+seamlessly and continuously with the corners. A style may set ``repeat = "stretch"`` instead
+(the manifest's ``repeat``): its one long tile is stretched along each edge, never repeated. Each pixel belongs to its nearest side, which gives 45° mitre joints. Lighting comes
 from a height field per moulding, lit from the top left, so top and left boards catch the
 light and bottom and right ones fall into shade.
 
@@ -98,6 +99,7 @@ def _wave(u, k, phase=0.0, period=T):
 class Wood:
     name, label, seed, default_width = "wood", "Wood", 1729, 28
     tile = T
+    repeat = "round"              # border-image-repeat for the edges
     depth = 30.0                 # height-field scale: steeper slopes = stronger shading
     ambient, diffuse = 0.38, 0.85
     spec, shininess, spec_color = 0.16, 18, (255, 236, 205)
@@ -160,6 +162,7 @@ class Wood:
 class Gold:
     name, label, seed, default_width = "gold", "Gold", 4217, 36
     tile = T
+    repeat = "round"              # border-image-repeat for the edges
     depth = 22.0
     ambient, diffuse = 0.28, 0.62
     spec, shininess, spec_color = 0.95, 14, (255, 238, 185)
@@ -214,6 +217,7 @@ class Gold:
 class Black:
     name, label, seed, default_width = "black", "Black gallery", 5101, 24
     tile = T
+    repeat = "round"              # border-image-repeat for the edges
     depth = 26.0
     ambient, diffuse = 0.42, 0.75
     spec, shininess, spec_color = 0.10, 6, (225, 228, 235)
@@ -250,6 +254,7 @@ class Black:
 class Silver:
     name, label, seed, default_width = "silver", "Brushed silver", 6311, 16
     tile = T
+    repeat = "round"              # border-image-repeat for the edges
     depth = 30.0
     ambient, diffuse = 0.45, 0.5
     spec, shininess, spec_color = 0.5, 22, (255, 255, 255)
@@ -315,28 +320,32 @@ class White(Black):
 
 class Barnwood:
     name, label, seed, default_width = "barnwood", "Rustic barnwood", 7417, 36
-    # Three times the usual tile, so the cracks and the knot don't recur along a long edge
-    tile = 3 * T
+    # One long board per side, stretched to fit rather than repeated, so the knot and the
+    # cracks appear once per edge instead of recurring along it (a repeat of any tile shows on
+    # a 1920 px gallery edge). Along the grain the stretch is hard to see.
+    tile = 8 * T
+    repeat = "stretch"
     depth = 24.0
     ambient, diffuse = 0.4, 0.75
     spec, shininess, spec_color = 0.04, 6, (230, 220, 200)
     # Each side is cut from a different stretch of the board
-    side_shift = {"top": 0, "bottom": 211, "left": 389, "right": 97}
+    side_shift = {"top": 0, "bottom": 563, "left": 1037, "right": 259}
     seam = 0.6
-    KNOT = (330.0, 46.0)          # one knot per tile
+    KNOT = (700.0, 46.0)          # one knot per board; the side shifts move it along each side
 
     def __init__(self):
         s, n = self.seed, self.tile
-        self.streak = [(Noise(s + 1, 9, 40, n), 1.0), (Noise(s + 2, 18, 80, n), 0.5)]
-        self.rough = [(Noise(s + 3, 96, 48, n), 1.0), (Noise(s + 4, 192, 96, n), 0.5)]
-        self.crack_on = Noise(s + 5, 7, 1, n)
-        self.crack_v = Noise(s + 6, 5, 1, n)
-        self.weather = Noise(s + 7, 12, 8, n)
+        self.streak = [(Noise(s + 1, 24, 40, n), 1.0), (Noise(s + 2, 48, 80, n), 0.5)]
+        self.rough = [(Noise(s + 3, 128, 48, n), 1.0), (Noise(s + 4, 256, 96, n), 0.5)]
+        self.crack_on = Noise(s + 5, 18, 1, n)
+        self.crack_v = Noise(s + 6, 13, 1, n)
+        self.weather = Noise(s + 7, 32, 8, n)
 
     def _knot(self, u, v):
         n = self.tile
         du = (u - self.KNOT[0] + n / 2) % n - n / 2
-        return math.sqrt((du / 2.6) ** 2 + (v - self.KNOT[1]) ** 2)
+        # Rounder than a real knot: a long gallery edge stretches it along the board
+        return math.sqrt((du / 1.6) ** 2 + (v - self.KNOT[1]) ** 2)
 
     def _crack(self, u, v):
         vc = 30 + 34 * self.crack_v(u, 0)
@@ -367,8 +376,8 @@ class Barnwood:
         # Weathered silver-grey patches over the warmer brown
         c = _mix(c, (140, 134, 126), 0.3 * self.weather(u, v))
         k = 0.95 + 0.08 * _fbm(self.rough, u, v)
-        k *= 0.98 + 0.02 * (0.5 + 0.5 * _wave(u, 18, 0.3, n))          # faint saw marks
-        gl = v / 5.5 + 1.6 * st + 0.08 * _wave(u, 3, 1.3, n)            # weathered grain lines
+        k *= 0.98 + 0.02 * (0.5 + 0.5 * _wave(u, 48, 0.3, n))          # faint saw marks
+        gl = v / 5.5 + 1.6 * st + 0.08 * _wave(u, 8, 1.3, n)            # weathered grain lines
         k *= 1 - 0.2 * _smooth(0.72, 0.95, 0.5 + 0.5 * math.sin(2 * math.pi * gl))
         k *= 1 - 0.45 * self._crack(u, v)
         d = self._knot(u, v)
@@ -453,7 +462,7 @@ def manifest() -> str:
     for st in STYLES:
         lines.append(
             f"  {st.name}: {{ label: '{st.label}', src: '{URL_PREFIX}{st.name}.png', "
-            f"slice: {S}, tile: {st.tile}, default_width: {st.default_width} }},"
+            f"slice: {S}, tile: {st.tile}, repeat: '{st.repeat}', default_width: {st.default_width} }},"
         )
     lines.append("};")
     return "\n".join(lines) + "\n"
@@ -484,9 +493,9 @@ def check(out: Path) -> list[str]:
     return stale
 
 
-# ── Preview contact sheet: a 9-slice with border-image-repeat: round, like the browser ──
+# ── Preview contact sheet: a 9-slice with border-image-repeat round (or stretch), like the browser ──
 
-def nine_slice(asset: Image.Image, w: int, h: int, fw: int) -> Image.Image:
+def nine_slice(asset: Image.Image, w: int, h: int, fw: int, repeat: str = "round") -> Image.Image:
     out = Image.new("RGB", (w, h))
     scale = fw / S
     n, end = asset.width - 2 * S, asset.width  # this asset's edge tile length, and its size
@@ -495,7 +504,7 @@ def nine_slice(asset: Image.Image, w: int, h: int, fw: int) -> Image.Image:
         out.paste(asset.crop((sx, sy, sx + S, sy + S)).resize((fw, fw), Image.LANCZOS), pos)
 
     def run(tile, length, horizontal, place):
-        count = max(1, round(length / (n * scale)))
+        count = 1 if repeat == "stretch" else max(1, round(length / (n * scale)))
         for i in range(count):
             a, b = round(i * length / count), round((i + 1) * length / count)
             size = (b - a, fw) if horizontal else (fw, b - a)
@@ -521,8 +530,8 @@ def _photo(w: int, h: int) -> Image.Image:
     return img
 
 
-def framed_slot(asset, w, h, fw, mat, mat_color=(0, 0, 0)):
-    slot = nine_slice(asset, w, h, fw)
+def framed_slot(asset, w, h, fw, mat, mat_color=(0, 0, 0), repeat="round"):
+    slot = nine_slice(asset, w, h, fw, repeat)
     inner = Image.new("RGB", (w - 2 * fw, h - 2 * fw), mat_color)
     inner.paste(_photo(w - 2 * (fw + mat), h - 2 * (fw + mat)), (mat, mat))
     slot.paste(inner, (fw, fw))
@@ -538,12 +547,12 @@ def preview(path: Path) -> None:
     for row, (st, asset) in enumerate(assets):
         y = 20 + row * 640
         d.text((20, y - 16), f"{st.label}: classic-4 slot 942x522, width {st.default_width}", fill=(200, 200, 200))
-        sheet.paste(framed_slot(asset, 942, 522, st.default_width, 16), (20, y))
+        sheet.paste(framed_slot(asset, 942, 522, st.default_width, 16, repeat=st.repeat), (20, y))
         small_w = min(st.default_width, 160 // 6)
         d.text((990, y - 16), f"240x160 slot, width {small_w}", fill=(200, 200, 200))
-        sheet.paste(framed_slot(asset, 240, 160, small_w, 6), (990, y))
+        sheet.paste(framed_slot(asset, 240, 160, small_w, 6, repeat=st.repeat), (990, y))
         d.text((1260, y - 16), "corner, 4x zoom of the width-36 render", fill=(200, 200, 200))
-        corner = framed_slot(asset, 160, 160, 36, 16).crop((0, 0, 120, 120)).resize((480, 480), Image.NEAREST)
+        corner = framed_slot(asset, 160, 160, 36, 16, repeat=st.repeat).crop((0, 0, 120, 120)).resize((480, 480), Image.NEAREST)
         sheet.paste(corner, (1260, y))
         d.text((990, y + 190), f"source asset ({asset.width}x{asset.height})", fill=(200, 200, 200))
         sheet.paste(asset.resize((240, 240), Image.LANCZOS), (990, y + 210))

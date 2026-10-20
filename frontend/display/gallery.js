@@ -112,7 +112,7 @@
     const w = cfg.show_frame ? Math.min(Number(cfg.frame_width) || 0, cap) : 0;
     if (asset && w > 0) {
       el.style.border = `${w}px solid transparent`;
-      el.style.borderImage = `url("${asset.src}") ${asset.slice} / ${w}px / 0 round`;
+      el.style.borderImage = `url("${asset.src}") ${asset.slice} / ${w}px / 0 ${asset.repeat || 'round'}`;
     } else {
       el.style.border = w > 0 ? `${w}px solid ${cfg.frame_color}` : 'none';
       el.style.borderImage = 'none';
