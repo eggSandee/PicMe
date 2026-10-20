@@ -66,6 +66,9 @@ DEFAULT_CONFIG = {
     "max_metadata_pills": 3,
     # Pills on the photo, or in a caption on the mat under it; auto = on the mat for gallery mats
     "label_position": "auto",  # auto | photo | mat (README → Metadata pills)
+    # How the metadata looks: pill | caption | placard | whisper (README → Metadata label styles).
+    # Caption and placard always sit on the mat and whisper on the photo; label_position is for pills.
+    "label_style": "pill",
     # cover = Fill (crop, no black bars) for new installs; a config without it means contain
     # (Fit). A slot's own fill_mode overrides it (README → Fit and Fill).
     "fill_mode": "cover",

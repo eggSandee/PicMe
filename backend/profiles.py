@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 # Top-level look keys. daily_layout_rotation is the legacy rotation flag (the editor migrates it).
 LOOK_KEYS = (
     "layout", "wall_color", "show_metadata", "date_format", "max_metadata_pills", "label_position",
-    "fill_mode", "frame_defaults", "metadata_defaults", "layout_rotation", "gallery", "layout_modes",
+    "label_style", "fill_mode", "frame_defaults", "metadata_defaults", "layout_rotation", "gallery", "layout_modes",
     "time_of_day", "daily_layout_rotation",
 )
 # Kept by reset, never in a preset (for the record; anything not in LOOK_KEYS is kept)
@@ -45,7 +45,7 @@ GROUPS = {
     "layout_modes": "Frames per layout", "wall_color": "Wall color", "fill_mode": "Fill frames",
     "frame_defaults": "Frame", "gallery": "Gallery mat", "metadata_defaults": "Metadata",
     "show_metadata": "Metadata", "date_format": "Metadata", "max_metadata_pills": "Metadata",
-    "label_position": "Metadata", "time_of_day": "Time-of-day",
+    "label_position": "Metadata", "label_style": "Metadata", "time_of_day": "Time-of-day",
 }
 
 
