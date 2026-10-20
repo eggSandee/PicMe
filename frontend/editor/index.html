@@ -1192,7 +1192,7 @@
     'frame.frame_color':  { tier: 'advanced', label: 'Frame color',
                             active: () => !frameAsset(getGlobalFrame().frame_style) &&
                                           (getGlobalFrame().frame_color ?? '#2c2318').toLowerCase() !== '#2c2318' },
-    // Wood and gold bump the width to their own default, so compare against that
+    // Decorative styles bump the width to their own default, so compare against that
     'frame.frame_width':  { tier: 'advanced', label: 'Frame width',
                             active: () => (getGlobalFrame().frame_width ?? 8) !==
                                           (frameAsset(getGlobalFrame().frame_style)?.default_width ?? 8) },
@@ -1361,7 +1361,8 @@
   }
 
   // ── Frame styles ──
-  // Decorative styles (wood, gold) come from frames.js; without it only solid frames are offered.
+  // Decorative styles (wood, gold, black, silver, ...) come from frames.js; without it only solid
+  // frames are offered.
 
   const SOLID_FRAME_OPTION = ['solid', 'Solid color'];
   const DECORATIVE_MIN_WIDTH = 16;  // narrower than this, a decorative moulding loses its detail
@@ -2292,7 +2293,7 @@
     document.getElementById('g-mat-color').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_color   = e.target.value; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-mat-width').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_width   = parseInt(e.target.value); buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-show-frame').onchange  = e => { ensureFrameDefaults(); config.frame_defaults.show_frame  = e.target.checked; onFrameLookChanged(); };
-    // Like a time-of-day template: undo our own wood/gold width bump when going back to solid
+    // Like a time-of-day template: undo our own decorative-style width bump when going back to solid
     // (unless the width was changed since), so Basic doesn't leave a hidden frame width behind
     let bumpedWidth = null;
     document.getElementById('g-frame-style').onchange = e => {
@@ -2885,7 +2886,7 @@
       const styleField = makeSelectField('Frame style', frameStyleOptions(['', 'Same as default']),
         frameAsset(tmpl.frame_style) || tmpl.frame_style === 'solid' ? tmpl.frame_style : '', v => {
           if (v) tmpl.frame_style = v; else delete tmpl.frame_style;
-          // A template's width applies to every style, so undo our own bump when leaving wood/gold
+          // A template's width applies to every style, so undo our own bump when leaving a decorative style
           // (unless the user has since typed a different width)
           if (!frameAsset(v) && bumpedWidth && tmpl.frame_width === bumpedWidth.to) {
             tmpl.frame_width = bumpedWidth.from;
@@ -2923,7 +2924,7 @@
     title.textContent = 'Time-of-Day Templates';
 
     const desc = document.createElement('p');
-    desc.textContent = 'Wall and frame colors shift automatically at the configured times. Per-slot frame overrides still take priority. Each period\'s frame width also applies to wood and gold frames, so raise it if they look thin.';
+    desc.textContent = 'Wall and frame colors shift automatically at the configured times. Per-slot frame overrides still take priority. Each period\'s frame width also applies to decorative frames (wood, gold, black, silver, ...), so raise it if they look thin.';
 
     // Time pickers
     const timeRow = document.createElement('div');
