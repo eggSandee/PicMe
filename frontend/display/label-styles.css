@@ -89,6 +89,10 @@
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 8px rgba(0, 0, 0, 0.35);
 }
 [data-label-align=center] > .lbl-whisper { align-items: center; text-align: center; }
+/* A flex item's width doesn't go under its min-content, which for a no-wrap line is all of it:
+   cap each line at the label's width, so a too-wide one clips at its end and scrolls (an
+   overflowing line starts at its start edge, whatever the alignment) */
+.lbl-whisper > .lbl-line { max-width: 100%; min-width: 0; }
 .lbl-whisper .lbl-place { font-size: 0.8em; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
 .lbl-whisper .lbl-date { font-size: 1.4em; font-weight: 400; }
 .lbl-whisper.lbl-compact .lbl-date { font-size: 1em; font-weight: 500; }

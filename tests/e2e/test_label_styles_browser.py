@@ -30,7 +30,7 @@ FIELDS = {"show_date": True, "show_location": True, "show_camera": True, "show_f
 ORDER = ["location", "camera", "megapixels", "fstop", "shutter_speed", "iso", "focal_length"]
 LIGHT, DARK, MID = "#f4f1ea", "#1b1b1b", "#8a8478"
 MIN_TEXT_PX = 16
-MODES = {"gallery": "gallery-salon", "slots": "hero-left"}
+MODES = {"gallery": "gallery-salon", "slots": "hero-left", "gallery-12": "gallery-12"}
 
 
 @pytest.fixture(scope="module")
@@ -54,7 +54,8 @@ def write_cfg(e2e_config_path):
 
     def _write(style="pill", mode="gallery", mat=LIGHT, meta=None, **extra) -> dict:
         layout = MODES[mode]
-        cfg = make_config(root / "photos", layout=layout, slots=8 if mode == "gallery" else 5, cycle_seconds=300)
+        slots = {"gallery": 8, "slots": 5, "gallery-12": 12}[mode]
+        cfg = make_config(root / "photos", layout=layout, slots=slots, cycle_seconds=300)
         cfg["label_style"] = style
         cfg["max_metadata_pills"] = None
         cfg["metadata_defaults"] = {**FIELDS, **(meta or {})}
@@ -84,11 +85,11 @@ def _until(page, js, timeout=10.0, arg=None):
     raise AssertionError(f"timed out waiting for {js} (last: {last!r})")
 
 
-def with_location(route):
+def with_location(route, location=LOCATION):
     response = route.fetch()
     data = response.json()
     if "date_iso" in data and "duration" not in data:
-        data["location"] = LOCATION
+        data["location"] = location
     route.fulfill(response=response, json=data)
 
 
@@ -102,10 +103,11 @@ PILLS_READY_JS = """() => { const slots = [...document.querySelectorAll('.slot')
 def open_page(browser, server):
     contexts = []
 
-    def _open(path="/display/", viewport=VIEWPORT, ready=LABELS_READY_JS, editor_mode="advanced") -> PageWatcher:
-        ctx = browser.new_context(viewport=viewport, device_scale_factor=1)
+    def _open(path="/display/", viewport=VIEWPORT, ready=LABELS_READY_JS, editor_mode="advanced", location=LOCATION,
+              reduced_motion="no-preference") -> PageWatcher:
+        ctx = browser.new_context(viewport=viewport, device_scale_factor=1, reduced_motion=reduced_motion)
         ctx.add_init_script(editor_mode_init_js(editor_mode))
-        ctx.route("**/api/metadata*", with_location)
+        ctx.route("**/api/metadata*", lambda route: with_location(route, location))
         contexts.append(ctx)
         page = ctx.new_page()
         watcher = PageWatcher(page)
@@ -438,3 +440,33 @@ def test_caption_on_saturated_mid_tone_mats_reads_at_4_5(write_cfg, open_page, m
     for s in geometry(open_page().page):
         for item in s["items"]:
             assert contrast(item["color"], s["matColor"]) >= 4.5, (s["id"], item, s["matColor"])
+
+
+# --- A whisper line too wide on its own (QA: clipped at the start, never scrolled) ---
+
+VERY_LONG_PLACE = ("Golden Gate Park, Richmond District, San Francisco, City and County of San Francisco, "
+                   "California, United States of America")
+LINE_JS = """() => [...document.querySelectorAll('.slot-overlay.label-styled')].map(o => {
+  const line = o.querySelector('.lbl-line'), run = line.firstElementChild;
+  const l = line.getBoundingClientRect(), r = run.getBoundingClientRect(), a = o.getBoundingClientRect();
+  return { scrolling: line.classList.contains('scrolling'), animation: getComputedStyle(run).animationName,
+           lineLeft: l.left, lineRight: l.right, runLeft: r.left, runWidth: r.width, areaLeft: a.left, areaRight: a.right,
+           keys: [...o.querySelectorAll('.lbl-item')].map(i => i.dataset.key) }; })"""
+
+
+@pytest.mark.parametrize("mode", ["slots", "gallery-12"])
+def test_whisper_long_place_alone_scrolls_and_never_clips_its_start(write_cfg, open_page, mode):
+    write_cfg(style="whisper", mode=mode, meta={"show_date": False, "show_camera": False, "show_fstop": False})
+    page = open_page(location=VERY_LONG_PLACE).page
+    lines = page.evaluate(LINE_JS)
+    assert lines
+    for ln in lines:
+        assert ln["keys"] == ["location"], ln
+        # Clipped to the area, and it scrolls slowly like a caption or a placard line
+        assert ln["lineLeft"] >= ln["areaLeft"] - 0.5 and ln["lineRight"] <= ln["areaRight"] + 0.5, ln
+        assert ln["scrolling"] and ln["animation"].startswith("pill-marquee"), ln
+    # Reduced motion: no scroll, and the start of the place is what shows
+    page = open_page(location=VERY_LONG_PLACE, reduced_motion="reduce").page
+    for ln in page.evaluate(LINE_JS):
+        assert ln["animation"] == "none", ln
+        assert abs(ln["runLeft"] - ln["lineLeft"]) <= 1 and ln["runWidth"] > ln["lineRight"] - ln["lineLeft"], ln
