@@ -19,7 +19,17 @@ from conftest import REPO_ROOT
 
 FRAMES_DIR = REPO_ROOT / "frontend" / "assets" / "frames"
 GENERATOR = REPO_ROOT / "tools" / "frames" / "generate_frames.py"
-STYLES = ("wood", "gold")
+STYLES = ("wood", "gold", "black", "silver", "white", "barnwood")
+# label, default width (separate frames), edge tile length
+EXPECTED = {
+    "wood": ("Wood", 28, 192),
+    "gold": ("Gold", 36, 192),
+    "black": ("Black gallery", 24, 192),
+    "silver": ("Brushed silver", 16, 192),
+    "white": ("White modern", 24, 192),
+    "barnwood": ("Rustic barnwood", 36, 1536),
+}
+SIDES = ("top", "bottom", "left", "right")
 
 
 @pytest.fixture(scope="module")
@@ -104,20 +114,22 @@ def test_cli_writes_assets_and_preview(tmp_path, renders):
 
 def test_manifest_describes_the_assets():
     entries = manifest_entries()
-    assert sorted(entries) == sorted(STYLES)
+    assert list(entries) == list(STYLES)  # the editor's pickers list them in this order
     for name, e in entries.items():
         assert e["src"] == f"/assets/frames/{name}.png"
-        assert e["label"] == name.capitalize()
+        assert (e["label"], e["default_width"], e["tile"]) == EXPECTED[name]
+        # Barnwood's one long board is stretched along each edge; the rest tile with `round`
+        assert e["repeat"] == ("stretch" if name == "barnwood" else "round")
         assert 16 <= e["default_width"] <= e["slice"]
         with Image.open(FRAMES_DIR / f"{name}.png") as img:
             # A square 9-slice: slice-px corners around one tile-px edge tile
             assert img.size == (2 * e["slice"] + e["tile"],) * 2
             assert img.mode == "RGB"  # opaque — no see-through wall behind the moulding
-        assert (FRAMES_DIR / f"{name}.png").stat().st_size < 300_000
+        assert (FRAMES_DIR / f"{name}.png").stat().st_size < (600_000 if name == "barnwood" else 300_000)
 
 
 @pytest.mark.parametrize("name", STYLES)
-@pytest.mark.parametrize("side", ["top", "bottom", "left", "right"])
+@pytest.mark.parametrize("side", SIDES)
 def test_edge_tile_repeats_seamlessly(renders, name, side):
     """The column where one edge tile ends and the next begins must continue the texture."""
     e = manifest_entries()[name]
@@ -148,12 +160,84 @@ def test_corners_are_mitred_and_lit_from_the_top_left(renders, name):
         beside = sum((at(i + 2, i) + at(i, i + 2)) / 2 for i in range(4, S - 4))
         assert seam < 0.9 * beside, (name, flip_x, flip_y)
 
-    # The outer slope of the moulding faces outwards: towards the light on the top and left
-    # boards, away from it on the bottom and right ones
+    # The outer round-over of the moulding faces outwards: towards the light on the top and left
+    # boards, away from it on the bottom and right ones. (Further in, a flat or stepped face may
+    # tilt either way: silver's face leans in towards the picture.)
     def outer_slope(side):
-        return sum(luminance(local_pixel(img, side, u, v)) for u in range(S, S + 64) for v in range(4, S // 6))
+        return sum(luminance(local_pixel(img, side, u, v)) for u in range(S, S + 64) for v in range(1, 4))
     assert outer_slope("top") > 1.1 * outer_slope("bottom")
     assert outer_slope("left") > 1.1 * outer_slope("right")
+
+
+# --- The new styles' looks (design vote 2026-10-20, reviewer notes) ---
+
+def band(img, side, v0, v1, step=3) -> float:
+    """Mean luminance of one side's edge tile between v0 and v1 (v in from the outer edge)."""
+    S = manifest_entries()["wood"]["slice"]
+    us = range(S, img.width - S, step)
+    return sum(luminance(local_pixel(img, side, u, v)) for u in us for v in range(v0, v1)) / (len(us) * (v1 - v0))
+
+
+@pytest.mark.parametrize("side", SIDES)
+def test_black_has_a_light_hairline_and_a_soft_black_face(renders, side):
+    img = renders["black"]
+    face = band(img, side, 20, 70)
+    # Not pure black: the face and its outline still show on a black wall (night mode)
+    assert face >= 45, face
+    # A hairline just inside the rounded outer edge, lighter than the face on every side —
+    # including bottom and right, which face away from the light
+    assert band(img, side, 6, 9) >= 1.4 * face
+
+
+@pytest.mark.parametrize("side", SIDES)
+def test_silver_has_a_visible_step_and_a_brushed_sheen(renders, side):
+    img = renders["silver"]
+    face, step, lip = band(img, side, 4, 54), band(img, side, 56, 62), band(img, side, 64, 88)
+    # The step between the face and the inner lip reads as a darker line
+    assert step < 0.85 * face and step < 0.85 * lip, (face, step, lip)
+    # A gentle gradient across the face: brighter outside, darker towards the step
+    assert band(img, side, 6, 16) > 1.1 * band(img, side, 44, 54)
+    # A mid grey, not near-white: the edge holds up on a light wall
+    assert face < 170
+
+
+@pytest.mark.parametrize("side", SIDES)
+def test_white_has_a_tinted_lip_and_an_inner_shadow(renders, side):
+    img = renders["white"]
+    face = band(img, side, 20, 70)
+    assert face > 190  # white
+    lip, sight = band(img, side, 82, 90), band(img, side, 92, 96)
+    # The lip is tinted darker and the sight edge darker still, so the frame doesn't run into
+    # an ivory mat (the gallery default #f4f1ea)
+    assert lip < 0.9 * face and sight < lip and sight < 0.75 * luminance((0xf4, 0xf1, 0xea))
+    # Tinted, not just shaded: the lip is warmer (less blue) than the face
+    r, g, b = local_pixel(img, side, 200, 86)
+    fr, fg, fb = local_pixel(img, side, 200, 40)
+    assert b / r < fb / fr
+
+
+def test_barnwood_is_one_long_board_without_a_repeat(renders):
+    """QA: barnwood's cracks and knot recurred along a gallery edge, first with a 192 px tile
+    (every ~120 px on screen), then with a 576 px one (every ~300 px). Each side is now one
+    1536 px board, stretched to fit rather than repeated, with no shorter repeat inside it."""
+    img = renders["barnwood"]
+    e = manifest_entries()["barnwood"]
+    S, T = e["slice"], e["tile"]
+    assert T == 1536 and e["repeat"] == "stretch" and img.size == (2 * S + T,) * 2
+
+    def diff(side_a, side_b, shift):
+        us, vs = range(S, S + T, 4), range(8, 88, 2)
+        return sum(abs(luminance(local_pixel(img, side_a, u, v)) -
+                       luminance(local_pixel(img, side_b, S + (u - S + shift) % T, v)))
+                   for u in us for v in vs) / (len(us) * len(vs))
+
+    neighbour = diff("top", "top", 1)
+    for side in SIDES:
+        for shift in (192, 576, T // 3, T // 2, 2 * T // 3):
+            assert diff(side, side, shift) > 3 * neighbour, (side, shift)
+    # Each side is cut from a different stretch of the board
+    assert diff("top", "bottom", 0) > 3 * neighbour
+    assert diff("left", "right", 0) > 3 * neighbour
 
 
 # --- Repo and serving ---

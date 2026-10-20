@@ -104,7 +104,7 @@ PicMe/
 - [x] iPhone HEVC/HDR videos converted to H.264 automatically in the background (needs ffmpeg)
 - [x] Time-of-day mat/wall color sync — automatically shift colors between day and night (e.g. warm white during day, black at night)
 - [x] Daily layout rotation: layout selection (choose which layouts are eligible to rotate)
-- [x] Decorative picture frames (wood, gold) using PNG assets and CSS `border-image`
+- [x] Decorative picture frames (wood, gold, black gallery, brushed silver, white modern, rustic barnwood) using PNG assets and CSS `border-image`
 - [x] Per-slot drag-to-reorder in the editor
 - [x] Configurable metadata pill size and text size
 - [x] Basic / Advanced editor mode — Basic hides less-common settings so the editor stays approachable for users who don't need full configurability (see [Editor modes](#editor-modes))
@@ -116,7 +116,7 @@ PicMe/
 ### Milestone 4.5 — Gallery Mat
 *Goal: One big frame around the whole display, with the photos in openings cut into a single mat — some larger than others, some in fun shapes.*
 
-- [x] Gallery mat mode: one outer frame (solid, wood or gold) and one mat; slots become openings separated only by mat (see [Gallery mat](#gallery-mat))
+- [x] Gallery mat mode: one outer frame (solid or any decorative style) and one mat; slots become openings separated only by mat (see [Gallery mat](#gallery-mat))
 - [x] Mat colour, margin around the openings and gutter between them; optional bevel-cut edge on each opening
 - [x] Six gallery layouts with asymmetric openings and preset shapes (`gallery-12`, `-feature`, `-mosaic`, `-cameo`, `-arches`, `-salon`)
 - [x] Opening shapes: rectangle, rounded, oval, circle, arch, hexagon, heart — per layout, and per slot in the editor
@@ -376,7 +376,7 @@ Top-level settings:
     "show_frame": true,          // show outer frame border
     "frame_color": "#2c2318",    // dark wood frame (any CSS color)
     "frame_width": 28,           // frame border thickness in pixels (28 is wood's own width)
-    "frame_style": "wood"        // "solid" (uses frame_color) | "wood" | "gold" — decorative frames ignore frame_color
+    "frame_style": "wood"        // "solid" (uses frame_color) | "wood" | "gold" | "black" | "silver" | "white" | "barnwood" — decorative frames ignore frame_color
   },
   "metadata_defaults": {         // applied to every slot; per-slot metadata overrides these
     "show_date": true,
@@ -410,7 +410,7 @@ Top-level settings:
     "frame_width": 48,           // the outer frame's width (0–160)
     "frame_override": false,     // true = the three below style the outer frame instead of frame_defaults
     "show_frame": true,
-    "frame_style": "wood",       // "solid" | "wood" | "gold"
+    "frame_style": "wood",       // "solid" or a decorative style, as in frame_defaults
     "frame_color": "#2c2318"     // solid frames only
   },
   "layout_modes": {}             // layout id -> "gallery" | "slots", e.g. { "classic-4": "gallery" }
@@ -503,9 +503,20 @@ A media folder includes the photos and videos in its subfolders too, however dee
 
 Each slot has a mat (`mat_color`, `mat_width`) around the photo or video and a frame around the mat. The mat always shows: the photo sits inside it, cropped there in **Fill** mode and letterboxed there in **Fit** mode.
 
-`frame_style` picks the frame: `"solid"` draws a plain border in `frame_color`, while `"wood"` and `"gold"` draw a decorative moulding (`frame_color` is ignored for those). Set it under **Frame** in the editor, per slot in the slot's Frame section, or per time-of-day period (**Same as default** keeps the slot's usual style). `frame_width` sets the moulding's thickness, too. Choosing wood or gold when the width is under 16 px sets it to that style's own default (28 px wood, 36 px gold), since a thinner moulding loses its detail. The frame never takes more than a sixth of a small slot's shortest side, and corners keep their shape at any size. Time-of-day periods have their own frame width (8 px unless changed), so raise it there if a wood or gold frame looks thin at night.
+`frame_style` picks the frame: `"solid"` draws a plain border in `frame_color`, while the decorative styles draw a moulding (`frame_color` is ignored for those):
 
-**Frame assets.** The wood and gold images in `frontend/assets/frames/` are original renders made by `tools/frames/generate_frames.py` (Pillow only, no third-party images; MIT like the rest of PicMe). It also writes `frames.js`, the list of styles the display and editor load. To change or add a style, edit the script and re-run it; `--check` verifies the committed files match, and `--preview /tmp/frames.png` writes a contact sheet to look at:
+| `frame_style` | Editor name | Default width | Look |
+|---|---|---|---|
+| `"wood"` | Wood | 28 px | Walnut cushion moulding, satin finish |
+| `"gold"` | Gold | 36 px | Gilded torus, cove and bead row |
+| `"black"` | Black gallery | 24 px | Matte soft-black flat face with a light hairline, so it still shows on a dark wall or at night |
+| `"silver"` | Brushed silver | 16 px | Thin aluminium profile with a visible step and a brushed sheen |
+| `"white"` | White modern | 24 px | Satin white with a tinted inner lip and a soft shadow, so it stands apart from an ivory mat |
+| `"barnwood"` | Rustic barnwood | 36 px | Weathered reclaimed wood with cracks and a knot; each side is one long board stretched to fit, so nothing repeats along an edge |
+
+Set it under **Frame** in the editor, per slot in the slot's Frame section, or per time-of-day period (**Same as default** keeps the slot's usual style). `frame_width` sets the moulding's thickness, too. Choosing a decorative style when the width is under 16 px sets it to that style's own default (the table above), since a thinner moulding loses its detail. The default widths are for separate frames; a gallery mat's outer frame keeps its own width (48 px unless changed under Gallery Mat), and about 30 px suits brushed silver there. The frame never takes more than a sixth of a small slot's shortest side, and corners keep their shape at any size. Time-of-day periods have their own frame width (8 px unless changed), so raise it there if a decorative frame looks thin at night.
+
+**Frame assets.** The frame images in `frontend/assets/frames/` are original renders made by `tools/frames/generate_frames.py` (Pillow only, no third-party images; MIT like the rest of PicMe). It also writes `frames.js`, the list of styles the display and editor load, with each style's edge tile and how it fills an edge (`repeat`: `round` tiles it; barnwood's `stretch` stretches one long board). To change or add a style, edit the script and re-run it; `--check` verifies the committed files match, and `--preview /tmp/frames.png` writes a contact sheet to look at:
 
 ```bash
 .venv/bin/python tools/frames/generate_frames.py
