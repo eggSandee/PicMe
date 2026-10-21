@@ -636,6 +636,32 @@ Which settings each mode shows (the split lives in one table, `EDITOR_SETTINGS` 
 
 In Basic, a slot's media folder is always editable: typing a different folder gives the slot its own folder, and clearing it or typing the default folder (a trailing `/` makes no difference) makes it follow the default again. Like every folder box, it is saved when you press Enter, leave the box or pick a folder with **Browse…**, not while you type. A slot that follows the default shows the default folder, also right after the default changes. Picking Wood or Gold widens a thin frame to suit it; going back to Solid restores the previous width unless you changed it in between.
 
+#### Greyed-out settings
+
+A setting that changes nothing in the current state is greyed out, both in Basic and in Advanced: dimmed, not clickable (a not-allowed cursor) and with a short reason under it, for example *Color applies to solid frames only.* It comes back as soon as the setting that decides it changes. Greying is a view only: values are kept, nothing in `config.json` changes, and the "N advanced settings active" count is the same. Folded sections stay folded. A time-of-day note under a greyed colour keeps its **Edit** and **Use my colour** links.
+
+| Setting | Greyed when |
+|---|---|
+| Frame color (Frame section, a slot's Frame, the gallery's own frame, each time-of-day period) | Every frame it would colour is decorative (wood, gold, black, silver, white, barnwood) |
+| Frame style, color and width (Frame section, a slot's Frame, the gallery's own frame) | No frame shows: **Show frame border** (or the gallery's **Show frame**) is off. A time-of-day period that turns the frame on counts, so these stay live then |
+| Frame section: Mat color, Mat width, Frame width | No separate-frame layout is on screen (base layout, plus rotated ones) |
+| Frame section: Show frame border, Frame style, Frame color | The screen is gallery-only and the gallery uses its own frame |
+| Gallery Mat (the whole section) | No gallery-mat layout is on screen; the reason says how to get one |
+| Bevel width, Bevel color | **Bevelled openings** is off |
+| Label position | The label style places itself: caption and placard always sit on the mat, corner whisper on the photo |
+| Pill size (Default Metadata, a slot's metadata) | The label style isn't Pills (the other styles size from Text size alone) |
+| A slot's Show metadata | **Show metadata** in Default Metadata is off |
+| A slot's Media folder, Frame and metadata settings | Its **Use global** is on (Advanced; in Basic the folder is always editable) |
+| A slot's Frame (the whole section) | No separate-frame layout is on screen |
+| A slot's Opening shape | No gallery-mat layout is on screen |
+| A slot's Change every and Group | It is a video slot (videos advance after their loops) |
+| Switch layout at, and the rotation checkboxes on the thumbnails | **Rotate layout daily** is off |
+| Time-of-day templates (times, colours, frames) | Time of day is off; the template window has its own **Enabled** switch |
+| A period's Frame style, color and width | That period shows no frame (its **Show frame** is off); its mat and frame widths also need a separate-frame layout |
+| A period's colour picker | **Same as default** is ticked (the picker shows the colour in use) |
+
+Settings that only exist for one kind of slot are hidden rather than greyed: a photo slot has no video loops or audio. The same goes for disclosures you open yourself (the gallery's own frame shows with **Use a different frame for gallery mats**; Default Metadata's fields fold away with **Show metadata** off). In the code, one helper, `setInactive` in `frontend/editor/index.html`, sets both the `disabled` attribute and the `.field-inactive` look with the reason, so the two can't drift apart.
+
 #### Editor layout
 
 - **Resize the preview.** Drag the bar between the layout preview and the slot settings to give either more room; the preview keeps the screen's 16:9 shape, so it is still the display, smaller. On a touch screen drag it with a finger; with the keyboard, focus it (Tab) and use the arrow keys, Home (smallest preview) or End (largest). Double-click it to go back to the default (the preview takes 60% of the height, never more than its full width needs). The slot settings scroll on their own below it.
