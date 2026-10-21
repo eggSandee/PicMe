@@ -698,7 +698,8 @@
     .profile-row { display: flex; gap: 6px; }
     .profile-row .btn { flex: 1; padding: 7px 6px; font-size: 12px; }
     .btn:disabled { opacity: 0.45; cursor: default; }
-    #undo-row .link-btn { color: var(--accent); }
+    #undo-row .link-btn, .tod-note .link-btn { color: var(--accent); }
+    .tod-note { margin-top: 6px; }
     .modal-note .warn { color: #e0a030; }
 
     .modal-btn-row {
@@ -963,7 +964,7 @@
           <label>Bevel color</label>
           <input type="color" id="g-gal-bevel-color" />
         </div>
-        <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;line-height:1.4;" id="gallery-help" data-setting="gallery.mat_color">The frame's style and colour come from the Frame section. Sizes are px on a 1920×1080 screen. Time-of-day periods change the mat and frame colours; widths stay as set here.</p>
+        <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;line-height:1.4;" id="gallery-help" data-setting="gallery.mat_color">The frame's style and colour come from the Frame section. Sizes are px on a 1920×1080 screen. Time-of-day periods can change the mat and frame colours (Same as default keeps these); widths stay as set here.</p>
       </div>
     </div>
 
@@ -1069,6 +1070,7 @@
 <script src="/assets/frames/frames.js"></script>
 <script src="/display/shapes.js"></script>
 <script src="/display/gallery.js"></script>
+<script src="/display/time-of-day.js"></script>
 <script src="/display/aspect.js"></script>
 <script src="/editor/slot-drag.js"></script>
 <script>
@@ -1346,6 +1348,7 @@
     if (!config) return;
     renderSlotPanel();  // the slot folder and metadata summary differ in Basic
     refreshAdvancedHint();
+    refreshTodNotes();  // in Basic the frame style's note covers the hidden frame colour
   }
 
   // Labels of the advanced settings config sets away from their defaults (every slot, dormant ones too)
@@ -1607,7 +1610,7 @@
     document.getElementById('gallery-help').textContent = (g.frame_override
       ? "This gallery frame's style and colour are set above; the Frame section doesn't change them."
       : "The frame's style and colour come from the Frame section.") +
-      ' Sizes are px on a 1920×1080 screen. Time-of-day periods change the mat and frame colours; widths stay as set here.';
+      ' Sizes are px on a 1920×1080 screen. Time-of-day periods can change the mat and frame colours (Same as default keeps these); widths stay as set here.';
     document.getElementById('g-gal-mat-color').value = g.mat_color;
     document.getElementById('g-gal-frame-style').value = frameAsset(g.frame_style) ? g.frame_style : 'solid';
     document.getElementById('g-gal-show-frame').checked = g.show_frame;
@@ -2496,6 +2499,7 @@
     todEl.checked = config.time_of_day?.enabled || false;
     todEl.onchange = e => { ensureTod(); config.time_of_day.enabled = e.target.checked; scheduleAutoSave(); };
     document.getElementById('tod-configure-btn').onclick = openTodModal;
+    refreshTodNotes();
   }
 
   function ensureFrameDefaults() {
@@ -2968,9 +2972,12 @@
 
   // ── DOM helpers ──
 
+  // New installs and Reset: day and night change the wall and frame colours only. The mat stays
+  // 'Same as default' (no mat_color key), so the mat colour picked under Frame or Gallery Mat
+  // shows all day; it's chosen to suit the photos, not the room's light. Saved configs keep theirs.
   const TOD_DEFAULTS = {
-    day:   { wall_color: '#f5f0e8', mat_color: '#a8c8e8', mat_width: 20, show_frame: true, frame_color: '#6b4226', frame_width: 8 },
-    night: { wall_color: '#000000', mat_color: '#3a3a3a', mat_width: 20, show_frame: true, frame_color: '#1c1c1c', frame_width: 8 },
+    day:   { wall_color: '#f5f0e8', mat_width: 20, show_frame: true, frame_color: '#6b4226', frame_width: 8 },
+    night: { wall_color: '#000000', mat_width: 20, show_frame: true, frame_color: '#1c1c1c', frame_width: 8 },
   };
 
   function ensureTod() {
@@ -2992,16 +2999,36 @@
     ensureTod();
     const tod = config.time_of_day;
 
-    function makeTodColor(label, val, onChange) {
+    // "Same as default" leaves the key out of the template, so the colour set outside time of
+    // day (`fallback`) shows through. `onSync` runs after the box changes (it may disable more).
+    function makeTodColor(label, tmpl, key, fallback, onSync = () => {}) {
       const wrap = document.createElement('div');
       wrap.className = 'field';
+      wrap.dataset.todKey = key;
       const lbl = document.createElement('label');
       lbl.textContent = label;
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;';
       const inp = document.createElement('input');
       inp.type = 'color';
-      inp.value = val || '#000000';
-      inp.oninput = () => { onChange(inp.value); scheduleAutoSave(); };
-      wrap.append(lbl, inp);
+      inp.value = tmpl[key] || fallback || '#000000';
+      inp.oninput = () => { tmpl[key] = inp.value; scheduleAutoSave(); };
+      const sameLbl = document.createElement('label');
+      sameLbl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:12px;margin:0;';
+      const same = document.createElement('input');
+      same.type = 'checkbox';
+      same.className = 'tod-same';
+      same.checked = !tmpl[key];
+      same.onchange = () => {
+        if (same.checked) delete tmpl[key]; else tmpl[key] = inp.value;
+        inp.disabled = same.checked;
+        onSync();
+        scheduleAutoSave();
+      };
+      inp.disabled = same.checked;
+      sameLbl.append(same, 'Same as default');
+      row.append(inp, sameLbl);
+      wrap.append(lbl, row);
       return wrap;
     }
 
@@ -3044,13 +3071,14 @@
 
     function buildPeriodCol(emoji, title, tmpl) {
       const col = document.createElement('div');
+      col.dataset.period = title.toLowerCase();
       col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;';
       const hdr = document.createElement('div');
       hdr.style.cssText = 'font-size:13px;font-weight:600;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--border);';
       hdr.textContent = `${emoji} ${title}`;
       col.appendChild(hdr);
-      col.appendChild(makeTodColor('Wall color',   tmpl.wall_color,  v => tmpl.wall_color  = v));
-      col.appendChild(makeTodColor('Mat color',    tmpl.mat_color,   v => tmpl.mat_color   = v));
+      col.appendChild(makeTodColor('Wall color', tmpl, 'wall_color', config.wall_color || '#1a1a1a'));
+      col.appendChild(makeTodColor('Mat color',  tmpl, 'mat_color',  currentMatColor()));
       col.appendChild(makeTodNumber('Mat width',   tmpl.mat_width,   v => tmpl.mat_width   = v));
       col.appendChild(makeTodToggle('Show frame',  tmpl.show_frame,  v => tmpl.show_frame  = v));
       // "Same as default" leaves frame_style unset, so the global (or slot) style shows through
@@ -3071,13 +3099,13 @@
           syncColor();
           scheduleAutoSave();
         });
-      const colorField = makeTodColor('Frame color',  tmpl.frame_color, v => tmpl.frame_color = v);
+      const colorField = makeTodColor('Frame color', tmpl, 'frame_color', getGlobalFrame().frame_color || '#2c2318', () => syncColor());
       const colorHint = makeHint('Color applies to solid frames only.');
       colorField.appendChild(colorHint);
       const widthField = makeTodNumber('Frame width', tmpl.frame_width, v => tmpl.frame_width = v);
       function syncColor() {
         const decorative = !!frameAsset(tmpl.frame_style);
-        colorField.querySelector('input').disabled = decorative;
+        colorField.querySelector('input[type=color]').disabled = decorative || !tmpl.frame_color;
         colorHint.style.display = decorative ? '' : 'none';
       }
       syncColor();
@@ -3096,7 +3124,7 @@
     title.textContent = 'Time-of-Day Templates';
 
     const desc = document.createElement('p');
-    desc.textContent = 'Wall and frame colors shift automatically at the configured times. Per-slot frame overrides still take priority. Each period\'s frame width also applies to decorative frames (wood, gold, black, silver, ...), so raise it if they look thin.';
+    desc.textContent = 'Wall, mat and frame colors shift automatically at the configured times. Same as default keeps the color set under Global Settings, Frame or Gallery Mat. Per-slot frame overrides still take priority. Each period\'s frame width also applies to decorative frames (wood, gold, black, silver, ...), so raise it if they look thin.';
 
     // Time pickers
     const timeRow = document.createElement('div');
@@ -3135,6 +3163,62 @@
     overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
     const esc = e => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', esc); } };
     document.addEventListener('keydown', esc);
+  }
+
+  // ── Time-of-day override notes ──
+  // A control whose value the current period's template replaces on the display gets a note under
+  // it, so a mat colour that never shows doesn't read as a bug. The keys each control can lose to a
+  // template; in Basic the frame colour is hidden, so the style's note covers it too.
+  const TOD_NOTE_FIELDS = {
+    'g-wall-color':      () => ['wall_color'],
+    'g-mat-color':       () => ['mat_color'],
+    'g-frame-style':     () => (isBasic() ? ['frame_style', 'frame_color'] : ['frame_style']),
+    'g-frame-color':     () => ['frame_color'],
+    'g-gal-mat-color':   () => ['mat_color'],
+    'g-gal-frame-style': () => (isBasic() ? ['frame_style', 'frame_color'] : ['frame_style']),
+    'g-gal-frame-color': () => ['frame_color'],
+  };
+
+  function todValueText(key, value) {
+    if (key !== 'frame_style') return value;
+    return frameStyleOptions().find(([v]) => v === value)?.[1] ?? value;
+  }
+
+  // The period comes from time-of-day.js, as on the display. Called after every edit (through
+  // scheduleAutoSave), on a mode change and on the editor's 60 s tick (a period boundary).
+  function refreshTodNotes() {
+    if (!config) return;
+    const period = PicMeTimeOfDay.currentPeriod(config, new Date());
+    const tmpl = period?.template;
+    for (const [inputId, keysFor] of Object.entries(TOD_NOTE_FIELDS)) {
+      const field = document.getElementById(inputId)?.closest('.field');
+      if (!field) continue;
+      let note = field.querySelector(':scope > .tod-note');
+      // Same rule as the display: only a non-empty string in the template overrides
+      const keys = tmpl ? keysFor().filter(k => typeof tmpl[k] === 'string' && tmpl[k]) : [];
+      if (!keys.length) { note?.remove(); continue; }
+      if (!note) {
+        note = document.createElement('p');
+        note.className = 'field-hint tod-note';
+        field.appendChild(note);
+      }
+      const name = period.name === 'day' ? 'Day' : 'Night';
+      const shown = keys.map(k => todValueText(k, tmpl[k])).join(', ');
+      const text = document.createElement('span');
+      text.textContent = `${name} time-of-day is showing ${shown} until ${period.until}`;
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'link-btn tod-note-edit';
+      edit.textContent = 'Edit';
+      edit.onclick = openTodModal;
+      const mine = document.createElement('button');
+      mine.type = 'button';
+      mine.className = 'link-btn tod-note-mine';
+      mine.textContent = keys.length === 1 && keys[0] === 'frame_style' ? 'Use my style' : 'Use my colour';
+      // 'Same as default' for these keys in this period's template
+      mine.onclick = () => { for (const k of keys) delete tmpl[k]; scheduleAutoSave(); };
+      note.replaceChildren(text, ' · ', edit, ' · ', mine);
+    }
   }
 
   // `onChange` commits the path (on blur/Enter or a Browse pick); `onInput` is for live hints only
@@ -3432,6 +3516,7 @@
   let _saveTimer = null;
   function scheduleAutoSave(savedMsg) {
     refreshAdvancedHint();  // every edit path comes through here
+    refreshTodNotes();
     clearTimeout(_saveTimer);
     _saveTimer = setTimeout(() => { _saveTimer = null; saveConfig(savedMsg); }, 500);
   }
@@ -3733,9 +3818,11 @@
     });
   }
 
-  // Keep the Today badge and status line current when the editor stays open past change_at
+  // Keep the Today badge and status line current when the editor stays open past change_at,
+  // and the time-of-day notes current past a period boundary
   let _rotationUIKey = null;
   setInterval(() => {
+    refreshTodNotes();
     if (!rotationOn() || document.activeElement?.id === 'g-rotation-change-at' || PicMeSlotDrag.isDragging()) return;
     const now = new Date();
     const key = `${PicMeRotation.resolveLayout(config, layouts, now)?.id}|${now.toDateString()}`;
