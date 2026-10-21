@@ -16,6 +16,7 @@ def customised(folder="/media/family", other="/media/videos") -> dict:
     cfg |= {
         "source_path": folder, "include_subfolders": False, "video_max_edge": 3840, "include_live_photos": True,
         "wall_color": "#123456", "date_format": "iso", "tap_for_details": False, "max_metadata_pills": 5, "label_position": "photo",
+        "label_style": "placard",
         "frame_defaults": {"mat_color": "#ff0000", "mat_width": 30, "show_frame": True, "frame_color": "#00ff00",
                            "frame_width": 12, "frame_style": "solid"},
         "metadata_defaults": {"show_date": True, "show_location": True, "text_size": "large"},
@@ -58,8 +59,8 @@ def test_reset_puts_looks_back_and_keeps_media(client, config_path, saved):
     assert r["config"] == after
     assert_media_kept(saved, after)
     d = main.DEFAULT_CONFIG
-    for key in ("layout", "wall_color", "date_format", "max_metadata_pills", "label_position", "fill_mode",
-                "frame_defaults", "metadata_defaults", "layout_rotation", "gallery", "layout_modes",
+    for key in ("layout", "wall_color", "date_format", "max_metadata_pills", "label_position", "label_style",
+                "fill_mode", "frame_defaults", "metadata_defaults", "layout_rotation", "gallery", "layout_modes",
                 "tap_for_details"):
         assert after[key] == d[key], key
     assert after["layout"] == "classic-4" and after["layout_rotation"]["enabled"] is False
@@ -137,7 +138,7 @@ def test_preset_round_trip_restores_looks_and_keeps_media(client, config_path, s
     assert r["config"] == after and r["count"] == dry["count"]
     assert_media_kept(moved, after)
     look = lambda c: {k: c.get(k) for k in ("layout", "wall_color", "frame_defaults", "layout_rotation", "gallery",
-                                             "layout_modes", "time_of_day", "label_position", "date_format",
+                                             "layout_modes", "time_of_day", "label_position", "label_style", "date_format",
                                              "max_metadata_pills")}
     assert look(after) == look(saved)
     # Saved as the display showed it: no fill_mode was Fit, a field left out was off

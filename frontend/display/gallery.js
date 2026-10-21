@@ -296,7 +296,7 @@
   // PicMePills.sharedShort) and, for captions on the mat, lays out again with a band under every
   // opening. The band comes from the size measured before it, so the two can't feed back.
   // labels = { placement: 'mat' | 'photo', sizes: [i] -> slot i's { text_size, pill_size },
-  //            or null when slot i puts no pill on screen }
+  //            or null when slot i puts no pill on screen, style: config.label_style (sizes the band) }
   // Returns { openings, short, band }: openings as layoutOpenings(); short to size the pills by.
   function layoutWithLabels(root, gcfg, layout, slotCfgs, labels, opts = {}) {
     const P = window.PicMePills;
@@ -311,8 +311,11 @@
     let band = 0;
     if (mat) {
       if (P && shown.length && all.length) {
-        const need = Math.max(...labels.sizes.filter(Boolean).map(s => P.captionBand(s, short)));
-        band = Math.min(need, Math.floor(P.CAPTION_MAX_FRACTION * Math.min(...all.map(o => o.cell.h))));
+        // A label style's band (label-styles.js: a placard needs two lines), capped by the style
+        const L = window.PicMeLabels, style = labels.style || 'pill';
+        const need = Math.max(...labels.sizes.filter(Boolean).map(s => (L ? L.captionBand(style, s, short) : P.captionBand(s, short))));
+        const minH = Math.min(...all.map(o => o.cell.h));
+        band = Math.min(need, L ? L.maxBand(style, minH) : Math.floor(P.CAPTION_MAX_FRACTION * minH));
       }
       openings = applyStyles(root, gcfg, layout, slotCfgs, { ...opts, captionBand: band });
     }

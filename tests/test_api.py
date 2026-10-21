@@ -32,6 +32,7 @@ def test_config_get_without_file_creates_defaults(client, config_path):
     assert cfg["frame_defaults"]["frame_style"] == "wood"
     assert cfg["frame_defaults"]["frame_width"] == 28
     assert cfg["label_position"] == "auto"
+    assert cfg["label_style"] == "pill"  # today's pills (README → Metadata label styles)
     assert cfg["gallery"]["frame_override"] is False  # the gallery's frame follows frame_defaults
     # Persisted on first run, so the editor and a restart see the same thing
     assert json.loads(config_path.read_text()) == cfg

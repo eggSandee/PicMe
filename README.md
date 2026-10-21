@@ -367,6 +367,7 @@ Top-level settings:
   "date_format": "long",         // "long" (July 4, 2019) | "medium" (Jul 4, 2019) | "short" (7/4/2019) | "iso" (2019-07-04)
   "max_metadata_pills": 3,       // max overlays shown per slot (excluding date); omit for no limit
   "label_position": "auto",      // "auto" | "photo" | "mat" — pills on the photo or in a caption on the mat (see Metadata pills below)
+  "label_style": "pill",         // "pill" | "caption" | "placard" | "whisper" — how the metadata looks (see Metadata label styles below)
   "fill_mode": "cover",          // "cover" = Fill (crop, no black bars) | "contain" = Fit (whole photo, bars); missing = contain (see Fit and Fill below)
   "tap_for_details": true,       // click, tap or Enter on a photo shows it larger with its metadata; false for kiosk screens; missing = true (see Photo details below)
   "frame_defaults": {            // mat and frame style applied to every slot; per-slot frame: {} overrides.
@@ -482,6 +483,27 @@ When a slot is too small for all its pills:
 - A pill whose text is too wide scrolls slowly (about 25 px a second) back and forth, pausing for 2 seconds at each end. Text is never cut off with "…". If the TV or computer is set to reduce motion, the text doesn't move and is clipped at the pill's edge instead.
 
 **Upgrading:** `medium` pills are larger than the fixed 12 px pills of earlier versions. Choose **Small** for something closer to the old look.
+
+#### Metadata label styles
+
+`label_style` (**Default Metadata → Label style** in the editor, in Basic mode too) picks how the metadata looks. Each option in the editor is a small live preview on your current mat, and the layout preview draws the chosen style with sample text. The display switches as soon as the editor saves, without reloading.
+
+| Style | Looks like | Where |
+|-------|------------|-------|
+| `pill` (default) | Today's dark pills | Where **Label position** says |
+| `caption` | One serif line: the date in italic, then the other fields upright at the same size, with dark hairlines between | Always on the mat, under the photo |
+| `placard` | A small printed museum label: a warm card with a hairline border and no shadow, the place in italic, then the date and details | Always on the mat, under the photo |
+| `whisper` | Bare type at the bottom of the photo: the place in small capitals, a large date, the camera details underneath, over a soft dark gradient | Always on the photo |
+
+- **The style decides where it goes.** Caption and placard are labels on the mat, and whisper is type on the photo, so **Label position** applies to pills only. A placard with `label_position: "photo"` still sits on the mat, for example. The editor greys out Label position and Pill size while another style is chosen and says why.
+- **On the mat** (caption, placard): in the caption band under each photo, starting at the photo's left edge, on gallery mats and separate frames alike. The placard needs two lines, so its band is taller (at most 32% of the smallest slot's height, against 25% for pills and captions). It never touches the photo, the bevel, the frame or another opening.
+- **Ink on the mat.** The caption's ink follows the mat: dark on light mats, light on dark mats. On a mid-tone mat, where neither reads well, it switches to pure black or white and a heavier weight. The text always has a contrast of at least 4.5:1 against the mat. The placard is a light card on any mat.
+- **On the photo** (whisper): in the bottom-right corner of a rectangle. In a heart, circle, hexagon or arch it is centred low inside the part of the shape it can use, and the gradient is clipped to the shape. If the date alone is too wide there, the date shrinks to the size of the other lines, and then to 16 px, like a pill date that doesn't fit.
+- **Fit.** With Fit (`contain`), labels follow the photo you see rather than the opening: caption and placard start at the visible photo's left edge, and a whisper and its gradient stay on the photo, off the bars. Pill captions on a gallery mat start there too. The editor's preview has no photo, so it shows them at the opening's edge.
+- **Sizes.** One size per screen, as for pills: the style's text is the screen's pill size (text size included) times about 1.1, but never smaller than the size that keeps every line at least 16 px on a 1920×1080 screen, so it reads from the couch.
+- **When it doesn't fit**, the lowest-priority fields are hidden first (the order in the table above), and the date is never hidden. A line that is still too wide scrolls slowly, like a long pill. A placard whose place is hidden makes the date its title. `show_metadata` and `max_metadata_pills` work as they do for pills, and video slots show the date only.
+- **Font.** Caption and placard use [Source Serif 4](https://github.com/adobe-fonts/source-serif), bundled in `frontend/assets/fonts` (SIL Open Font License, `SourceSerif4-OFL.txt`), because TV browsers have no Georgia. Whisper uses the TV's sans-serif.
+- **One style for the whole screen.** There is no per-slot style: a screen's labels share one caption band and one size, so mixing styles on one screen would break that.
 
 To use a different photo folder (e.g. a folder elsewhere on your PC), set `source_path` to the full path:
 
@@ -616,7 +638,7 @@ In Basic, a slot's media folder is always editable: typing a different folder gi
 
 **My Settings**, at the top of the sidebar, saves and restores your settings:
 
-- **Save as my preset** saves the current look: layout, rotation, Frames per layout, wall colour, Fill frames, Tap a photo for details, frame, gallery mat, metadata, label position, time of day, and each slot's frame, metadata, timer, group, Fit / Fill, opening shape and video loops and audio. It asks before replacing a saved preset.
+- **Save as my preset** saves the current look: layout, rotation, Frames per layout, wall colour, Fill frames, Tap a photo for details, frame, gallery mat, metadata, label position and style, time of day, and each slot's frame, metadata, timer, group, Fit / Fill, opening shape and video loops and audio. It asks before replacing a saved preset.
 - **Apply my preset** puts that look back. The dialog says how many settings change and lists them. Anything the preset names that no longer exists (a removed layout, an unknown shape) is skipped and listed in the dialog; the current layout stays then.
 - **Reset everything to defaults…** puts every look setting back to the first-run defaults: Classic 4, daily rotation off, wood frames, Fill frames on, Tap a photo for details on, every slot on the global frame and metadata, 30 s timers. The dialog says how many settings differ from the defaults (counting what the display shows differently).
 - **Kept by both.** Your default media folder, each slot's folder and photo/video mode, Include subfolders, and the video settings (max video size, Live Photo clips), so the display never goes blank and the video library isn't converted again. All slots are kept too, including ones the layout doesn't show, so a bigger layout later still has their folders.
