@@ -151,7 +151,7 @@ def test_fresh_browser_starts_in_basic(write_cfg, open_editor):
     # The folder is editable without the "Use global" toggle
     folder = _slot_section(page, "Media Source").locator("input[type=text]")
     assert folder.is_editable()
-    assert page.evaluate("el => !el.closest('.section-disabled')", folder.element_handle())
+    assert page.evaluate("el => !el.closest('.field-inactive')", folder.element_handle())
     assert w.errors == []
 
 
@@ -270,7 +270,7 @@ def test_include_subfolders_is_advanced_and_counted_when_off(write_cfg, open_edi
 
     # A slot on the default folder shows the global value, disabled; the global toggle updates it
     page.locator(".preview-slot").nth(0).click()
-    assert _slot_section(page, "Media Source").locator(".section-disabled").count() == 1
+    assert _slot_section(page, "Media Source").locator(".field-inactive").count() == 1
     assert not _slot_subfolders(page).locator("input").is_checked()
     page.locator(".toggle-row:has(#g-include-subfolders) .toggle").click()
     _saved(write_cfg, lambda c: c["include_subfolders"] is True)

@@ -603,7 +603,7 @@ def test_editor_default_frame_style(write_cfg, open_display):
     assert cfg["frame_defaults"]["frame_width"] == 28  # a thin solid width jumps to the style's default
     assert page.input_value("#g-frame-width") == "28"
     assert page.is_disabled("#g-frame-color")
-    assert page.is_visible("#g-frame-color-hint")
+    assert page.locator(".field:has(#g-frame-color) + .inactive-reason").text_content() == "Color applies to solid frames only."
     previews = page.evaluate(PREVIEW_IMAGES_JS)
     assert len(previews) == 4 and all("/assets/frames/wood.png" in p for p in previews)
 
@@ -696,6 +696,7 @@ def test_editor_time_of_day_frame_style(write_cfg, open_display):
     w = open_display("/editor/")
     page = w.page
     page.click("#tod-configure-btn")
+    page.click("#tod-modal-enabled + .toggle-track")  # templates are greyed while time of day is off
     day = page.locator(".tod-modal-overlay .field").filter(has_text="Frame style").first.locator("select")
     assert day.input_value() == ""  # "Same as default"
     day.select_option("gold")
@@ -715,6 +716,7 @@ def test_editor_time_of_day_keeps_a_typed_width_when_leaving_gold(write_cfg, ope
     w = open_display("/editor/")
     page = w.page
     page.click("#tod-configure-btn")
+    page.click("#tod-modal-enabled + .toggle-track")  # templates are greyed while time of day is off
     fields = page.locator(".tod-modal-overlay .field")
     day = fields.filter(has_text="Frame style").first.locator("select")
     width = fields.filter(has_text="Frame width").first.locator("input")
@@ -736,6 +738,7 @@ def test_editor_frame_width_is_capped(write_cfg, open_display):
     assert cfg["frame_defaults"]["frame_width"] == 80
     assert page.input_value("#g-frame-width") == "80"
     page.click("#tod-configure-btn")
+    page.click("#tod-modal-enabled + .toggle-track")  # templates are greyed while time of day is off
     tod_width = page.locator(".tod-modal-overlay .field").filter(has_text="Frame width").first.locator("input")
     tod_width.fill("500")
     cfg = _saved(write_cfg, lambda c: (c.get("time_of_day") or {}).get("day", {}).get("frame_width") not in (None, 8))

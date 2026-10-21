@@ -430,6 +430,19 @@ def _saved(path, predicate, timeout=5.0) -> dict:
     raise AssertionError(f"config never matched; last saved: {json.dumps(cfg)[:500]}")
 
 
+# Rotation off: each layout's box and the switch time are greyed and disabled, saying why
+GREYED_PICKS_JS = """() => [...document.querySelectorAll('.rotation-pick-corner')].map(c =>
+  c.classList.contains('field-inactive') && c.querySelector('.rotation-pick').disabled && /Turn on Rotate layout daily/.test(c.title))"""
+
+
+def _assert_rotation_greyed(page):
+    picks = page.evaluate(GREYED_PICKS_JS)
+    assert picks and all(picks), picks
+    assert page.locator("#rotation-options.field-inactive").is_visible()
+    assert page.locator("#g-rotation-change-at").is_disabled()
+    assert page.locator("#rotation-options .inactive-reason").text_content() == "Turn on Rotate layout daily to use these."
+
+
 PICKS_JS = "() => Object.fromEntries([...document.querySelectorAll('.rotation-pick')].map(c => [c.dataset.id, c.checked]))"
 
 
@@ -440,8 +453,7 @@ def test_editor_rotation_controls(server, open_at, rotation_config):
     w = open_at(f"{server}/editor/", at=local(2026, 10, 13, 10, 0))
     page = w.page
     path = rotation_config.path
-    assert page.locator(".rotation-pick").count() == 0
-    assert page.locator("#rotation-options").is_hidden()
+    _assert_rotation_greyed(page)
 
     _click(page, "#g-rotation-enabled")
     assert page.evaluate(PICKS_JS) == {k: True for k in SLOT_COUNTS}
@@ -561,8 +573,7 @@ def test_fresh_install_editor_has_rotation_off(fresh_install, open_at):
     page = w.page
     assert page.locator("#g-rotation-enabled").count() == 1
     assert not page.locator("#g-rotation-enabled").is_checked()
-    assert page.locator("#rotation-options").is_hidden()
-    assert page.locator(".rotation-pick").count() == 0
+    _assert_rotation_greyed(page)
     assert json.loads(config.read_text())["layout_rotation"]["enabled"] is False
     assert w.errors == []
 
@@ -582,7 +593,7 @@ def test_rotation_checkbox_in_each_thumbnail_corner(server, open_at, rotation_co
     w = open_at(f"{server}/editor/", at=local(2026, 10, 13, 10, 0), editor_mode=editor_mode)
     page = w.page
     path = rotation_config.path
-    assert page.locator(".rotation-pick").count() == 0
+    _assert_rotation_greyed(page)
     assert page.locator("#rotation-bulk").is_hidden()
 
     page.click("#g-rotation-enabled + .toggle-track")  # the visible toggle, in either mode
@@ -618,7 +629,7 @@ def test_rotation_checkbox_in_each_thumbnail_corner(server, open_at, rotation_co
 
     page.click("#g-rotation-enabled + .toggle-track")
     _saved(path, lambda c: c["layout_rotation"]["enabled"] is False)
-    assert page.locator(".rotation-pick").count() == 0
+    _assert_rotation_greyed(page)
     assert w.errors == []
 
 
