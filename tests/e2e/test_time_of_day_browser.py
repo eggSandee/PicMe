@@ -239,6 +239,10 @@ def test_modal_same_as_default_for_each_colour(write_cfg, open_page):
         assert not box.is_checked()  # the saved colour is kept
         box.check()
         assert night.locator(f'[data-tod-key="{key}"] input[type=color]').is_disabled()
+    # The disabled picker previews what shows instead: the user's own colours
+    assert night.locator('[data-tod-key="mat_color"] input[type=color]').input_value() == MY_MAT
+    assert night.locator('[data-tod-key="wall_color"] input[type=color]').input_value() == "#ff00ff"
+    assert night.locator('[data-tod-key="frame_color"] input[type=color]').input_value() == "#00ff00"
     cfg = _saved(write_cfg, lambda c: not {"wall_color", "mat_color", "frame_color"} & c["time_of_day"]["night"].keys())
     assert cfg["time_of_day"]["day"] == OLD_TOD["day"]
     # Unticking puts a colour back, the one in the picker

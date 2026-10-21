@@ -3011,16 +3011,20 @@
       row.style.cssText = 'display:flex;align-items:center;gap:8px;';
       const inp = document.createElement('input');
       inp.type = 'color';
-      inp.value = tmpl[key] || fallback || '#000000';
-      inp.oninput = () => { tmpl[key] = inp.value; scheduleAutoSave(); };
+      // Ticked, the disabled picker previews the colour that shows; unticking brings back the last own colour
+      const def = fallback || '#000000';
+      let own = tmpl[key] || def;
+      inp.value = own;
+      inp.oninput = () => { tmpl[key] = own = inp.value; scheduleAutoSave(); };
       const sameLbl = document.createElement('label');
-      sameLbl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:12px;margin:0;';
+      sameLbl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:12px;margin:0;white-space:nowrap;';
       const same = document.createElement('input');
       same.type = 'checkbox';
       same.className = 'tod-same';
       same.checked = !tmpl[key];
       same.onchange = () => {
-        if (same.checked) delete tmpl[key]; else tmpl[key] = inp.value;
+        if (same.checked) delete tmpl[key]; else tmpl[key] = own;
+        inp.value = same.checked ? def : own;
         inp.disabled = same.checked;
         onSync();
         scheduleAutoSave();
