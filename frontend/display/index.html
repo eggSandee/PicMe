@@ -267,6 +267,7 @@
   <script src="/assets/frames/frames.js"></script>
   <script src="/display/shapes.js"></script>
   <script src="/display/gallery.js"></script>
+  <script src="/display/time-of-day.js"></script>
   <script>
     const API = '';  // same origin
 
@@ -360,24 +361,13 @@
       return `${API}/api/video?path=${encodeURIComponent(filePath)}`;
     }
 
+    // The day or night template in effect now (time-of-day.js, shared with the editor)
     function getTimeOfDayTemplate() {
-      const tod = config?.time_of_day;
-      if (!tod?.enabled) return null;
-      const now = new Date();
-      const cur = now.getHours() * 60 + now.getMinutes();
-      const [dh, dm] = (tod.day_start || '07:00').split(':').map(Number);
-      const [nh, nm] = (tod.night_start || '20:00').split(':').map(Number);
-      const dayMins = dh * 60 + dm, nightMins = nh * 60 + nm;
-      const isDay = dayMins < nightMins
-        ? (cur >= dayMins && cur < nightMins)
-        : (cur >= dayMins || cur < nightMins);
-      return isDay ? (tod.day || null) : (tod.night || null);
+      return PicMeTimeOfDay.currentPeriod(config, new Date())?.template ?? null;
     }
 
     function getTodPeriodName() {
-      const tod = config?.time_of_day;
-      if (!tod?.enabled) return null;
-      return getTimeOfDayTemplate() === tod.day ? 'day' : 'night';
+      return PicMeTimeOfDay.currentPeriod(config, new Date())?.name ?? null;
     }
 
     let lastTodPeriod = null;
