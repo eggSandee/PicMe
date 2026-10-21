@@ -124,12 +124,14 @@ def test_frames_switch_saves_the_layout_mode(write_cfg, open_page):
     page = w.page
     assert _pressed(page) == "slots"
     assert page.locator("#collage-preview .preview-slot").count() == 4
-    assert page.locator("#gallery-fields").is_hidden() and page.locator("#gallery-off-hint").is_visible()
+    # No gallery layout on screen: the Gallery Mat fields are greyed, saying why
+    assert page.locator("#gallery-fields.field-inactive").is_visible() and page.locator("#gallery-off-hint").is_visible()
+    assert page.locator("#g-gal-mat-color").is_disabled()
 
     page.click("#layout-mode button[data-mode='gallery']")
     _saved(write_cfg, lambda c: c.get("layout_modes") == {"classic-4": "gallery"})
     assert page.locator("#collage-preview.gallery-preview .opening").count() == 4
-    assert page.locator("#gallery-fields").is_visible()
+    assert page.locator("#gallery-fields:not(.field-inactive)").is_visible() and page.locator("#gallery-off-hint").is_hidden()
     assert page.locator(".layout-thumb[data-id='classic-4'] .gallery-badge").count() == 1
 
     page.click("#layout-mode button[data-mode='slots']")
@@ -206,7 +208,7 @@ def test_basic_shows_mat_colour_and_the_frame_style_and_counts_the_rest(write_cf
     assert page.locator("#frame-gallery-hint").text_content() == "Also the outer frame of gallery-mat layouts."
     # Mat colour applies to separate frames only: disabled on a gallery-only screen, saying why
     assert page.locator("#g-mat-color").is_disabled()
-    assert page.locator(".field:has(#g-mat-color) + .scope-hint").text_content() == "Separate-frame layouts only."
+    assert page.locator(".field:has(#g-mat-color) + .inactive-reason").text_content() == "Separate-frame layouts only."
     for sel in ("#g-gal-gutter", "#g-gal-margin", "#g-gal-frame-width", "#g-gal-bevel-width", "#g-gal-wall-margin",
                 "#g-gal-frame-style", "#g-gal-frame-color", "#g-gal-show-frame", "#g-gal-frame-override"):
         assert page.locator(sel).is_hidden(), sel
@@ -271,7 +273,7 @@ def test_gallery_frame_override_and_controls_that_do_nothing_are_disabled(write_
     # Gallery-only screen: mat and widths are separate-frame settings
     for sel in ("#g-mat-color", "#g-mat-width", "#g-frame-width"):
         assert page.locator(sel).is_disabled(), sel
-    assert page.locator(".field:has(#g-mat-width) + .scope-hint").is_visible()
+    assert page.locator(".field:has(#g-mat-width) + .inactive-reason").is_visible()
     assert page.locator("#g-frame-style").is_enabled()
 
     page.click("#g-gal-frame-override + .toggle-track")
@@ -283,7 +285,7 @@ def test_gallery_frame_override_and_controls_that_do_nothing_are_disabled(write_
     assert page.locator("#frame-gallery-hint").is_hidden()
     # Now nothing on screen uses the Frame section's style: disabled, with the reason
     assert page.locator("#g-frame-style").is_disabled()
-    assert "Gallery mats use their own frame" in page.locator(".field:has(#g-frame-style) + .scope-hint").text_content()
+    assert "Gallery mats use their own frame" in page.locator(".field:has(#g-frame-style) + .inactive-reason").text_content()
     page.click("#editor-mode button[data-mode='basic']")
     assert page.locator("#g-gal-frame-style").is_visible()  # Basic shows the control that does take effect
 
@@ -293,7 +295,9 @@ def test_gallery_frame_override_and_controls_that_do_nothing_are_disabled(write_
     _saved(write_cfg, lambda c: c["layout_rotation"]["enabled"] is True)
     for sel in ("#g-mat-color", "#g-mat-width", "#g-frame-width", "#g-frame-style"):
         assert page.locator(sel).is_enabled(), sel
-    assert page.locator(".scope-hint:visible").count() == 0
+        assert page.locator(f".field:has({sel}) + .inactive-reason").is_hidden(), sel
+    # Both colours stay greyed: wood and gold are decorative
+    assert page.locator("#g-frame-color").is_disabled() and page.locator("#g-gal-frame-color").is_disabled()
     assert w.errors == []
 
 

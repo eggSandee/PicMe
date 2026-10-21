@@ -504,13 +504,6 @@
       color: var(--text-muted);
     }
 
-    /* Grayed-out section content when "Use global" is on */
-    .section-disabled {
-      opacity: 0.4;
-      pointer-events: none;
-      user-select: none;
-    }
-
     /* Small colored dot next to a field label indicating it overrides the global */
     .override-dot {
       display: inline-block;
@@ -726,6 +719,27 @@
     .label-style-name { display: block; padding: 4px 6px; font-size: 12px; color: var(--text); }
     .label-style-note { font-size: 12px; color: var(--text-muted); margin: 6px 0 0; }
     .label-style-note:empty { display: none; }
+
+    /* A control that changes nothing right now (setInactive): greyed, disabled, not-allowed cursor,
+       no hover, with its reason. The reason line and a time-of-day note stay readable and usable. */
+    .field-inactive > :not(.tod-note):not(.inactive-reason) { opacity: 0.45; }
+    :is(input, select).field-inactive { opacity: 0.45; }
+    .field-inactive .field-inactive > :not(.tod-note):not(.inactive-reason),
+    .field-inactive :is(input, select).field-inactive { opacity: 1; }  /* not twice */
+    .field-inactive, .field-inactive :not(.tod-note):not(.tod-note *):not(.inactive-reason) { cursor: not-allowed !important; }
+    .field-inactive .toggle-track { pointer-events: none; }
+    .field-inactive.toggle-row > label:first-child, .field-inactive .toggle-row > label:first-child { color: var(--text-muted); }
+    .field-inactive .label-style-option:hover { border-color: var(--border); }
+    .field-inactive .label-style-option.selected:hover { border-color: var(--accent); }
+    .layout-thumb .rotation-pick-corner.field-inactive,
+    .layout-thumb .rotation-pick-corner.field-inactive:hover { opacity: 0.3; }
+    .layout-thumb .rotation-pick-corner.field-inactive > * { opacity: 1; }
+    .inactive-reason { font-size: 11px; color: var(--text-muted); margin: -6px 0 10px; line-height: 1.4; }
+    .inactive-reason.at-start { margin: 0 0 10px; }
+    .inactive-reason[hidden] { display: none; }
+    /* Any other disabled control in a form still reads as disabled */
+    :is(.field, .toggle-row) :is(input, select):disabled:not(.field-inactive *) { opacity: 0.45; cursor: not-allowed; }
+    .toggle input:disabled:not(.field-inactive *) + .toggle-track { opacity: 0.45; cursor: not-allowed; }
   </style>
   <link rel="stylesheet" href="/display/label-styles.css" />
 </head>
@@ -891,7 +905,6 @@
       <div class="field" data-setting="frame.frame_color">
         <label>Frame color</label>
         <input type="color" id="g-frame-color" />
-        <p id="g-frame-color-hint" style="display:none;font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;">Color applies to solid frames only.</p>
       </div>
 
       <div class="field" data-setting="frame.frame_width">
@@ -902,8 +915,8 @@
 
     <div class="sidebar-section" id="gallery-section" data-section="gallery">
       <h3>Gallery Mat</h3>
-      <p id="gallery-off-hint" style="font-size:12px;color:var(--text-muted);line-height:1.4;">For gallery layouts: one frame and mat around every photo. Pick a Gallery layout, or set Frames to Gallery mat.</p>
       <div id="gallery-fields">
+        <p id="gallery-off-hint" class="inactive-reason at-start" hidden></p>
         <div class="field" data-setting="gallery.mat_color">
           <label>Mat color</label>
           <input type="color" id="g-gal-mat-color" />
@@ -930,7 +943,6 @@
           <div class="field" data-setting="gallery.frame_color">
             <label>Gallery frame color</label>
             <input type="color" id="g-gal-frame-color" />
-            <p id="g-gal-frame-color-hint" style="display:none;font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;">Color applies to solid frames only.</p>
           </div>
         </div>
         <div class="field" data-setting="gallery.frame_width">
@@ -1389,6 +1401,46 @@
     return { el, inner };
   }
 
+  // ── Settings that change nothing right now ──
+  // The one switch for a control, or a group of them, with no effect in the current state:
+  // .field-inactive greys it (CSS) and every control inside is disabled, so the look and the
+  // behaviour can't drift apart. `why` says why: a line after it, or with at: 'start' first inside
+  // it (after a section's heading), or at: 'title' a tooltip only. A falsy `why` brings it back.
+  // Groups nest: a control stays disabled while anything around it is inactive. Time-of-day notes
+  // inside stay usable.
+  const INACTIVE_CONTROLS = 'input, select, textarea, button';
+
+  function setInactive(el, why, { at = 'after' } = {}) {
+    if (!el) return;
+    const off = !!why;
+    el.classList.toggle('field-inactive', off);
+    if (at === 'title') {
+      if (!('activeTitle' in el.dataset)) el.dataset.activeTitle = el.title;
+      el.title = off ? why : el.dataset.activeTitle;
+    } else {
+      let reason = at === 'start' ? el.querySelector(':scope > .inactive-reason')
+        : el.nextElementSibling?.classList.contains('inactive-reason') ? el.nextElementSibling : null;
+      if (!reason && off) {
+        reason = document.createElement('p');
+        reason.className = 'inactive-reason';
+        if (at === 'start') {
+          reason.classList.add('at-start');
+          const head = el.querySelector(':scope > h4, :scope > .section-header-row');
+          if (head) head.after(reason); else el.prepend(reason);
+        } else {
+          if (el.dataset.setting) tag(reason, el.dataset.setting);  // Basic hides it with the control
+          el.after(reason);
+        }
+      }
+      if (reason) { reason.textContent = why || ''; reason.hidden = !off; }
+    }
+    const controls = el.matches(INACTIVE_CONTROLS) ? [el] : el.querySelectorAll(INACTIVE_CONTROLS);
+    for (const c of controls) if (!c.closest('.tod-note')) c.disabled = !!c.closest('.field-inactive');
+  }
+
+  // The field (or toggle row) around a control
+  function fieldOf(id) { return document.getElementById(id)?.closest('.field, .toggle-row'); }
+
   // ── Metadata pill size (sizing shared with the display: /display/pill-size.js) ──
 
   const TEXT_SIZE_OPTIONS = [['small', 'Small'], ['medium', 'Medium (default)'], ['large', 'Large'], ['x-large', 'Extra large']];
@@ -1457,9 +1509,16 @@
     const note = document.getElementById('g-label-style-note');
     note.textContent = current === 'whisper' ? 'Corner whisper always sits on the photo. Label position and pill size are for pills.'
       : current !== 'pill' ? 'Caption and placard always sit on the mat, under the photo. Label position and pill size are for pills.' : '';
-    document.getElementById('g-label-position').disabled = current !== 'pill';
-    document.getElementById('g-pill-size').disabled = current !== 'pill';
+    setInactive(fieldOf('g-label-position'), labelPositionWhy(current));
+    setInactive(fieldOf('g-pill-size'), pillSizeWhy(current));
   }
+
+  // The other styles place their label themselves, and size it from the text size alone
+  function labelPositionWhy(style) {
+    return style === 'whisper' ? 'Corner whisper always sits on the photo.'
+      : style !== 'pill' ? 'Caption and placard always sit on the mat.' : null;
+  }
+  function pillSizeWhy(style) { return style !== 'pill' ? 'Pill size is for the Pills style.' : null; }
 
   // A sample photo on the mat with the style's label (date and place)
   function drawSwatch(swatch, style, mat) {
@@ -1599,11 +1658,10 @@
     }
   }
 
-  // The Gallery Mat fields show while some layout the display can show is a gallery mat
+  const GALLERY_UNUSED_WHY = 'For gallery layouts: one frame and mat around every photo. Pick a Gallery layout, or set Frames to Gallery mat.';
+
+  // The Gallery Mat fields work while some layout the display can show is a gallery mat
   function refreshGallerySection() {
-    const used = reachableLayouts().some(l => layoutMode(l) === 'gallery');
-    document.getElementById('gallery-fields').hidden = !used;
-    document.getElementById('gallery-off-hint').hidden = used;
     const g = galleryCfg();
     document.getElementById('g-gal-frame-override').checked = g.frame_override;
     document.getElementById('g-gal-own-frame').hidden = !g.frame_override;
@@ -1618,44 +1676,86 @@
     document.getElementById('g-gal-bevel').checked = g.bevel;
     document.getElementById('g-gal-bevel-color').value = g.bevel_color;
     for (const inp of document.querySelectorAll('#gallery-fields input[data-key]')) inp.value = g[inp.dataset.key];
-    const decorative = !!frameAsset(g.frame_style);
-    document.getElementById('g-gal-frame-color').disabled = decorative;
-    document.getElementById('g-gal-frame-color-hint').style.display = decorative ? '' : 'none';
+    refreshGalleryInactive();
     refreshFrameSection();
   }
 
-  // Disable a Frame section control that changes nothing the display can show, saying why in a
-  // hint under it (tagged like the control, so Basic hides the hint with it)
-  function setFrameControlScope(inputId, why, alsoDisabled = false) {
-    const input = document.getElementById(inputId);
-    const field = input.closest('.field, .toggle-row');
-    input.disabled = !!why || alsoDisabled;
-    let hint = field.nextElementSibling?.classList.contains('scope-hint') ? field.nextElementSibling : null;
-    if (!hint && !why) return;
-    if (!hint) {
-      hint = document.createElement('p');
-      hint.className = 'scope-hint';
-      tag(hint, field.dataset.setting);
-      field.after(hint);
-    }
-    hint.textContent = why || '';
-    hint.hidden = !why;
+  // Gallery Mat: greyed while no layout on screen is a gallery mat; inside it, what the gallery's
+  // frame and bevel switches turn off
+  function refreshGalleryInactive() {
+    const { anyGallery } = screenModes();
+    const g = galleryCfg();
+    setInactive(document.getElementById('gallery-fields'), anyGallery ? null : GALLERY_UNUSED_WHY, { at: 'start' });
+    const frames = galleryFrames();
+    const offWhy = frameOffWhy(frames, g.frame_override ? 'Show frame is off.' : 'Show frame border is off (Frame section).');
+    setInactive(fieldOf('g-gal-frame-style'), offWhy);
+    setInactive(fieldOf('g-gal-frame-color'), offWhy || solidOnlyWhy(frames));
+    setInactive(fieldOf('g-gal-frame-width'), offWhy);
+    const bevelWhy = g.bevel ? null : 'Bevelled openings are off.';
+    setInactive(fieldOf('g-gal-bevel-width'), bevelWhy);
+    setInactive(fieldOf('g-gal-bevel-color'), bevelWhy);
   }
+
+  // Whether the layouts the display can show use separate frames, a gallery mat, or both
+  function screenModes() {
+    const reach = reachableLayouts();
+    return { anySeparate: reach.some(l => layoutMode(l) !== 'gallery'), anyGallery: reach.some(l => layoutMode(l) === 'gallery') };
+  }
+
+  // What a frame setting can show in: the day and night templates while time of day is on (they
+  // can turn the frame on or off, or change its style), else the settings alone
+  function todStates() {
+    const tod = config.time_of_day;
+    return tod?.enabled === true ? [tod.day || {}, tod.night || {}] : [{}];
+  }
+
+  // Separate frames in each state, as the display's applyFrameStyle merges them: defaults, the
+  // template's keys, then `own` (a slot's own frame). { on, decorative } each.
+  const TOD_FRAME_KEYS = ['mat_color', 'mat_width', 'show_frame', 'frame_color', 'frame_width', 'frame_style'];
+  function separateFrames(own = {}) {
+    return todStates().map(t => {
+      const c = { ...getGlobalFrame(), ...Object.fromEntries(TOD_FRAME_KEYS.filter(k => t[k] !== undefined).map(k => [k, t[k]])), ...own };
+      return { on: c.show_frame ?? true, decorative: !!frameAsset(c.frame_style ?? 'solid') };
+    });
+  }
+
+  // The gallery's outer frame in each state (gallery.js resolveGallery)
+  function galleryFrames() {
+    return todStates().map(t => { const g = PicMeGallery.resolveGallery(config, t); return { on: g.show_frame, decorative: !!frameAsset(g.frame_style) }; });
+  }
+
+  // No frame ever shows: its style, colour and width change nothing
+  function frameOffWhy(frames, why) { return frames.some(f => f.on) ? null : why; }
+  // Every frame that shows is decorative: the colour changes nothing
+  function solidOnlyWhy(frames) { return frames.some(f => f.on && !f.decorative) ? null : 'Color applies to solid frames only.'; }
 
   // The Frame section sets separate frames and, unless the gallery has its own frame, the look
   // (on/off, style, colour) of the gallery's outer frame. Mat and widths are separate-frame only.
   function refreshFrameSection() {
-    const reach = reachableLayouts();
-    const anySeparate = reach.some(l => layoutMode(l) !== 'gallery');
-    const anyGallery = reach.some(l => layoutMode(l) === 'gallery');
+    const { anySeparate, anyGallery } = screenModes();
     const own = galleryCfg().frame_override;
     document.getElementById('frame-gallery-hint').hidden = !anyGallery || own;
     const separateOnly = anySeparate ? null : 'Separate-frame layouts only.';
-    for (const id of ['g-mat-color', 'g-mat-width', 'g-frame-width']) setFrameControlScope(id, separateOnly);
+    // The frames this section's look reaches, and why none shows
+    const separate = anySeparate ? separateFrames() : [];
+    const frames = [...separate, ...(anyGallery && !own ? galleryFrames() : [])];
+    const offText = getGlobalFrame().show_frame === false ? 'Show frame border is off.' : 'Time of day turns the frame off all day.';
+    setInactive(fieldOf('g-mat-color'), separateOnly);
+    setInactive(fieldOf('g-mat-width'), separateOnly);
     const look = anySeparate || !own ? null : 'Separate-frame layouts only. Gallery mats use their own frame (Gallery Mat).';
-    setFrameControlScope('g-show-frame', look);
-    setFrameControlScope('g-frame-style', look);
-    setFrameControlScope('g-frame-color', look, !!frameAsset(config.frame_defaults?.frame_style));
+    setInactive(fieldOf('g-show-frame'), look);
+    setInactive(fieldOf('g-frame-style'), look || frameOffWhy(frames, offText));
+    setInactive(fieldOf('g-frame-color'), look || frameOffWhy(frames, offText) || solidOnlyWhy(frames));
+    setInactive(fieldOf('g-frame-width'), separateOnly || frameOffWhy(separate, offText));
+  }
+
+  // Every rule that depends on more than its own section; edits come through scheduleAutoSave
+  let _refreshSlotInactive = null;  // the open slot panel's
+  function refreshInactiveControls() {
+    if (!config || !layouts) return;
+    refreshGalleryInactive();
+    refreshFrameSection();
+    _refreshSlotInactive?.();
   }
 
   function onGalleryChanged() {
@@ -1917,10 +2017,12 @@
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
 
+  const ROTATION_OFF_WHY = 'Turn on Rotate layout daily to use these.';
+
   function refreshRotationUI() {
     const on = rotationOn();
     document.getElementById('g-rotation-enabled').checked = on;
-    document.getElementById('rotation-options').hidden = !on;
+    setInactive(document.getElementById('rotation-options'), on ? null : ROTATION_OFF_WHY, { at: 'start' });
     // Select all / Deselect all on the Layout header, disabled when they'd change nothing
     document.getElementById('rotation-bulk').hidden = !on;
     const ticked = on ? eligibleIds() : [];
@@ -2069,8 +2171,8 @@
         thumb.appendChild(badge);
       }
 
-      if (rotating) {
-        // A small box in the thumbnail's bottom-right corner
+      // A small box in the thumbnail's bottom-right corner; greyed while rotation is off
+      {
         const pick = tag(document.createElement('label'), 'rotation.layouts');
         pick.className = 'rotation-pick-corner' + (eligible.has(layout.id) ? ' checked' : '');
         pick.title = `Rotate ${layout.name} daily`;
@@ -2087,6 +2189,9 @@
         };
         pick.appendChild(cb);
         frame.appendChild(pick);
+        setInactive(pick, rotating ? null : 'Turn on Rotate layout daily to pick layouts.', { at: 'title' });
+      }
+      if (rotating) {
         // Separate frames or a gallery mat on this layout's days
         const modeRow = tag(document.createElement('div'), 'rotation.layout_modes');
         modeRow.className = 'layout-mode-row';
@@ -2514,11 +2619,9 @@
     scheduleAutoSave();
   }
 
-  // A decorative default frame ignores frame_color — say so rather than leave a dead control
+  // A decorative default frame ignores frame_color — grey it out, saying so
   function syncGlobalFrameColor() {
-    const decorative = !!frameAsset(config.frame_defaults?.frame_style);
-    document.getElementById('g-frame-color-hint').style.display = decorative ? '' : 'none';
-    refreshFrameSection();  // disables the colour (decorative, or nothing on screen uses it)
+    refreshFrameSection();
   }
 
   // ── Reset all modal ──
@@ -2605,6 +2708,7 @@
     const title = document.getElementById('slot-panel-title');
     const body  = document.getElementById('slot-panel-body');
 
+    _refreshSlotInactive = null;
     if (!selectedSlotId) {
       title.textContent = 'Select a slot to configure it';
       body.innerHTML = '';
@@ -2635,7 +2739,7 @@
       buildPreview();
       renderSlotPanel();
       scheduleAutoSave();
-    }, { alwaysEditable: basic });
+    });
     tag(srcSec.adoptRow, 'slot.source_adopt');
     const effectiveSrc = sourceAdopted ? (config.source_path || '') : (slotCfg.source_path || '');
     const srcOverridden = !sourceAdopted && !!slotCfg.source_path && normFolder(slotCfg.source_path) !== normFolder(config.source_path);
@@ -2742,11 +2846,9 @@
     // Schedule — always per-slot (cycle timer and group); not used by video slots
     const schedSection = makeSection('Schedule');
     const schedBody = document.createElement('div');
-    if (isVideo) schedBody.classList.add('section-disabled');
     schedBody.appendChild(tag(makeField('Change every (seconds)', 'number', slotCfg.cycle_seconds || 30, v => { slotCfg.cycle_seconds = parseInt(v); scheduleAutoSave(); }), 'slot.cycle_seconds'));
     schedBody.appendChild(tag(makeField('Group (optional letter, e.g. A)', 'text', slotCfg.group || '', v => { slotCfg.group = v || null; scheduleAutoSave(); }), 'slot.group'));
     schedSection.appendChild(schedBody);
-    if (isVideo) schedSection.appendChild(tag(makeHint('Video slots advance after their loops finish.'), 'slot.cycle_seconds'));
     left.appendChild(schedSection);
 
     // Fit — the global "Fill frames" unless this slot picks its own (photos and videos)
@@ -2780,11 +2882,12 @@
       renderSlotPanel();
       scheduleAutoSave();
     };
-    shapeSection.appendChild(shapeSelect);
+    const shapeField = document.createElement('div');
+    shapeField.className = 'field';
+    shapeField.appendChild(shapeSelect);
+    shapeSection.appendChild(shapeField);
     const shownShape = PicMeGallery.slotShape(slotCfg, base.slots[slotCfg.id - 1]);
-    if (!baseGallery) {
-      shapeSection.appendChild(makeHint('Shapes show on gallery-mat layouts (set Frames to Gallery mat).'));
-    } else if (shownShape !== 'rect' && effectiveFill(slotCfg) !== 'cover') {
+    if (baseGallery && shownShape !== 'rect' && effectiveFill(slotCfg) !== 'cover') {
       shapeSection.appendChild(makeHint("Fit keeps the whole photo inside the shape's box; the corners outside the shape are hidden. Fill usually looks better in shaped openings."));
     }
     left.appendChild(shapeSection);
@@ -2799,12 +2902,13 @@
       scheduleAutoSave();
     });
     const ef = getSlotFrame(slotCfg);
-    if (baseGallery) frameSec.el.insertBefore(makeHint('This layout uses the Gallery Mat settings. These apply on separate-frame layouts.'), frameSec.sectionBody);
+    // Greyed when no layout on screen has separate frames; with some (rotation), a note
+    if (baseGallery && screenModes().anySeparate) frameSec.el.insertBefore(makeHint(SLOT_FRAME_GALLERY_WHY), frameSec.sectionBody);
     frameSec.sectionBody.appendChild(makeColorField('Mat color', ef.mat_color ?? '#000000', v => { ensureSlotFrame(slotCfg); slotCfg.frame.mat_color = v; buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'mat_color')));
     frameSec.sectionBody.appendChild(makeField('Mat width (px)', 'number', ef.mat_width ?? 16, v => { ensureSlotFrame(slotCfg); slotCfg.frame.mat_width = parseInt(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'mat_width')));
     frameSec.sectionBody.appendChild(makeToggleRow('Show frame border', ef.show_frame ?? true, v => { ensureSlotFrame(slotCfg); slotCfg.frame.show_frame = v; buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'show_frame')));
     const slotDecorative = !!frameAsset(ef.frame_style);
-    frameSec.sectionBody.appendChild(makeSelectField('Frame style', frameStyleOptions(), slotDecorative ? ef.frame_style : 'solid', v => {
+    const styleField = makeSelectField('Frame style', frameStyleOptions(), slotDecorative ? ef.frame_style : 'solid', v => {
       ensureSlotFrame(slotCfg);
       slotCfg.frame.frame_style = v;
       const width = getSlotFrame(slotCfg).frame_width;
@@ -2812,14 +2916,12 @@
       buildPreview();
       renderSlotPanel();  // refresh the width, the color field and the override dots
       scheduleAutoSave();
-    }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_style')));
+    }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_style'));
+    frameSec.sectionBody.appendChild(styleField);
     const frameColorField = makeColorField('Frame color', ef.frame_color ?? '#2c2318', v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_color = v; buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_color'));
-    if (slotDecorative) {
-      frameColorField.querySelector('input').disabled = true;
-      frameColorField.appendChild(makeHint('Color applies to solid frames only.'));
-    }
     frameSec.sectionBody.appendChild(frameColorField);
-    frameSec.sectionBody.appendChild(makeField('Frame width (px)', 'number', ef.frame_width ?? 8, v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_width = clampFrameWidth(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_width')));
+    const frameWidthField = makeField('Frame width (px)', 'number', ef.frame_width ?? 8, v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_width = clampFrameWidth(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_width'));
+    frameSec.sectionBody.appendChild(frameWidthField);
     left.appendChild(tag(frameSec.el, 'slot.frame'));
 
     // ── Right column — Metadata: "Show metadata" opens the section; its overrides are Advanced ──
@@ -2838,7 +2940,6 @@
     const showInput = showRow.querySelector('input');
     showInput.setAttribute('aria-controls', metaBody.el.id);
     showInput.setAttribute('aria-expanded', String(shown));
-    showInput.disabled = globalOff;
     // Advanced field toggles can turn the last pill off: close the section with them
     function syncShown() {
       if (globalOff || slotShowsMetadata(slotCfg) === showInput.checked) return;
@@ -2846,7 +2947,6 @@
       setCollapsible(metaBody.el, showInput.checked, showInput);
     }
     metaSec.appendChild(showRow);
-    if (globalOff) metaSec.appendChild(makeHint('Metadata is off for every slot — turn on Show metadata in Default Metadata.'));
     fillSlotMetaBody(metaBody.inner, slotCfg, syncShown);
     metaSec.appendChild(metaBody.el);
     if (isVideo) metaSec.appendChild(makeHint('Video slots show the date only (from the clip\'s recording date, when available).'));
@@ -2854,7 +2954,37 @@
 
     grid.append(left, right);
     body.appendChild(grid);
+
+    // What changes nothing for this slot right now (also re-run after every edit)
+    _refreshSlotInactive = () => {
+      if (!grid.isConnected) return;
+      const { anySeparate, anyGallery } = screenModes();
+      const adopted = slotCfg.use_global || {};
+      // Basic has no Use global for the folder: it's always editable there
+      setInactive(srcSec.sectionBody, !basic && adopted.source !== false
+        ? "Using the default media folder (Global Settings). Turn off Use global to set this slot's own." : null, { at: 'start' });
+      setInactive(schedBody, slotCfg.mode === 'video' ? 'Video slots advance after their loops finish.' : null);
+      setInactive(shapeField, anyGallery ? null : 'Shapes show on gallery-mat layouts (set Frames to Gallery mat).');
+      setInactive(frameSec.el, anySeparate ? null : SLOT_FRAME_GALLERY_WHY, { at: 'start' });
+      const frameUsesGlobal = adopted.frame !== false;
+      setInactive(frameSec.sectionBody, frameUsesGlobal
+        ? "Using the Frame section. Turn off Use global to set this slot's own." : null, { at: 'start' });
+      const frames = separateFrames(frameUsesGlobal ? {} : slotCfg.frame || {});
+      const offWhy = frameOffWhy(frames, getSlotFrame(slotCfg).show_frame === false
+        ? 'Show frame border is off.' : 'Time of day turns the frame off all day.');
+      setInactive(styleField, offWhy);
+      setInactive(frameColorField, offWhy || solidOnlyWhy(frames));
+      setInactive(frameWidthField, offWhy);
+      setInactive(showRow, config.show_metadata === false
+        ? 'Metadata is off for every slot — turn on Show metadata in Default Metadata.' : null);
+      setInactive(metaBody.inner.querySelector('.slot-meta-fields'), adopted.metadata !== false
+        ? "Using Default Metadata. Turn off Use global to set this slot's own." : null, { at: 'start' });
+      setInactive(document.getElementById('slot-pill-size')?.closest('.field'), pillSizeWhy(labelStyle()));
+    };
+    _refreshSlotInactive();
   }
+
+  const SLOT_FRAME_GALLERY_WHY = 'This layout uses the Gallery Mat settings. These apply on separate-frame layouts.';
 
   // The slot's metadata body: Basic sums it up; Advanced has "Use global", sizes and fields
   function fillSlotMetaBody(inner, slotCfg, onFieldChange) {
@@ -2879,18 +3009,19 @@
     });
     adopt.row.style.cssText = 'justify-content:flex-end;margin-bottom:8px;';
     const metaFields = document.createElement('div');
-    if (metaAdopted) metaFields.classList.add('section-disabled');
-    adopt.input.addEventListener('change', e => metaFields.classList.toggle('section-disabled', e.target.checked));
+    metaFields.className = 'slot-meta-fields';
 
     const slotSizes = pillSizes(em);
     for (const [key, label, options] of [['text_size', 'Text size', TEXT_SIZE_OPTIONS], ['pill_size', 'Pill size', PILL_SIZE_OPTIONS]]) {
-      metaFields.appendChild(makeSelectField(label, options, slotSizes[key], v => {
+      const sizeField = makeSelectField(label, options, slotSizes[key], v => {
         if (!slotCfg.metadata) slotCfg.metadata = {};
         slotCfg.metadata[key] = v;
         buildPreview();
         renderSlotPanel();
         scheduleAutoSave();
-      }, !metaAdopted && isMetaKeyOverridden(slotCfg, key)));
+      }, !metaAdopted && isMetaKeyOverridden(slotCfg, key));
+      sizeField.querySelector('select').id = `slot-${key.replace('_', '-')}`;
+      metaFields.appendChild(sizeField);
     }
 
     const metaGrid = document.createElement('div');
@@ -3022,14 +3153,15 @@
       same.type = 'checkbox';
       same.className = 'tod-same';
       same.checked = !tmpl[key];
+      const sync = () => setInactive(inp, same.checked ? 'Same as default is ticked: the default colour shows.' : null, { at: 'title' });
       same.onchange = () => {
         if (same.checked) delete tmpl[key]; else tmpl[key] = own;
         inp.value = same.checked ? def : own;
-        inp.disabled = same.checked;
+        sync();
         onSync();
         scheduleAutoSave();
       };
-      inp.disabled = same.checked;
+      sync();
       sameLbl.append(same, 'Same as default');
       row.append(inp, sameLbl);
       wrap.append(lbl, row);
@@ -3083,8 +3215,9 @@
       col.appendChild(hdr);
       col.appendChild(makeTodColor('Wall color', tmpl, 'wall_color', config.wall_color || '#1a1a1a'));
       col.appendChild(makeTodColor('Mat color',  tmpl, 'mat_color',  currentMatColor()));
-      col.appendChild(makeTodNumber('Mat width',   tmpl.mat_width,   v => tmpl.mat_width   = v));
-      col.appendChild(makeTodToggle('Show frame',  tmpl.show_frame,  v => tmpl.show_frame  = v));
+      const matWidthField = makeTodNumber('Mat width', tmpl.mat_width, v => tmpl.mat_width = v);
+      col.appendChild(matWidthField);
+      col.appendChild(makeTodToggle('Show frame',  tmpl.show_frame,  v => { tmpl.show_frame = v; syncColor(); }));
       // "Same as default" leaves frame_style unset, so the global (or slot) style shows through
       let bumpedWidth = null;
       const styleField = makeSelectField('Frame style', frameStyleOptions(['', 'Same as default']),
@@ -3104,13 +3237,22 @@
           scheduleAutoSave();
         });
       const colorField = makeTodColor('Frame color', tmpl, 'frame_color', getGlobalFrame().frame_color || '#2c2318', () => syncColor());
-      const colorHint = makeHint('Color applies to solid frames only.');
-      colorField.appendChild(colorHint);
       const widthField = makeTodNumber('Frame width', tmpl.frame_width, v => tmpl.frame_width = v);
+      // This period's frames, as the display draws them: separate frames take the template's
+      // on/off, style and width; the gallery's outer frame only its style and colour
       function syncColor() {
-        const decorative = !!frameAsset(tmpl.frame_style);
-        colorField.querySelector('input[type=color]').disabled = decorative || !tmpl.frame_color;
-        colorHint.style.display = decorative ? '' : 'none';
+        const { anySeparate, anyGallery } = screenModes();
+        const fd = getGlobalFrame();
+        const sep = anySeparate && (tmpl.show_frame ?? fd.show_frame ?? true);
+        const gal = anyGallery && PicMeGallery.resolveGallery(config, tmpl);
+        const frames = [...(sep ? [{ on: true, decorative: !!frameAsset(tmpl.frame_style ?? fd.frame_style ?? 'solid') }] : []),
+                        ...(gal ? [{ on: gal.show_frame, decorative: !!frameAsset(gal.frame_style) }] : [])];
+        const separateOnly = anySeparate ? null : 'Separate-frame layouts only.';
+        const offWhy = frameOffWhy(frames, 'No frame shows in this period (Show frame is off).');
+        setInactive(matWidthField, separateOnly);
+        setInactive(styleField, offWhy);
+        setInactive(colorField, offWhy || solidOnlyWhy(frames));
+        setInactive(widthField, separateOnly || (sep ? null : 'No frame shows in this period (Show frame is off).'));
       }
       syncColor();
       col.append(styleField, colorField, widthField);
@@ -3126,6 +3268,14 @@
 
     const title = document.createElement('h3');
     title.textContent = 'Time-of-Day Templates';
+
+    // On / off here too, so the templates can be switched on where they're edited
+    const enabledRow = makeTodToggle('Enabled', tod.enabled === true, on => {
+      tod.enabled = on;
+      document.getElementById('tod-enabled').checked = on;
+      syncEnabled();
+    });
+    enabledRow.querySelector('input').id = 'tod-modal-enabled';
 
     const desc = document.createElement('p');
     desc.textContent = 'Wall, mat and frame colors shift automatically at the configured times. Same as default keeps the color set under Global Settings, Frame or Gallery Mat. Per-slot frame overrides still take priority. Each period\'s frame width also applies to decorative frames (wood, gold, black, silver, ...), so raise it if they look thin.';
@@ -3152,6 +3302,13 @@
     const cols = document.createElement('div');
     cols.style.cssText = 'display:flex;gap:20px;';
     cols.append(buildPeriodCol('☀️', 'Day', tod.day), buildPeriodCol('🌙', 'Night', tod.night));
+    const templates = document.createElement('div');
+    templates.className = 'tod-templates';
+    templates.style.cssText = 'display:flex;flex-direction:column;gap:14px;';
+    templates.append(timeRow, cols);
+    const syncEnabled = () => setInactive(templates, tod.enabled === true ? null
+      : 'Time of day is off. Turn it on to use these templates.', { at: 'start' });
+    syncEnabled();
 
     const footer = document.createElement('div');
     footer.style.cssText = 'display:flex;justify-content:flex-end;padding-top:8px;border-top:1px solid var(--border);';
@@ -3161,7 +3318,7 @@
     doneBtn.onclick = () => overlay.remove();
     footer.appendChild(doneBtn);
 
-    modal.append(title, desc, timeRow, cols, footer);
+    modal.append(title, enabledRow, desc, templates, footer);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
     overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
@@ -3386,8 +3543,8 @@
     return { row, input };
   }
 
-  // alwaysEditable: the body isn't greyed out while adopted (Basic's slot folder)
-  function makeSectionWithAdopt(title, adopted, onAdoptChange, { alwaysEditable = false } = {}) {
+  // The body is greyed out while adopted by the panel's rules (renderSlotPanel)
+  function makeSectionWithAdopt(title, adopted, onAdoptChange) {
     const sec = document.createElement('div');
     sec.className = 'panel-section';
 
@@ -3398,15 +3555,8 @@
     const h = document.createElement('h4');
     h.textContent = title;
 
-    // Body — gets .section-disabled when adopted
     const bodyDiv = document.createElement('div');
-    const disable = on => bodyDiv.classList.toggle('section-disabled', on && !alwaysEditable);
-    disable(adopted);
-
-    const adopt = makeAdoptRow(adopted, nowAdopted => {
-      disable(nowAdopted);
-      onAdoptChange(nowAdopted);
-    });
+    const adopt = makeAdoptRow(adopted, onAdoptChange);
     header.append(h, adopt.row);
     sec.append(header, bodyDiv);
 
@@ -3521,6 +3671,7 @@
   function scheduleAutoSave(savedMsg) {
     refreshAdvancedHint();  // every edit path comes through here
     refreshTodNotes();
+    refreshInactiveControls();
     clearTimeout(_saveTimer);
     _saveTimer = setTimeout(() => { _saveTimer = null; saveConfig(savedMsg); }, 500);
   }
@@ -3564,6 +3715,7 @@
     refreshRotationUI();
     renderSlotPanel();
     refreshAdvancedHint();
+    refreshInactiveControls();
     setStatus(msg, msg.endsWith('saved.') ? 'success' : '');
   }
 
