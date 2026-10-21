@@ -701,7 +701,7 @@ def test_editor_time_of_day_frame_style(write_cfg, open_display):
     day.select_option("gold")
     cfg = _saved(write_cfg, lambda c: (c.get("time_of_day") or {}).get("day", {}).get("frame_style") == "gold")
     assert cfg["time_of_day"]["day"]["frame_width"] == 36  # the template's 8 px default is bumped
-    assert page.locator(".tod-modal-overlay .field").filter(has_text="Frame color").first.locator("input").is_disabled()
+    assert page.locator(".tod-modal-overlay .field").filter(has_text="Frame color").first.locator("input[type=color]").is_disabled()
     day.select_option("")
     cfg = _saved(write_cfg, lambda c: "frame_style" not in c["time_of_day"]["day"])
     assert "frame_style" not in cfg["time_of_day"]["night"]
