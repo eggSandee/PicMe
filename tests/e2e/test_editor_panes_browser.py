@@ -266,6 +266,20 @@ def test_both_resets_work_from_the_reset_section(write_cfg, open_editor):
     _saved(write_cfg, lambda c: c["wall_color"] == "#123456")
 
 
+def test_a_reset_unfolds_global_settings_for_undo_and_remembers_it(write_cfg, open_editor):
+    write_cfg(wall_color="#123456")
+    folded = "try { localStorage.setItem('picme.collapsedSections', JSON.stringify(['global', 'frame'])) } catch (e) {}"
+    page = open_editor(editor_mode="basic", init_scripts=[folded]).page
+    stored = lambda: json.loads(page.evaluate("() => localStorage.getItem('picme.collapsedSections')"))
+    assert not page.locator("#preset-save").is_visible()
+    page.locator("#reset-defaults").click()
+    _modal(page).get_by_role("button", name="Reset to defaults").click()
+    _saved(write_cfg, lambda c: c["wall_color"] == "#1a1a1a")
+    _until(page, "() => !document.getElementById('undo-row').hidden")
+    assert page.locator("#undo-btn").is_visible()
+    assert stored() == ["frame"]  # opened for Undo, and saved open
+
+
 def test_reset_folds_and_the_old_time_of_day_and_my_settings_folds_are_forgotten(write_cfg, open_editor):
     write_cfg()
     folded = "try { localStorage.setItem('picme.collapsedSections', JSON.stringify(['time_of_day', 'profile', 'frame'])) } catch (e) {}"

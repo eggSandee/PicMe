@@ -34,6 +34,7 @@ SEPARATE_ONLY = "Separate-frame layouts only."
 SOLID_ONLY = "Color applies to solid frames only."
 FRAME_OFF = "Show frame border is off."
 GALLERY_UNUSED = "For gallery layouts: one frame and mat around every photo."
+GALLERY_FRAME_UNUSED = "Gallery-mat layouts only."
 
 
 def _state(page, selector) -> dict:
@@ -152,8 +153,11 @@ def test_gallery_mat_is_greyed_until_a_gallery_layout_is_on_screen(write_cfg, op
     write_cfg()
     w = open_page()
     page = w.page
-    for sel in ("#g-gal-mat-color", "#g-gal-margin", "#g-gal-bevel", "#g-gal-frame-override"):
+    for sel in ("#g-gal-mat-color", "#g-gal-margin", "#g-gal-bevel"):
         _assert_inactive(page, sel, GALLERY_UNUSED)
+    # The gallery's own frame is in the Frame section and greys on its own
+    assert page.locator('[data-section="frame"] #g-gal-frame-override').count() == 1
+    _assert_inactive(page, "#g-gal-frame-override", GALLERY_FRAME_UNUSED)
     assert page.locator("#gallery-off-hint").is_visible()
     page.click("#layout-mode button[data-mode='gallery']")
     for sel in ("#g-gal-mat-color", "#g-gal-margin", "#g-gal-bevel", "#g-gal-frame-override"):
@@ -187,7 +191,7 @@ def test_the_gallerys_own_frame_greys_like_the_frame_section(write_cfg, open_pag
     _toggle(page, "#g-gal-show-frame")
     _saved(write_cfg, lambda c: c["gallery"]["show_frame"] is False)
     for sel in ("#g-gal-frame-style", "#g-gal-frame-color", "#g-gal-frame-width"):
-        _assert_inactive(page, sel, "Show frame is off.")
+        _assert_inactive(page, sel, "Show gallery frame is off.")
     _toggle(page, "#g-gal-show-frame")
     _assert_active(page, "#g-gal-frame-style")
     _assert_active(page, "#g-gal-frame-width")

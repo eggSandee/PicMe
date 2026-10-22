@@ -533,7 +533,7 @@ def test_basic_mode_with_gallery_frame_override_has_a_visible_gallery_frame_cont
     # The help text agrees with the override
     help_text = page.locator("#gallery-help").text_content()
     assert "come from the Frame section" not in help_text
-    assert "set above" in help_text
+    assert "bottom of the Frame section" in help_text
 
     page.select_option("#g-gal-frame-style", "gold")
     _saved(write_cfg, lambda c: c["gallery"]["frame_style"] == "gold")

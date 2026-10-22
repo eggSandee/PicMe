@@ -695,6 +695,7 @@
     }
 
     .profile-block { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .frame-gallery-block { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
     .profile-row { display: flex; gap: 6px; }
     .profile-row .btn { flex: 1; padding: 7px 6px; font-size: 12px; }
     .btn:disabled { opacity: 0.45; cursor: default; }
@@ -903,16 +904,8 @@
         <label>Frame width (px)</label>
         <input type="number" id="g-frame-width" min="0" max="80" />
       </div>
-    </div>
 
-    <div class="sidebar-section" id="gallery-section" data-section="gallery">
-      <h3>Gallery Mat</h3>
-      <div id="gallery-fields">
-        <p id="gallery-off-hint" class="inactive-reason at-start" hidden></p>
-        <div class="field" data-setting="gallery.mat_color">
-          <label>Mat color</label>
-          <input type="color" id="g-gal-mat-color" />
-        </div>
+      <div id="frame-gallery-own" class="frame-gallery-block">
         <div class="toggle-row" style="margin-bottom:8px" data-setting="gallery.frame_override">
           <label for="g-gal-frame-override">Use a different frame for gallery mats</label>
           <label class="toggle">
@@ -926,7 +919,7 @@
             <select id="g-gal-frame-style"></select>
           </div>
           <div class="toggle-row" style="margin-bottom:8px" data-setting="gallery.show_frame">
-            <label>Show frame</label>
+            <label>Show gallery frame</label>
             <label class="toggle">
               <input type="checkbox" id="g-gal-show-frame" />
               <span class="toggle-track"></span>
@@ -936,6 +929,17 @@
             <label>Gallery frame color</label>
             <input type="color" id="g-gal-frame-color" />
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section" id="gallery-section" data-section="gallery">
+      <h3>Gallery Mat</h3>
+      <div id="gallery-fields">
+        <p id="gallery-off-hint" class="inactive-reason at-start" hidden></p>
+        <div class="field" data-setting="gallery.mat_color">
+          <label>Mat color</label>
+          <input type="color" id="g-gal-mat-color" />
         </div>
         <div class="field" data-setting="gallery.frame_width">
           <label>Outer frame width (px)</label>
@@ -1670,6 +1674,7 @@
   }
 
   const GALLERY_UNUSED_WHY = 'For gallery layouts: one frame and mat around every photo. Pick a Gallery layout, or set Frames to Gallery mat.';
+  const GALLERY_FRAME_UNUSED_WHY = 'Gallery-mat layouts only. Pick a Gallery layout, or set Frames to Gallery mat.';
 
   // The Gallery Mat fields work while some layout the display can show is a gallery mat
   function refreshGallerySection() {
@@ -1677,7 +1682,7 @@
     document.getElementById('g-gal-frame-override').checked = g.frame_override;
     document.getElementById('g-gal-own-frame').hidden = !g.frame_override;
     document.getElementById('gallery-help').textContent = (g.frame_override
-      ? "This gallery frame's style and colour are set above; the Frame section doesn't change them."
+      ? "The gallery frame's style and colour are set at the bottom of the Frame section (Use a different frame for gallery mats)."
       : "The frame's style and colour come from the Frame section.") +
       ' Sizes are px on a 1920×1080 screen. Time-of-day periods can change the mat and frame colours (Same as default keeps these); widths stay as set here.';
     document.getElementById('g-gal-mat-color').value = g.mat_color;
@@ -1697,8 +1702,10 @@
     const { anyGallery } = screenModes();
     const g = galleryCfg();
     setInactive(document.getElementById('gallery-fields'), anyGallery ? null : GALLERY_UNUSED_WHY, { at: 'start' });
+    // The gallery's own frame sits in the Frame section, so it greys on its own
+    setInactive(document.getElementById('frame-gallery-own'), anyGallery ? null : GALLERY_FRAME_UNUSED_WHY, { at: 'start' });
     const frames = galleryFrames();
-    const offWhy = frameOffWhy(frames, g.frame_override ? 'Show frame is off.' : 'Show frame border is off (Frame section).');
+    const offWhy = frameOffWhy(frames, g.frame_override ? 'Show gallery frame is off.' : 'Show frame border is off (Frame section).');
     setInactive(fieldOf('g-gal-frame-style'), offWhy);
     setInactive(fieldOf('g-gal-frame-color'), offWhy || solidOnlyWhy(frames));
     setInactive(fieldOf('g-gal-frame-width'), offWhy);
@@ -1740,8 +1747,9 @@
   // Every frame that shows is decorative: the colour changes nothing
   function solidOnlyWhy(frames) { return frames.some(f => f.on && !f.decorative) ? null : 'Color applies to solid frames only.'; }
 
-  // The Frame section sets separate frames and, unless the gallery has its own frame, the look
-  // (on/off, style, colour) of the gallery's outer frame. Mat and widths are separate-frame only.
+  // The Frame section sets separate frames and, unless the gallery has its own frame (its switch is
+  // at the bottom of this section), the look (on/off, style, colour) of the gallery's outer frame.
+  // Mat and widths are separate-frame only.
   function refreshFrameSection() {
     const { anySeparate, anyGallery } = screenModes();
     const own = galleryCfg().frame_override;
@@ -1753,7 +1761,7 @@
     const offText = getGlobalFrame().show_frame === false ? 'Show frame border is off.' : 'Time of day turns the frame off all day.';
     setInactive(fieldOf('g-mat-color'), separateOnly);
     setInactive(fieldOf('g-mat-width'), separateOnly);
-    const look = anySeparate || !own ? null : 'Separate-frame layouts only. Gallery mats use their own frame (Gallery Mat).';
+    const look = anySeparate || !own ? null : 'Separate-frame layouts only. Gallery mats use their own frame (below).';
     setInactive(fieldOf('g-show-frame'), look);
     setInactive(fieldOf('g-frame-style'), look || frameOffWhy(frames, offText));
     setInactive(fieldOf('g-frame-color'), look || frameOffWhy(frames, offText) || solidOnlyWhy(frames));
@@ -3883,7 +3891,8 @@
     const row = document.getElementById('undo-row');
     if (row.hidden) return;
     const section = row.closest('.sidebar-section');
-    if (section?.classList.contains('collapsed')) setSectionOpen(section, true);
+    // Unfold through its title, so the open state is saved like a click
+    if (section?.classList.contains('collapsed')) section.querySelector('.section-toggle').click();
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     row.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
     row.classList.remove('flash');
