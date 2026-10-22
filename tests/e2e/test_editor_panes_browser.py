@@ -3,6 +3,7 @@
 - the divider between the preview and the slot settings (drag, touch, keys, persisted, reset);
 - folding sidebar sections (persisted; the Layout header's links still work);
 - each preview cell's aspect ratio and Fit / Fill tag;
+- the sidebar's order (Time-of-Day inside Global Settings, Videos and the Reset section last);
 - My Settings: reset to defaults, the saved preset and Undo, against the live server.
 
 Reuses the editor-mode module's fixtures (``write_cfg`` writes a first-run-shaped config).
@@ -182,6 +183,91 @@ def test_sections_fold_persist_and_the_layout_links_still_work(write_cfg, laptop
     page.locator(".toggle-row:has(#g-show-metadata) .toggle-track").click()
     _saved(write_cfg, lambda c: c["show_metadata"] is False)
     assert w.errors == []
+
+
+# --- Sidebar order: Time-of-Day inside Global Settings, Videos and Reset at the bottom ---
+
+SECTIONS_JS = """() => [...document.querySelectorAll('#sidebar > .sidebar-section[data-section]')]
+    .filter(s => s.checkVisibility()).map(s => [s.dataset.section, s.querySelector('h3').textContent.trim()])"""
+ADVANCED_ORDER = [["profile", "My Settings"], ["layout", "Layout"], ["global", "Global Settings"],
+                  ["frame", "Frame"], ["gallery", "Gallery Mat"], ["metadata", "Default Metadata"],
+                  ["videos", "Videos"], ["reset", "Reset"]]
+
+
+@pytest.mark.parametrize("mode", ["basic", "advanced"])
+def test_sidebar_order_with_time_of_day_in_global_and_resets_at_the_bottom(write_cfg, open_editor, mode):
+    write_cfg()
+    w = open_editor(editor_mode=mode)
+    page = w.page
+    expected = [s for s in ADVANCED_ORDER if mode == "advanced" or s[0] != "videos"]
+    assert page.evaluate(SECTIONS_JS) == expected
+    assert page.locator('[data-section="time_of_day"]').count() == 0
+    # The last section in the sidebar, Basic and Advanced alike
+    assert page.evaluate("() => [...document.querySelectorAll('#sidebar > .sidebar-section')].pop().dataset.section") == "reset"
+
+    glob = page.locator('.sidebar-section[data-section="global"]')
+    reset = page.locator('.sidebar-section[data-section="reset"]')
+    for sel in ("#tod-enabled", "#tod-configure-btn"):
+        assert glob.locator(sel).count() == 1
+    assert reset.locator("#reset-defaults").is_visible()
+    assert page.locator('[data-section="profile"] #reset-defaults').count() == 0
+    reset_slots = reset.locator('[data-setting="slots.reset_all"]')
+    assert reset_slots.count() == 1 and reset_slots.text_content().strip() == "Reset slots to global settings"
+    assert page.locator('[data-section="global"] [data-setting="slots.reset_all"]').count() == 0
+    if mode == "advanced":
+        assert glob.locator(".toggle-row:has(#tod-enabled)").is_visible() and glob.locator("#tod-configure-btn").is_visible()
+        assert reset_slots.is_visible()
+    else:
+        assert not glob.locator("#tod-configure-btn").is_visible() and not reset_slots.is_visible()
+    assert w.errors == []
+
+
+def test_time_of_day_in_global_counts_as_advanced_and_still_works(write_cfg, open_editor):
+    write_cfg(time_of_day={"enabled": True, "day_start": "07:00", "night_start": "20:00", "day": {}, "night": {}})
+    page = open_editor(editor_mode="basic").page
+    assert page.locator("#advanced-hint-text").text_content() == "1 advanced setting active"
+    page.locator("#advanced-hint-show").click()
+    glob = page.locator('.sidebar-section[data-section="global"]')
+    assert glob.locator("#tod-enabled").is_checked()
+    glob.locator(".toggle-row:has(#tod-enabled) .toggle-track").click()
+    _saved(write_cfg, lambda c: c["time_of_day"]["enabled"] is False)
+    glob.locator("#tod-configure-btn").click()
+    assert page.locator(".tod-modal-overlay").is_visible()
+    assert not page.locator("#tod-modal-enabled").is_checked()
+
+
+def test_both_resets_work_from_the_reset_section(write_cfg, open_editor):
+    write_cfg(fill_mode="cover", wall_color="#123456", slot_overrides={2: {"fill_mode": "contain"}})
+    page = open_editor(editor_mode="advanced").page
+    reset = page.locator('.sidebar-section[data-section="reset"]')
+    reset.get_by_role("button", name="Reset slots to global settings").click()
+    page.locator(".modal").get_by_role("button", name="Reset all slots").click()
+    cfg = _saved(write_cfg, lambda c: "fill_mode" not in c["slots"][1])
+    assert cfg["wall_color"] == "#123456"
+
+    reset.locator("#reset-defaults").click()
+    _modal(page).get_by_role("button", name="Reset to defaults").click()
+    _saved(write_cfg, lambda c: c["wall_color"] == "#1a1a1a")
+    # Undo stays in My Settings
+    _until(page, "() => !document.getElementById('undo-row').hidden")
+    assert page.locator('[data-section="profile"] #undo-row').is_visible()
+    page.locator("#undo-btn").click()
+    _modal(page).get_by_role("button", name="Undo").click()
+    _saved(write_cfg, lambda c: c["wall_color"] == "#123456")
+
+
+def test_reset_folds_and_the_old_time_of_day_fold_is_forgotten(write_cfg, open_editor):
+    write_cfg()
+    folded = "try { localStorage.setItem('picme.collapsedSections', JSON.stringify(['time_of_day', 'frame'])) } catch (e) {}"
+    page = open_editor(editor_mode="basic", init_scripts=[folded]).page
+    stored = lambda: json.loads(page.evaluate("() => localStorage.getItem('picme.collapsedSections')"))
+    assert stored() == ["frame"]  # the other sections' folds are kept
+    assert not page.locator("#g-mat-color").is_visible()
+    reset = page.locator('.sidebar-section[data-section="reset"]')
+    reset.locator(".section-toggle").click()
+    assert not page.locator("#reset-defaults").is_visible()
+    assert reset.locator(".section-toggle").get_attribute("aria-expanded") == "false"
+    assert stored() == ["frame", "reset"]
 
 
 # --- Ratio and Fit / Fill tags on preview cells ---
