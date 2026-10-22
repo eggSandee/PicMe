@@ -393,7 +393,7 @@ Top-level settings:
     "pill_size": "medium"        // "small" | "medium" | "large" — padding around the text
   },
   "video_max_edge": 1920,        // long-edge cap for converted videos: 1280 | 1920 (default, 1080p) | 3840 | 0 = original size
-  "include_live_photos": false,  // true = also play the short .MOV clips saved with Live Photos
+  "include_live_photos": true,   // also play the short .MOV clips saved with Live Photos (default); false = hide them
   "include_subfolders": true,    // media folders include their subfolders (see Subfolders below); false = top level only
   "layout_rotation": {           // show a different layout each day (see Daily layout rotation below)
     "enabled": false,
@@ -708,7 +708,7 @@ The first time a large HEIC is shown it takes about a second to convert. The con
 
 Set the `PICME_CACHE_DIR` environment variable to use a different folder. Your original photos are only ever read, never modified, and nothing is written into your photo folders. The cache is safe to delete at any time. A HEIC that can't be decoded is skipped like any other broken image.
 
-Live Photos export as a pair: `IMG_1234.HEIC` plus a short `IMG_1234.MOV`. The HEIC shows up in photo slots. The `.MOV` is hidden from video slots by default (see below).
+Live Photos export as a pair: `IMG_1234.HEIC` plus a short `IMG_1234.MOV`. The HEIC shows up in photo slots. The `.MOV` plays in video slots, unless *Include Live Photo clips* is off (see below).
 
 ---
 
@@ -721,7 +721,7 @@ iPhones record video in HEVC (H.265), usually 10-bit HDR, which Chrome and most 
 - **Size:** converted clips are scaled down to `video_max_edge` (default 1920, i.e. 1080p; set in the editor under *Videos → Max video size*). Several 4K videos at once overwhelm most TV decoders. Clips are never scaled up, and frame rates above 60 fps (slo-mo) are capped at 60.
 - **Background, one at a time:** conversion starts when PicMe starts (for every video slot's folder, including its subfolders unless they're turned off) and whenever a folder is opened in the editor or saved. It runs one clip at a time at low priority, shortest first. Until a clip is ready it's left out of the rotation; the display picks it up within a few minutes without a reload. The editor shows progress for the selected video slot, e.g. *"12 of 40 videos ready — converting IMG_1234.MOV (45%)"*.
 - **Cache:** converted copies are stored next to the HEIC cache, in a `video` folder (`~/Library/Caches/PicMe/video` on macOS, `%LOCALAPPDATA%\PicMe\Cache\video` on Windows, `~/.cache/picme/video` on Linux, or `$PICME_CACHE_DIR/video`). Your originals are only ever read, and nothing is written into your video folders. Expect roughly 45 MB per minute of 1080p video. Copies whose original is deleted or edited are cleaned up at startup. The folder is safe to delete; it's rebuilt as needed.
-- **Live Photos:** the 2–3 second `.MOV` an iPhone saves with each Live Photo would flicker by in a video slot, so a `.MOV`/`.MP4` of 4 seconds or less with the same name as a HEIC/JPEG in the same folder is hidden (a photo with that name in another subfolder doesn't count). A longer clip that happens to share a photo's name is still shown. Turn on *Include Live Photo clips* in the editor (`include_live_photos`) to show them anyway.
+- **Live Photos:** a `.MOV`/`.MP4` of 4 seconds or less with the same name as a HEIC/JPEG in the same folder is a Live Photo clip (the 2–3 second video an iPhone saves with each Live Photo; a photo with that name in another subfolder doesn't count). They play in video slots by default. Turn off *Include Live Photo clips* in the editor (`"include_live_photos": false`) to hide them: hidden clips are never converted, and the editor counts them. A longer clip that happens to share a photo's name is always shown.
 - **A clip that can't be converted** (e.g. a damaged file) is skipped, and the editor counts it. Replacing or editing the file retries it.
 
 **Installing ffmpeg.** PicMe looks for `ffmpeg` and `ffprobe` on your `PATH`, then in Homebrew's folders (`/opt/homebrew/bin`, `/usr/local/bin`), so it's found even when PicMe is started at login.

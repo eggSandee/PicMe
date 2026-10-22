@@ -1290,7 +1290,7 @@
     'time_of_day':        { tier: 'advanced', label: 'Time-of-day colors',
                             active: () => config.time_of_day?.enabled === true },
     'videos':             { tier: 'advanced', label: 'Video settings',
-                            active: () => (config.video_max_edge ?? 1920) !== 1920 || config.include_live_photos === true },
+                            active: () => (config.video_max_edge ?? 1920) !== 1920 || config.include_live_photos === false },
     // Top of Global Settings: save / apply the preset, undo that or a reset (the resets are in Reset)
     'settings.profile':   { tier: 'basic',    label: 'Preset and undo' },
     'settings.reset_defaults': { tier: 'basic', label: 'Reset everything to defaults' },
@@ -2506,7 +2506,7 @@
     styleSel.value = frameAsset(fd.frame_style) ? fd.frame_style : 'solid';
     syncGlobalFrameColor();
     document.getElementById('g-video-max-edge').value = String(g.video_max_edge ?? 1920);
-    document.getElementById('g-include-live-photos').checked = g.include_live_photos === true;
+    document.getElementById('g-include-live-photos').checked = g.include_live_photos !== false;
     document.getElementById('g-include-subfolders').checked = g.include_subfolders !== false;
 
     // Global pill and text size

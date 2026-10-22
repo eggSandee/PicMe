@@ -278,6 +278,23 @@ def test_include_subfolders_is_advanced_and_counted_when_off(write_cfg, open_edi
     assert w.errors == []
 
 
+def test_live_photo_clips_are_on_by_default_and_counted_when_off(write_cfg, open_editor):
+    cfg = write_cfg()
+    assert "include_live_photos" not in cfg  # a config without the key: on
+    w = open_editor(editor_mode="advanced")
+    page = w.page
+    assert page.locator("#g-include-live-photos").is_checked()
+    page.locator(".toggle-row:has(#g-include-live-photos) .toggle").click()
+    _saved(write_cfg, lambda c: c.get("include_live_photos") is False)
+    page.locator('#editor-mode button[data-mode="basic"]').click()
+    assert page.locator("#advanced-hint").get_attribute("title").split("\n") == ["Video settings"]
+    assert w.errors == []
+
+    write_cfg(include_live_photos=True)
+    page = open_editor(editor_mode="basic").page
+    assert page.locator("#advanced-hint").is_hidden()  # on is the default, so not counted
+
+
 def test_reset_all_clears_per_slot_subfolders(write_cfg, open_editor):
     write_cfg(slot_overrides={2: {"use_global": {"source": False}, "source_path": str(write_cfg.root / "other"),
                                   "include_subfolders": False}})

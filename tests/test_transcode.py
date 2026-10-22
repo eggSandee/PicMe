@@ -380,6 +380,7 @@ def test_capabilities_parses_real_ffmpeg():
 
 @requires_libx265
 def test_live_photo_companion_needs_still_and_short_duration(lib, video_transcoder):
+    video_transcoder.configure({"include_live_photos": False})  # shown by default; these check hiding
     make_clip(lib / "IMG_0001.MOV", codec="hevc", duration=2)
     (lib / "IMG_0001.HEIC").write_bytes(b"x")   # pairing only looks at names
     make_clip(lib / "IMG_0002.MOV", codec="hevc", duration=6)
@@ -398,6 +399,7 @@ def test_live_photo_companion_needs_still_and_short_duration(lib, video_transcod
 
 @requires_libx265
 def test_api_hidden_live_photo_clip_is_404_and_not_queued(client, lib, video_transcoder):
+    video_transcoder.configure({"include_live_photos": False})  # shown by default; these check hiding
     clip = make_clip(lib / "IMG_0001.MOV", codec="hevc", duration=2)
     (lib / "img_0001.heic").write_bytes(b"x")
     assert client.get("/api/video", params={"path": str(clip)}).status_code == 404
@@ -405,6 +407,18 @@ def test_api_hidden_live_photo_clip_is_404_and_not_queued(client, lib, video_tra
     video_transcoder.configure({"include_live_photos": True})
     assert client.get("/api/video", params={"path": str(clip)}).status_code == 409   # now converted on demand
     assert clip.resolve() in video_transcoder._pending
+
+
+def test_live_photo_clips_are_shown_unless_turned_off(fake_sniff, video_transcoder, lib):
+    _put(lib / "IMG_1.MOV")
+    _put(lib / "IMG_1.HEIC")
+    for cfg in ({}, {"include_live_photos": True}, {"include_live_photos": None}):
+        video_transcoder.configure(cfg)  # missing (the default) or anything but false: shown
+        assert video_transcoder.settings.include_live_photos is True, cfg
+        assert video_transcoder.clip(lib / "IMG_1.MOV").state == transcode.PENDING
+    video_transcoder.configure({"include_live_photos": False})
+    assert video_transcoder.clip(lib / "IMG_1.MOV").state == transcode.LIVE_PHOTO
+    assert transcode.Transcoder().settings.include_live_photos is True
 
 
 def test_cache_key_changes_with_mtime_size_cap_and_version(tmp_path, monkeypatch):
@@ -745,6 +759,7 @@ def test_background_worker_converts_and_stop_kills_ffmpeg(lib, video_transcoder)
 
 @requires_libx265
 def test_api_lists_only_ready_clips_and_serves_converted_copy(client, lib, video_transcoder):
+    video_transcoder.configure({"include_live_photos": False})  # shown by default; these check hiding
     h264 = make_clip(lib / "plain.mp4", duration=1)
     hevc = make_clip(lib / "IMG_0400.MOV", codec="hevc", duration=1)
     make_clip(lib / "IMG_0401.MOV", codec="hevc", duration=2)
@@ -1010,6 +1025,7 @@ def test_scan_includes_subfolders(fake_sniff, video_transcoder, lib, nested_vide
 
 
 def test_live_photo_pairs_only_within_a_folder(fake_sniff, video_transcoder, lib):
+    video_transcoder.configure({"include_live_photos": False})  # shown by default; these check hiding
     _put(lib / "trip" / "IMG_1.MOV")
     _put(lib / "trip" / "IMG_1.HEIC")
     _put(lib / "trip" / "IMG_2.MOV")
