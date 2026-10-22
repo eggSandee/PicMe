@@ -588,7 +588,7 @@ Instead of a frame around every slot, a layout can show **one frame around the w
 
 #### Time of day
 
-Turn on **Time-of-day colors** in the editor (Advanced) and choose **Configure templates…** to give the day and the night their own look. `day_start` (07:00) and `night_start` (20:00) are the display's local times.
+Turn on **Time-of-day colors** under Global Settings in the editor (Advanced) and choose **Configure day / night colors…** to give the day and the night their own look. `day_start` (07:00) and `night_start` (20:00) are the display's local times.
 
 - **What a period changes.** Each period can set the wall colour, mat colour, mat width, frame on/off, frame style, frame colour and frame width. A period only changes the keys it sets; a slot's own frame settings still win. On gallery-mat layouts only the colours and the style apply (widths stay as set under Gallery Mat).
 - **Same as default.** Every colour (wall, mat, frame) and the frame style has a **Same as default** option. It leaves the key out of the template (`"night": { "wall_color": "#000000" }` with no `mat_color`), so the colour set under Global Settings, Frame or Gallery Mat shows in that period.
@@ -620,17 +620,18 @@ The switch at the top of the editor's sidebar picks **Basic** or **Advanced**. B
 - **Per browser.** The choice is saved in the browser (`localStorage`), not in the config, so each person's editor remembers its own mode. A browser that has never chosen starts in Basic. If the browser blocks storage, the editor still works and starts in Basic each time.
 - **Advanced values in Basic.** When the config sets advanced settings away from their defaults, Basic shows **"N advanced settings active · Show"** under the switch. Hover it for the list; **Show** switches to Advanced.
 
-Which settings each mode shows (the split lives in one table, `EDITOR_SETTINGS` in `frontend/editor/index.html`, so it is easy to change):
+The sidebar runs, top to bottom: My Settings, Layout, Global Settings, Frame, Gallery Mat, Default Metadata, Videos and Reset. Which settings each mode shows (the split lives in one table, `EDITOR_SETTINGS` in `frontend/editor/index.html`, so it is easy to change):
 
 | | Basic | Advanced adds |
 |---|---|---|
+| **My Settings** | Save as my preset, Apply my preset, Undo | — |
 | **Layout** | Layout picker, Frames (Separate / Gallery mat), Rotate layout daily, the rotation checkboxes on the thumbnails, Select all / Deselect all, today's rotation status | Switch layout at, Mat chips (frames per rotated layout) |
-| **My Settings** | Save as my preset, Apply my preset, Reset everything to defaults, Undo | — |
-| **Global** | Default media folder, Wall color, Fill frames, Tap a photo for details | Include subfolders, Reset slots to global settings |
+| **Global** | Default media folder, Wall color, Fill frames, Tap a photo for details | Include subfolders, Time-of-day colors (on / off and Configure day / night colors…) |
 | **Frame** | Mat color, Frame style | Mat width, Show frame border, Frame color, Frame width |
 | **Gallery Mat** | Mat color (the frame's style is in Frame) | Use a different frame for gallery mats (its style, show frame, colour), outer frame width, mat around and between the openings, wall around the frame, bevel |
 | **Metadata** | Show metadata; Text size, Pill size, Label position and the fields (Date, Location, Camera…) | Date format, Max metadata pills |
-| **Time-of-Day, Videos** | — | The whole sections (templates, max video size, Live Photo clips) |
+| **Videos** | — | The whole section (max video size, Live Photo clips) |
+| **Reset** | Reset everything to defaults | Reset slots to global settings |
 | **Preview** | Each slot's size (aspect ratio) and Fit / Fill | — |
 | **Each slot** | Media folder, Photos / Video (and the "no videos" warning), Change every (seconds), Opening shape, Show metadata | Use global toggles, Include subfolders, Group, Fit / Fill (the slot's own), Frame, the slot's own metadata settings, video loops and audio, conversion status |
 
@@ -665,21 +666,21 @@ Settings that only exist for one kind of slot are hidden rather than greyed: a p
 #### Editor layout
 
 - **Resize the preview.** Drag the bar between the layout preview and the slot settings to give either more room; the preview keeps the screen's 16:9 shape, so it is still the display, smaller. On a touch screen drag it with a finger; with the keyboard, focus it (Tab) and use the arrow keys, Home (smallest preview) or End (largest). Double-click it to go back to the default (the preview takes 60% of the height, never more than its full width needs). The slot settings scroll on their own below it.
-- **Fold sidebar sections.** Click a section's title (My Settings, Layout, Global Settings, Videos, Frame, Gallery Mat, Time-of-Day, Default Metadata) to fold it; click again to open it. Every section starts open. The links beside the Layout title (Select all / Deselect all) work whether it is folded or not. Sections Basic hides (Videos, Time-of-Day) stay hidden in Basic, folded or not.
+- **Fold sidebar sections.** Click a section's title (My Settings, Layout, Global Settings, Frame, Gallery Mat, Default Metadata, Videos, Reset) to fold it; click again to open it. Every section starts open. The links beside the Layout title (Select all / Deselect all) work whether it is folded or not. Videos, which Basic hides, stays hidden in Basic, folded or not. A fold saved for the old Time-of-Day section (now part of Global Settings) is forgotten.
 - **Remembered per browser.** The divider position and folded sections are saved in the browser (`localStorage`), like the editor mode, never in `config.json`.
 - **Slot sizes.** Under each slot's number the preview shows its photo opening's aspect ratio and whether it fits or fills, in smaller type: **3:2 · Fill**. It is the opening on a 1920×1080 screen after the frame, mat, caption band, gallery margins, shape and bevel, written width:height (so portrait reads **2:3**, like a 4×6 print held upright). Openings within about 12% of a common photo shape (1:1, 4:3, 3:2, 16:9, 5:4 and 7:5, either way round) show that shape's name, so a slot a little wider than 4:5 still reads **4:5**; anything else shows its own ratio, such as **2.4:1**. The tags are plain grey text, like the slot number. Hover a slot's tag for its size in px. Opening shapes are measured by their box. Small slots show the ratio above Fit / Fill.
 
 #### Presets and reset
 
-**My Settings**, at the top of the sidebar, saves and restores your settings:
+**My Settings**, at the top of the sidebar, saves and restores your settings; the two resets sit in the **Reset** section at the bottom:
 
 - **Save as my preset** saves the current look: layout, rotation, Frames per layout, wall colour, Fill frames, Tap a photo for details, frame, gallery mat, metadata, label position and style, time of day, and each slot's frame, metadata, timer, group, Fit / Fill, opening shape and video loops and audio. It asks before replacing a saved preset.
 - **Apply my preset** puts that look back. The dialog says how many settings change and lists them. Anything the preset names that no longer exists (a removed layout, an unknown shape) is skipped and listed in the dialog; the current layout stays then.
 - **Reset everything to defaults…** puts every look setting back to the first-run defaults: Classic 4, daily rotation off, wood frames, Fill frames on, Tap a photo for details on, every slot on the global frame and metadata, 30 s timers. The dialog says how many settings differ from the defaults (counting what the display shows differently).
 - **Kept by both.** Your default media folder, each slot's folder and photo/video mode, Include subfolders, and the video settings (max video size, Live Photo clips), so the display never goes blank and the video library isn't converted again. All slots are kept too, including ones the layout doesn't show, so a bigger layout later still has their folders.
-- **Undo.** After a reset or applying the preset, an **Undo** link under the buttons restores the config from just before, exactly. There is one step of undo: it is used up once undone, and a second reset replaces it. Edits made after the reset are lost by Undo, and its dialog says so.
+- **Undo.** After a reset or applying the preset, an **Undo** link under the My Settings buttons restores the config from just before, exactly. There is one step of undo: it is used up once undone, and a second reset replaces it. Edits made after the reset are lost by Undo, and its dialog says so.
 - **From any device.** Presets, the reset and Undo run on the server: `presets.json` and `config.backup.json` sit next to `config.json` (both ignored by git), so another device's editor sees the same preset and can undo the same reset.
-- **Two different resets.** **Reset slots to global settings** (Advanced, Global Settings) only clears each slot's own overrides — folder, frame, metadata and Fit / Fill — and changes nothing else. **Reset everything to defaults** resets the look and keeps the folders.
+- **Two different resets.** **Reset slots to global settings** (Advanced, in Reset) only clears each slot's own overrides — folder, frame, metadata and Fit / Fill — and changes nothing else. **Reset everything to defaults** resets the look and keeps the folders.
 
 `presets.json` is a list, so more named presets can be added later without changing the file: `{"version": 1, "presets": [{"id": "my-preset", "name": "My preset", "created": "…", "updated": "…", "settings": {…}}]}`. The editor uses the one with id `my-preset`. A preset saves what the display showed: a config from before `fill_mode` saves Fit, for example. A missing or broken `presets.json` reads as no preset, and saving rewrites it.
 
