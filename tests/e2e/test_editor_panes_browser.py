@@ -248,9 +248,12 @@ def test_both_resets_work_from_the_reset_section(write_cfg, open_editor):
     reset.locator("#reset-defaults").click()
     _modal(page).get_by_role("button", name="Reset to defaults").click()
     _saved(write_cfg, lambda c: c["wall_color"] == "#1a1a1a")
-    # Undo stays in My Settings
+    # Undo stays in My Settings, and is scrolled into view and flashed (the reset is at the bottom)
     _until(page, "() => !document.getElementById('undo-row').hidden")
     assert page.locator('[data-section="profile"] #undo-row').is_visible()
+    _until(page, """() => { const r = document.getElementById('undo-row').getBoundingClientRect();
+                               return r.top >= 0 && r.bottom <= window.innerHeight; }""")
+    assert "flash" in page.locator("#undo-row").get_attribute("class")
     page.locator("#undo-btn").click()
     _modal(page).get_by_role("button", name="Undo").click()
     _saved(write_cfg, lambda c: c["wall_color"] == "#123456")

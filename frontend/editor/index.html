@@ -698,6 +698,10 @@
     .profile-row .btn { flex: 1; padding: 7px 6px; font-size: 12px; }
     .btn:disabled { opacity: 0.45; cursor: default; }
     #undo-row .link-btn, .tod-note .link-btn { color: var(--accent); }
+    /* After a reset from the bottom of the sidebar, the Undo row is brought into view and flashed */
+    #undo-row.flash { animation: undo-flash 1.8s ease-out; border-radius: 4px; }
+    @keyframes undo-flash { 0%, 35% { background: rgba(74, 144, 226, 0.28); } 100% { background: transparent; } }
+    @media (prefers-reduced-motion: reduce) { #undo-row.flash { animation: none; } }
     .tod-note { margin-top: 6px; }
     .modal-note .warn { color: #e0a030; }
 
@@ -3869,8 +3873,23 @@
         const r = await postJSON(`${API}/api/config/reset`);
         applyLoadedConfig(r.config, 'Reset to defaults — saved.');
         await refreshProfileUI();
+        revealUndo();
       },
     });
+  }
+
+  // The Undo row lives in My Settings at the top; the Reset button is at the bottom of the sidebar,
+  // so after a reset bring Undo into view (unfolding My Settings if needed) and flash it
+  function revealUndo() {
+    const row = document.getElementById('undo-row');
+    if (row.hidden) return;
+    const section = row.closest('.sidebar-section');
+    if (section?.classList.contains('collapsed')) setSectionOpen(section, true);
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    row.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+    row.classList.remove('flash');
+    void row.offsetWidth;  // restart the animation
+    row.classList.add('flash');
   }
 
   async function savePresetNow() {
