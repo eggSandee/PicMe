@@ -524,7 +524,7 @@ class Clip:
 @dataclass
 class Settings:
     max_edge: int = DEFAULT_MAX_EDGE
-    include_live_photos: bool = False
+    include_live_photos: bool = True   # an explicit false hides Live Photo clips
 
 
 class Transcoder:
@@ -552,7 +552,7 @@ class Transcoder:
             max_edge = int(config.get("video_max_edge", DEFAULT_MAX_EDGE))
         except (TypeError, ValueError):
             max_edge = DEFAULT_MAX_EDGE
-        self.settings = Settings(max(0, max_edge), bool(config.get("include_live_photos", False)))
+        self.settings = Settings(max(0, max_edge), config.get("include_live_photos", True) is not False)
 
     def tools(self) -> tuple[str | None, str | None]:
         """(ffmpeg, ffprobe). Re-checked at most every 10 s while missing, so installing ffmpeg

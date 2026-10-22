@@ -15,6 +15,12 @@ import pytest
 from conftest import _exif_bytes, _make_image, make_config
 from video_fixtures import FFMPEG, HAS_LIBX265, h264_stub, make_clip
 
+def make_video_config(*args, **kwargs) -> dict:
+    """A config with Live Photo clips off: they're shown by default, and these tests check that
+    off hides them. Hidden clips also aren't converted, so they don't hold up the iPhone clip."""
+    return {**make_config(*args, **kwargs), "include_live_photos": False}
+
+
 pytestmark = pytest.mark.e2e
 
 if FFMPEG is None:
@@ -78,7 +84,7 @@ def video_lib(tmp_path_factory):
     make_clip(lib["mixed"] / "good.mp4", color="green", faststart=True)
     make_clip(lib["mixed"] / "hevc.mov", codec="hevc", color="blue", faststart=True)
     if HAS_LIBX265:
-        # iPhone-style: 10-bit HLG HEVC portrait clip, plus a Live Photo pair that must stay hidden
+        # iPhone-style: 10-bit HLG HEVC portrait clip, plus a Live Photo pair that stays hidden (include_live_photos is off here)
         make_clip(lib["iphone"] / "IMG_0001.MOV", hdr="hlg", size=(320, 180), rotation=90, quadrants=True,
                   duration=2)
         make_clip(lib["iphone"] / "IMG_0002.MOV", codec="hevc", color="red", duration=2)
@@ -91,7 +97,7 @@ def video_lib(tmp_path_factory):
 @pytest.fixture(scope="module")
 def e2e_config_path(tmp_path_factory, video_lib):
     path = tmp_path_factory.mktemp("e2e-video-config") / "config.json"
-    path.write_text(json.dumps(make_config(video_lib["photos"])))
+    path.write_text(json.dumps(make_video_config(video_lib["photos"])))
     return path
 
 
@@ -109,7 +115,7 @@ def h264_browser(browser):
 
 
 def write_config(path, photos, video_folder, video_slots, loops=1, **extra) -> dict:
-    cfg = make_config(photos)
+    cfg = make_video_config(photos)
     for slot in cfg["slots"]:
         if slot["id"] in video_slots:
             slot.update(mode="video", source_path=str(video_folder), video_loops=loops)
@@ -265,7 +271,7 @@ def test_relisting_another_folder_keeps_this_folders_failures(h264_browser, serv
 
 def test_editor_video_mode_controls(h264_browser, server, open_page, e2e_config_path, video_lib):
     photos, videos = str(video_lib["photos"]), str(video_lib["videos"])
-    cfg = make_config(photos)
+    cfg = make_video_config(photos)
     cfg["source_path"] = photos  # slots adopt the global folder
     e2e_config_path.write_text(json.dumps(cfg, indent=2))
 
