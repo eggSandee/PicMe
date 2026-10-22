@@ -695,7 +695,9 @@ def test_rotation_checkbox_has_a_24px_hit_area_clear_of_the_badges(server, open_
             b = badge.evaluate(RECT_JS)
             assert b["right"] <= hit["x"] or b["x"] >= hit["right"] or b["bottom"] <= hit["y"] or b["y"] >= hit["bottom"], (b, hit)
 
-    # A click in the padding, well outside the 14px box, still toggles it (and doesn't pick the layout)
+    # A click in the padding, well outside the 14px box, still toggles it (and doesn't pick the layout).
+    # Mouse clicks are by viewport position, and Layout sits below Global Settings, so scroll to it first
+    page.locator(".layout-thumb[data-id='hero-left']").scroll_into_view_if_needed()
     hit = _rect(page, ".layout-thumb[data-id='hero-left'] .rotation-pick-corner")
     page.mouse.click(hit["x"] + 2, hit["y"] + 2)
     _saved(path, lambda c: "hero-left" not in c["layout_rotation"]["layouts"] and c["layout_rotation"]["layouts"])
