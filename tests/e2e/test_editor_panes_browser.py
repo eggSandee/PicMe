@@ -1,10 +1,10 @@
-"""Browser end-to-end tests for the editor's panes and My Settings (README → Editor).
+"""Browser end-to-end tests for the editor's panes, the preset and the resets (README → Editor).
 
 - the divider between the preview and the slot settings (drag, touch, keys, persisted, reset);
 - folding sidebar sections (persisted; the Layout header's links still work);
 - each preview cell's aspect ratio and Fit / Fill tag;
 - the sidebar's order (Time-of-Day inside Global Settings, Videos and the Reset section last);
-- My Settings: reset to defaults, the saved preset and Undo, against the live server.
+- The preset at the top of Global Settings: reset to defaults, the saved preset and Undo, against the live server.
 
 Reuses the editor-mode module's fixtures (``write_cfg`` writes a first-run-shaped config).
 """
@@ -185,11 +185,11 @@ def test_sections_fold_persist_and_the_layout_links_still_work(write_cfg, laptop
     assert w.errors == []
 
 
-# --- Sidebar order: Time-of-Day inside Global Settings, Videos and Reset at the bottom ---
+# --- Sidebar order: Global Settings first (with the preset and Time-of-Day), Videos and Reset at the bottom ---
 
 SECTIONS_JS = """() => [...document.querySelectorAll('#sidebar > .sidebar-section[data-section]')]
     .filter(s => s.checkVisibility()).map(s => [s.dataset.section, s.querySelector('h3').textContent.trim()])"""
-ADVANCED_ORDER = [["profile", "My Settings"], ["layout", "Layout"], ["global", "Global Settings"],
+ADVANCED_ORDER = [["global", "Global Settings"], ["layout", "Layout"],
                   ["frame", "Frame"], ["gallery", "Gallery Mat"], ["metadata", "Default Metadata"],
                   ["videos", "Videos"], ["reset", "Reset"]]
 
@@ -202,6 +202,7 @@ def test_sidebar_order_with_time_of_day_in_global_and_resets_at_the_bottom(write
     expected = [s for s in ADVANCED_ORDER if mode == "advanced" or s[0] != "videos"]
     assert page.evaluate(SECTIONS_JS) == expected
     assert page.locator('[data-section="time_of_day"]').count() == 0
+    assert page.locator('[data-section="profile"]').count() == 0
     # The last section in the sidebar, Basic and Advanced alike
     assert page.evaluate("() => [...document.querySelectorAll('#sidebar > .sidebar-section')].pop().dataset.section") == "reset"
 
@@ -210,7 +211,13 @@ def test_sidebar_order_with_time_of_day_in_global_and_resets_at_the_bottom(write
     for sel in ("#tod-enabled", "#tod-configure-btn"):
         assert glob.locator(sel).count() == 1
     assert reset.locator("#reset-defaults").is_visible()
-    assert page.locator('[data-section="profile"] #reset-defaults').count() == 0
+    assert glob.locator("#reset-defaults").count() == 0
+    # The preset sits at the top of Global Settings, before its first setting, in both modes
+    for sel in ("#preset-save", "#preset-apply"):
+        assert glob.locator(sel).is_visible()
+    assert page.evaluate("""() => { const g = document.querySelector('[data-section="global"]');
+        return !!(g.querySelector('#preset-save').compareDocumentPosition(g.querySelector('#g-source-path'))
+                  & Node.DOCUMENT_POSITION_FOLLOWING); }""")
     reset_slots = reset.locator('[data-setting="slots.reset_all"]')
     assert reset_slots.count() == 1 and reset_slots.text_content().strip() == "Reset slots to global settings"
     assert page.locator('[data-section="global"] [data-setting="slots.reset_all"]').count() == 0
@@ -248,9 +255,9 @@ def test_both_resets_work_from_the_reset_section(write_cfg, open_editor):
     reset.locator("#reset-defaults").click()
     _modal(page).get_by_role("button", name="Reset to defaults").click()
     _saved(write_cfg, lambda c: c["wall_color"] == "#1a1a1a")
-    # Undo stays in My Settings, and is scrolled into view and flashed (the reset is at the bottom)
+    # Undo is at the top of Global Settings, and is scrolled into view and flashed (the reset is at the bottom)
     _until(page, "() => !document.getElementById('undo-row').hidden")
-    assert page.locator('[data-section="profile"] #undo-row').is_visible()
+    assert page.locator('[data-section="global"] #undo-row').is_visible()
     _until(page, """() => { const r = document.getElementById('undo-row').getBoundingClientRect();
                                return r.top >= 0 && r.bottom <= window.innerHeight; }""")
     assert "flash" in page.locator("#undo-row").get_attribute("class")
@@ -259,9 +266,23 @@ def test_both_resets_work_from_the_reset_section(write_cfg, open_editor):
     _saved(write_cfg, lambda c: c["wall_color"] == "#123456")
 
 
-def test_reset_folds_and_the_old_time_of_day_fold_is_forgotten(write_cfg, open_editor):
+def test_a_reset_unfolds_global_settings_for_undo_and_remembers_it(write_cfg, open_editor):
+    write_cfg(wall_color="#123456")
+    folded = "try { localStorage.setItem('picme.collapsedSections', JSON.stringify(['global', 'frame'])) } catch (e) {}"
+    page = open_editor(editor_mode="basic", init_scripts=[folded]).page
+    stored = lambda: json.loads(page.evaluate("() => localStorage.getItem('picme.collapsedSections')"))
+    assert not page.locator("#preset-save").is_visible()
+    page.locator("#reset-defaults").click()
+    _modal(page).get_by_role("button", name="Reset to defaults").click()
+    _saved(write_cfg, lambda c: c["wall_color"] == "#1a1a1a")
+    _until(page, "() => !document.getElementById('undo-row').hidden")
+    assert page.locator("#undo-btn").is_visible()
+    assert stored() == ["frame"]  # opened for Undo, and saved open
+
+
+def test_reset_folds_and_the_old_time_of_day_and_my_settings_folds_are_forgotten(write_cfg, open_editor):
     write_cfg()
-    folded = "try { localStorage.setItem('picme.collapsedSections', JSON.stringify(['time_of_day', 'frame'])) } catch (e) {}"
+    folded = "try { localStorage.setItem('picme.collapsedSections', JSON.stringify(['time_of_day', 'profile', 'frame'])) } catch (e) {}"
     page = open_editor(editor_mode="basic", init_scripts=[folded]).page
     stored = lambda: json.loads(page.evaluate("() => localStorage.getItem('picme.collapsedSections')"))
     assert stored() == ["frame"]  # the other sections' folds are kept
@@ -335,7 +356,7 @@ def test_gallery_tags_use_the_opening_inside_the_bevel(write_cfg, open_editor):
     assert all(g[2] == "fit" for g in got)  # no fill_mode anywhere else: an older config, so Fit
 
 
-# --- My Settings: reset, preset, undo ---
+# --- Preset (top of Global Settings): reset, preset, undo ---
 
 def _modal(page):
     return page.locator(".confirm-overlay .modal")
