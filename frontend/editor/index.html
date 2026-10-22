@@ -694,6 +694,7 @@
       accent-color: var(--accent);
     }
 
+    .profile-block { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
     .profile-row { display: flex; gap: 6px; }
     .profile-row .btn { flex: 1; padding: 7px 6px; font-size: 12px; }
     .btn:disabled { opacity: 0.45; cursor: default; }
@@ -767,54 +768,16 @@
       <p id="advanced-hint" hidden><span id="advanced-hint-text"></span> · <button type="button" id="advanced-hint-show">Show</button></p>
     </div>
 
-    <div class="sidebar-section" data-section="profile" data-setting="settings.profile">
-      <h3>My Settings</h3>
-      <div class="profile-row">
-        <button type="button" class="btn btn-secondary" id="preset-save">Save as my preset</button>
-        <button type="button" class="btn btn-secondary" id="preset-apply" disabled>Apply my preset</button>
-      </div>
-      <p class="field-hint" id="preset-status">No preset saved yet.</p>
-      <p class="field-hint" id="undo-row" hidden><span id="undo-text"></span> · <button type="button" class="link-btn" id="undo-btn">Undo</button></p>
-    </div>
-
-    <div class="sidebar-section" data-section="layout">
-      <div class="sidebar-header-row">
-        <h3>Layout</h3>
-        <span id="rotation-bulk" data-setting="rotation.bulk" hidden>
-          <button type="button" class="link-btn" id="rotation-select-all">Select all</button>
-          <span aria-hidden="true">·</span>
-          <button type="button" class="link-btn" id="rotation-deselect-all">Deselect all</button>
-        </span>
-      </div>
-      <div id="layout-picker" data-setting="layout.picker"></div>
-
-      <div class="field" style="margin-top:10px" data-setting="layout.mode">
-        <label>Frames</label>
-        <div class="mode-switch" id="layout-mode" role="group" aria-label="Frames for this layout">
-          <button type="button" data-mode="slots" aria-pressed="true">Separate</button>
-          <button type="button" data-mode="gallery" aria-pressed="false">Gallery mat</button>
-        </div>
-      </div>
-
-      <div class="toggle-row" style="margin-top:10px" data-setting="rotation.enabled">
-        <label>Rotate layout daily</label>
-        <label class="toggle">
-          <input type="checkbox" id="g-rotation-enabled" />
-          <span class="toggle-track"></span>
-        </label>
-      </div>
-      <div id="rotation-options">
-        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 10px;" data-setting="rotation.layouts">Tick the box in a layout's corner to rotate through it. The display shows one each day; clicking a layout still sets the base layout used when rotation is off.</p>
-        <div class="field" data-setting="rotation.change_at">
-          <label>Switch layout at</label>
-          <input type="time" id="g-rotation-change-at" />
-        </div>
-        <p id="rotation-status" data-setting="rotation.status"></p>
-      </div>
-    </div>
-
     <div class="sidebar-section" data-section="global">
       <h3>Global Settings</h3>
+      <div class="profile-block" data-setting="settings.profile">
+        <div class="profile-row">
+          <button type="button" class="btn btn-secondary" id="preset-save">Save as my preset</button>
+          <button type="button" class="btn btn-secondary" id="preset-apply" disabled>Apply my preset</button>
+        </div>
+        <p class="field-hint" id="preset-status">No preset saved yet.</p>
+        <p class="field-hint" id="undo-row" hidden><span id="undo-text"></span> · <button type="button" class="link-btn" id="undo-btn">Undo</button></p>
+      </div>
 
       <div class="field" data-setting="global.source_path">
         <label>Default media folder</label>
@@ -865,6 +828,42 @@
         </div>
         <p class="field-hint" style="margin:0 0 10px;">Automatically shift wall and frame colors between day and night.</p>
         <button type="button" class="btn btn-secondary" style="width:100%;" id="tod-configure-btn">Configure day / night colors…</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section" data-section="layout">
+      <div class="sidebar-header-row">
+        <h3>Layout</h3>
+        <span id="rotation-bulk" data-setting="rotation.bulk" hidden>
+          <button type="button" class="link-btn" id="rotation-select-all">Select all</button>
+          <span aria-hidden="true">·</span>
+          <button type="button" class="link-btn" id="rotation-deselect-all">Deselect all</button>
+        </span>
+      </div>
+      <div id="layout-picker" data-setting="layout.picker"></div>
+
+      <div class="field" style="margin-top:10px" data-setting="layout.mode">
+        <label>Frames</label>
+        <div class="mode-switch" id="layout-mode" role="group" aria-label="Frames for this layout">
+          <button type="button" data-mode="slots" aria-pressed="true">Separate</button>
+          <button type="button" data-mode="gallery" aria-pressed="false">Gallery mat</button>
+        </div>
+      </div>
+
+      <div class="toggle-row" style="margin-top:10px" data-setting="rotation.enabled">
+        <label>Rotate layout daily</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-rotation-enabled" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <div id="rotation-options">
+        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 10px;" data-setting="rotation.layouts">Tick the box in a layout's corner to rotate through it. The display shows one each day; clicking a layout still sets the base layout used when rotation is off.</p>
+        <div class="field" data-setting="rotation.change_at">
+          <label>Switch layout at</label>
+          <input type="time" id="g-rotation-change-at" />
+        </div>
+        <p id="rotation-status" data-setting="rotation.status"></p>
       </div>
     </div>
 
@@ -1050,7 +1049,7 @@
     <div class="sidebar-section danger-zone" data-section="reset">
       <h3>Reset</h3>
       <button type="button" class="btn btn-danger" id="reset-defaults" data-setting="settings.reset_defaults">Reset everything to defaults…</button>
-      <p class="field-hint" id="reset-defaults-hint" data-setting="settings.reset_defaults">Folders and video settings are kept. Undo is under My Settings.</p>
+      <p class="field-hint" id="reset-defaults-hint" data-setting="settings.reset_defaults">Folders and video settings are kept. Undo is at the top of Global Settings.</p>
       <button type="button" class="btn btn-danger" id="reset-slots" onclick="openResetAllModal()" data-setting="slots.reset_all"
               title="Clears each slot's own folder, frame, metadata and Fit / Fill only.">Reset slots to global settings</button>
     </div>
@@ -1288,8 +1287,8 @@
                             active: () => config.time_of_day?.enabled === true },
     'videos':             { tier: 'advanced', label: 'Video settings',
                             active: () => (config.video_max_edge ?? 1920) !== 1920 || config.include_live_photos === true },
-    // My Settings: save / apply the preset, undo that or a reset (the resets are in Reset)
-    'settings.profile':   { tier: 'basic',    label: 'My settings: preset, undo' },
+    // Top of Global Settings: save / apply the preset, undo that or a reset (the resets are in Reset)
+    'settings.profile':   { tier: 'basic',    label: 'Preset and undo' },
     'settings.reset_defaults': { tier: 'basic', label: 'Reset everything to defaults' },
     'slots.reset_all':    { tier: 'advanced', label: 'Reset slots to global settings' },
     'slots.rearrange':    { tier: 'basic',    label: 'Drag slots to swap' },
@@ -3731,7 +3730,7 @@
     setStatus(msg, msg.endsWith('saved.') ? 'success' : '');
   }
 
-  // ── My Settings: one saved preset, reset to defaults, and one step of undo (README → Presets and reset) ──
+  // ── Preset (top of Global Settings): one saved preset, reset to defaults, and one step of undo (README → Presets and reset) ──
   // The server does the work, so Undo and the preset are the same from every device.
 
   const PRESET_ID = 'my-preset';
@@ -3878,8 +3877,8 @@
     });
   }
 
-  // The Undo row lives in My Settings at the top; the Reset button is at the bottom of the sidebar,
-  // so after a reset bring Undo into view (unfolding My Settings if needed) and flash it
+  // The Undo row is at the top of Global Settings; the Reset button is at the bottom of the sidebar,
+  // so after a reset bring Undo into view (unfolding Global Settings if needed) and flash it
   function revealUndo() {
     const row = document.getElementById('undo-row');
     if (row.hidden) return;
@@ -4132,8 +4131,8 @@
   // rest of the section goes into a body that's hidden when folded. Links beside the title
   // (Layout: Select all / Deselect all) are separate controls and don't fold it.
   const SECTIONS_KEY = 'picme.collapsedSections';
-  // Folded sections that no longer exist (Time-of-Day moved into Global Settings)
-  const RETIRED_SECTIONS = ['time_of_day'];
+  // Folded sections that no longer exist (Time-of-Day and My Settings moved into Global Settings)
+  const RETIRED_SECTIONS = ['time_of_day', 'profile'];
 
   function collapsedSections() {
     try { const v = JSON.parse(loadPref(SECTIONS_KEY) || '[]'); return new Set(Array.isArray(v) ? v : []); }
