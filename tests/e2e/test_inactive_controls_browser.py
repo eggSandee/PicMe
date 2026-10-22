@@ -158,6 +158,10 @@ def test_gallery_mat_is_greyed_until_a_gallery_layout_is_on_screen(write_cfg, op
     # The gallery's own frame is in the Frame section and greys on its own
     assert page.locator('[data-section="frame"] #g-gal-frame-override').count() == 1
     _assert_inactive(page, "#g-gal-frame-override", GALLERY_FRAME_UNUSED)
+    # Its label fits on one line in the 280px sidebar
+    label = page.locator("label[for=g-gal-frame-override]")
+    assert label.text_content() == "Different gallery mat frame"
+    assert label.evaluate("l => l.getBoundingClientRect().height < 1.6 * parseFloat(getComputedStyle(l).fontSize)")
     assert page.locator("#gallery-off-hint").is_visible()
     page.click("#layout-mode button[data-mode='gallery']")
     for sel in ("#g-gal-mat-color", "#g-gal-margin", "#g-gal-bevel", "#g-gal-frame-override"):

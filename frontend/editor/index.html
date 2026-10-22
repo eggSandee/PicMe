@@ -907,7 +907,7 @@
 
       <div id="frame-gallery-own" class="frame-gallery-block">
         <div class="toggle-row" style="margin-bottom:8px" data-setting="gallery.frame_override">
-          <label for="g-gal-frame-override">Use a different frame for gallery mats</label>
+          <label for="g-gal-frame-override">Different gallery mat frame</label>
           <label class="toggle">
             <input type="checkbox" id="g-gal-frame-override" aria-controls="g-gal-own-frame" />
             <span class="toggle-track"></span>
@@ -1682,7 +1682,7 @@
     document.getElementById('g-gal-frame-override').checked = g.frame_override;
     document.getElementById('g-gal-own-frame').hidden = !g.frame_override;
     document.getElementById('gallery-help').textContent = (g.frame_override
-      ? "The gallery frame's style and colour are set at the bottom of the Frame section (Use a different frame for gallery mats)."
+      ? "The gallery frame's style and colour are set at the bottom of the Frame section (Different gallery mat frame)."
       : "The frame's style and colour come from the Frame section.") +
       ' Sizes are px on a 1920×1080 screen. Time-of-day periods can change the mat and frame colours (Same as default keeps these); widths stay as set here.';
     document.getElementById('g-gal-mat-color').value = g.mat_color;
