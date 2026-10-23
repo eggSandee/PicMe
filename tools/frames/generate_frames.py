@@ -169,7 +169,7 @@ class Gold:
     side_shift = {"top": 0, "bottom": 0, "left": 0, "right": 0}
     seam = 0.7
     BEAD_PERIOD = T // 8        # 24 px
-    BEAD_V, BEAD_R = 53.0, 8.5
+    BEAD_V, BEAD_R = 60.0, 8.5      # BEAD_V is 12 (mod BEAD_PERIOD): see height()
 
     def __init__(self):
         s = self.seed
@@ -182,20 +182,22 @@ class Gold:
         if v < 30:                                 # big torus
             x = (v - 17) / 13
             return 0.35 + 0.65 * math.sqrt(max(0.0, 1 - x * x))
-        if v < 44:                                 # cove
-            x = (v - 37) / 7
+        if v < 48:                                 # cove
+            x = (v - 39) / 9
             return 0.35 - 0.18 * math.sqrt(max(0.0, 1 - x * x))
-        if v < 62:                                 # bead row on a low fillet
+        if v < 72:                                 # bead row on a low fillet
+            # Pixel centres, beads centred at 12 + 24k: with BEAD_V also 12 (mod 24), every corner's
+            # mitre (u == v, or u == size - v at the far end) passes through one whole bead
             p = self.BEAD_PERIOD
-            du = (u % p) - p / 2
-            d2 = du * du + (v - self.BEAD_V) ** 2
+            du = ((u + 0.5) % p) - p / 2
+            d2 = du * du + (v + 0.5 - self.BEAD_V) ** 2
             r2 = self.BEAD_R ** 2
             bead = 0.45 * math.sqrt(1 - d2 / r2) if d2 < r2 else 0.0
             return 0.3 + bead
-        if v < 80:                                 # flat panel sloping inwards
-            return 0.42 - 0.12 * (v - 62) / 18
-        if v < 90:                                 # sight-edge bead
-            x = (v - 85) / 5
+        if v < 82:                                 # flat panel sloping inwards
+            return 0.42 - 0.12 * (v - 72) / 10
+        if v < 92:                                 # sight-edge bead
+            x = (v - 87) / 5
             return 0.3 + 0.22 * math.sqrt(max(0.0, 1 - x * x))
         return 0.08
 
@@ -207,7 +209,7 @@ class Gold:
         # Rubbed-through high spots show a hint of bole; recesses keep their darker patina
         c = _mix(gold, bole, 0.35 * _smooth(0.66, 0.85, wear) * _smooth(0.6, 0.95, h))
         k = (0.55 + 0.5 * min(1.0, h / 0.6)) * (0.92 + 0.12 * wear) * (0.96 + 0.06 * self.speck(u, v))
-        if v >= 90:                                # dark rabbet lip
+        if v >= 92:                                # dark rabbet lip
             k *= 0.3
         return tuple(ch * k for ch in c)
 
