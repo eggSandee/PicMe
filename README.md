@@ -531,7 +531,7 @@ Each slot has a mat (`mat_color`, `mat_width`) around the photo or video and a f
 | `frame_style` | Editor name | Default width | Look |
 |---|---|---|---|
 | `"wood"` | Wood | 28 px | Walnut cushion moulding, satin finish |
-| `"gold"` | Gold | 36 px | Gilded torus, cove and bead row |
+| `"gold"` | Gold | 36 px | Gilded torus, cove and bead row, with a whole bead on each corner mitre |
 | `"black"` | Black gallery | 24 px | Matte soft-black flat face with a light hairline, so it still shows on a dark wall or at night |
 | `"silver"` | Brushed silver | 16 px | Thin aluminium profile with a visible step and a brushed sheen |
 | `"white"` | White modern | 24 px | Satin white with a tinted inner lip and a soft shadow, so it stands apart from an ivory mat |

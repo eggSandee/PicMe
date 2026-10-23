@@ -169,6 +169,33 @@ def test_corners_are_mitred_and_lit_from_the_top_left(renders, name):
     assert outer_slope("left") > 1.1 * outer_slope("right")
 
 
+def test_gold_has_one_whole_bead_on_each_corner_mitre(gen):
+    """The owner saw two half beads meeting at each mitre: the bead row must put one whole bead on
+    it, at all four corners (both ends of every edge)."""
+    gold = gen.Gold()
+    n, last = gold.tile, 2 * gen.S + gold.tile - 1
+
+    def height(x, y):  # as render() assigns each pixel to its nearest side
+        d = (y, last - y, x, last - x)
+        side = d.index(min(d))
+        u, v = [(x, y), (x, last - y), (y, x), (y, last - x)][side]
+        return gold.height(u % n, v)
+
+    size, c, r = last + 1, gold.BEAD_V, gold.BEAD_R
+    for cx, cy in [(c, c), (size - c, c), (c, size - c), (size - c, size - c)]:
+        inside = [(x, y) for x in range(int(cx - r), int(cx + r) + 1) for y in range(int(cy - r), int(cy + r) + 1)
+                  if (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 < (r - 1.5) ** 2]
+        assert inside
+        # Every pixel of the disc is raised above the fillet (no half bead cut off by the mitre),
+        # and the bead is the same on both sides of the diagonal
+        assert all(height(x, y) > 0.33 for x, y in inside), (cx, cy)
+        for x, y in inside:
+            mx, my = (round(cx - 0.5 + (y + 0.5 - cy)), round(cy - 0.5 + (x + 0.5 - cx)))
+            if (cx < size / 2) != (cy < size / 2):   # top-right and bottom-left: the other diagonal
+                mx, my = (round(cx - 0.5 - (y + 0.5 - cy)), round(cy - 0.5 - (x + 0.5 - cx)))
+            assert abs(height(x, y) - height(mx, my)) < 1e-9, (cx, cy, x, y)
+
+
 # --- The new styles' looks (design vote 2026-10-20, reviewer notes) ---
 
 def band(img, side, v0, v1, step=3) -> float:
