@@ -1,0 +1,11 @@
+{
+  "id": "single",
+  "name": "Single",
+  "description": "One photo or video, full screen",
+  "order": 0,
+  "slots": [
+    { "id": 1, "grid_area": "1 / 1 / 2 / 2" }
+  ],
+  "grid_template_columns": "1fr",
+  "grid_template_rows": "1fr"
+}

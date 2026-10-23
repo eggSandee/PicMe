@@ -162,4 +162,7 @@ def test_every_readme_template_has_a_file(name):
 def test_api_layouts_matches_files(client):
     r = client.get("/api/layouts")
     assert r.status_code == 200
-    assert [l["id"] for l in r.json()] == LAYOUT_IDS
+    # Picker order: `order` (default 100), then file name; Single (0) comes first
+    by_order = sorted(LAYOUT_FILES, key=lambda p: json.loads(p.read_text()).get("order", 100))
+    assert [l["id"] for l in r.json()] == [p.stem for p in by_order]
+    assert r.json()[0]["id"] == "single"

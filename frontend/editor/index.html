@@ -1493,7 +1493,7 @@
 
   // The mat the labels sit on now: the gallery mat on a gallery layout, else the Frame section's
   function currentMatColor() {
-    const layout = layouts?.find(l => l.id === config.layout) || layouts?.[0];
+    const layout = layouts?.find(l => l.id === config.layout) || (layouts && PicMeRotation.fallbackLayout(layouts));
     return layout && layoutMode(layout) === 'gallery' ? galleryCfg().mat_color : (getGlobalFrame().mat_color || '#000000');
   }
 
@@ -1647,7 +1647,7 @@
 
   function layoutMode(layout) { return PicMeGallery.effectiveMode(config, layout); }
 
-  function baseLayout() { return layouts.find(l => l.id === config.layout) || layouts[0]; }
+  function baseLayout() { return layouts.find(l => l.id === config.layout) || PicMeRotation.fallbackLayout(layouts); }
 
   // Store a layout's mode; its own default is stored as no entry, so the layout file decides
   function setLayoutMode(layout, mode) {
@@ -1984,7 +1984,7 @@
 
   // Layouts that can appear on the display: the base layout, plus the eligible ones when rotating
   function reachableLayouts() {
-    const base = layouts.find(l => l.id === config.layout) || layouts[0];
+    const base = layouts.find(l => l.id === config.layout) || PicMeRotation.fallbackLayout(layouts);
     const set = new Set(base ? [base] : []);
     if (rotationOn()) PicMeRotation.eligibleLayouts(config, layouts).forEach(l => set.add(l));
     return [...set];
@@ -2073,7 +2073,7 @@
   function buildRotationSlotHint() {
     const hint = document.getElementById('rotation-slot-hint');
     hint.innerHTML = '';
-    const base = layouts.find(l => l.id === config.layout) || layouts[0];
+    const base = layouts.find(l => l.id === config.layout) || PicMeRotation.fallbackLayout(layouts);
     const eligible = rotationOn() ? PicMeRotation.eligibleLayouts(config, layouts) : [];
     if (!base || eligible.length < 2) { hint.hidden = true; return; }
 
@@ -2257,7 +2257,7 @@
   // ── Collage preview ──
 
   function buildPreview() {
-    const layout = layouts.find(l => l.id === config.layout) || layouts[0];
+    const layout = layouts.find(l => l.id === config.layout) || PicMeRotation.fallbackLayout(layouts);
     const preview = document.getElementById('collage-preview');
     renderLabelStylePicker();  // its swatches show the current mat and date format
     if (layoutMode(layout) === 'gallery') { buildGalleryPreview(layout, preview); return; }
