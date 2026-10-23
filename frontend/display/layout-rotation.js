@@ -52,9 +52,16 @@
     return now.getHours() * 60 + now.getMinutes() < changeAtMins ? day - 1 : day;
   }
 
+  // A config without a known layout gets the first-run default, not whichever layout sorts
+  // first in the picker (Single)
+  const DEFAULT_LAYOUT = 'classic-4';
+  function fallbackLayout(layouts) {
+    return layouts.find(l => l.id === DEFAULT_LAYOUT) || layouts[0];
+  }
+
   function baseLayout(config, layouts) {
     const id = isObject(config) ? config.layout : undefined;
-    return layouts.find(l => l.id === id) || layouts[0];
+    return layouts.find(l => l.id === id) || fallbackLayout(layouts);
   }
 
   // The layout object to show at `now`, or null if there are no layouts at all
@@ -82,7 +89,7 @@
   }
 
   window.PicMeRotation = {
-    DEFAULT_CHANGE_AT, parseChangeAt, rotationSettings, eligibleLayouts, rotationDay,
-    resolveLayout, nextChange,
+    DEFAULT_CHANGE_AT, DEFAULT_LAYOUT, parseChangeAt, rotationSettings, eligibleLayouts, rotationDay,
+    fallbackLayout, resolveLayout, nextChange,
   };
 })();

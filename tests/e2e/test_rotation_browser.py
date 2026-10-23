@@ -33,8 +33,9 @@ from test_browser import VIEWPORT, PageWatcher, browser, fresh_install, server  
 
 TZ = "America/New_York"
 TWO = ["classic-4", "classic-6"]
-# Every layout in /api/layouts order (file name order), with its slot count
-SLOT_COUNTS = {p.stem: len(json.loads(p.read_text())["slots"]) for p in sorted(LAYOUTS_DIR.glob("*.json"))}
+# Every layout in /api/layouts order (`order`, default 100, then file name: Single first), with its slot count
+_LAYOUTS = [json.loads(p.read_text()) for p in sorted(LAYOUTS_DIR.glob("*.json"))]
+SLOT_COUNTS = {l["id"]: len(l["slots"]) for l in sorted(_LAYOUTS, key=lambda l: l.get("order", 100))}
 ALL = list(SLOT_COUNTS)
 
 
