@@ -29,7 +29,7 @@ SHOW_KEYS = list(FIELDS_OFF)
 ADVANCED_SIDEBAR = ["#g-frame-width", "#g-mat-width", ".toggle-row:has(#g-show-frame)", "#g-frame-color", "#tod-configure-btn",
                     "#g-video-max-edge", ".toggle-row:has(#g-include-live-photos)", ".toggle-row:has(#g-include-subfolders)", "#g-date-format", "#g-max-pills",
                     "#g-rotation-change-at"]
-BASIC_SIDEBAR = ["#g-wall-color", "#g-frame-style", "#g-mat-color", "#g-text-size", "#g-pill-size",
+BASIC_SIDEBAR = ["#g-wall-color", ".toggle-row:has(#g-fill-mode)", "#g-frame-style", "#g-mat-color", "#g-text-size", "#g-pill-size", "#g-label-position",
                  "#g-source-path", "#layout-picker", "#g-meta-toggles"]
 
 
@@ -137,12 +137,13 @@ def test_fresh_browser_starts_in_basic(write_cfg, open_editor):
     for sel in BASIC_SIDEBAR:
         assert _visible(page, sel), sel
     assert not _visible(page, "#advanced-hint")  # first-run config: nothing advanced is set
-    assert not page.get_by_role("button", name="Reset all slots to global").is_visible()
+    assert not page.get_by_role("button", name="Reset slots to global settings").is_visible()
 
     page.locator(".preview-slot").nth(0).click()
-    for title in ("Media Source", "Mode", "Schedule", "Fit", "Metadata Overlays"):
+    for title in ("Media Source", "Mode", "Schedule", "Metadata Overlays"):
         assert _slot_section(page, title).is_visible(), title
-    assert not _slot_section(page, "Frame").is_visible()
+    for title in ("Frame", "Fit"):  # Basic has the global Fill frames instead of a slot's own Fit
+        assert not _slot_section(page, title).is_visible(), title
     assert page.locator("#slot-panel-body .adopt-row:visible").count() == 0
     schedule = _slot_section(page, "Schedule")
     assert schedule.locator(".field").filter(has_text="Change every (seconds)").is_visible()
@@ -150,7 +151,7 @@ def test_fresh_browser_starts_in_basic(write_cfg, open_editor):
     # The folder is editable without the "Use global" toggle
     folder = _slot_section(page, "Media Source").locator("input[type=text]")
     assert folder.is_editable()
-    assert page.evaluate("el => !el.closest('.section-disabled')", folder.element_handle())
+    assert page.evaluate("el => !el.closest('.field-inactive')", folder.element_handle())
     assert w.errors == []
 
 
@@ -269,12 +270,29 @@ def test_include_subfolders_is_advanced_and_counted_when_off(write_cfg, open_edi
 
     # A slot on the default folder shows the global value, disabled; the global toggle updates it
     page.locator(".preview-slot").nth(0).click()
-    assert _slot_section(page, "Media Source").locator(".section-disabled").count() == 1
+    assert _slot_section(page, "Media Source").locator(".field-inactive").count() == 1
     assert not _slot_subfolders(page).locator("input").is_checked()
     page.locator(".toggle-row:has(#g-include-subfolders) .toggle").click()
     _saved(write_cfg, lambda c: c["include_subfolders"] is True)
     assert _slot_subfolders(page).locator("input").is_checked()
     assert w.errors == []
+
+
+def test_live_photo_clips_are_on_by_default_and_counted_when_off(write_cfg, open_editor):
+    cfg = write_cfg()
+    assert "include_live_photos" not in cfg  # a config without the key: on
+    w = open_editor(editor_mode="advanced")
+    page = w.page
+    assert page.locator("#g-include-live-photos").is_checked()
+    page.locator(".toggle-row:has(#g-include-live-photos) .toggle").click()
+    _saved(write_cfg, lambda c: c.get("include_live_photos") is False)
+    page.locator('#editor-mode button[data-mode="basic"]').click()
+    assert page.locator("#advanced-hint").get_attribute("title").split("\n") == ["Video settings"]
+    assert w.errors == []
+
+    write_cfg(include_live_photos=True)
+    page = open_editor(editor_mode="basic").page
+    assert page.locator("#advanced-hint").is_hidden()  # on is the default, so not counted
 
 
 def test_reset_all_clears_per_slot_subfolders(write_cfg, open_editor):
@@ -283,7 +301,7 @@ def test_reset_all_clears_per_slot_subfolders(write_cfg, open_editor):
     w = open_editor(editor_mode="advanced")
     page = w.page
     page.locator('[data-setting="slots.reset_all"]').click()
-    page.get_by_role("button", name="Reset All Slots", exact=True).click()
+    page.get_by_role("button", name="Reset all slots", exact=True).click()
     # Reset all edits the editor's config (saved with the next change)
     assert page.evaluate("() => [config.slots[1].use_global.source, 'include_subfolders' in config.slots[1]]") == [True, False]
     assert w.errors == []
@@ -513,8 +531,10 @@ def test_basic_edits_keep_advanced_values(write_cfg, open_editor):
     page.locator("#g-wall-color").evaluate("el => { el.value = '#123456'; el.dispatchEvent(new Event('input')); }")
     page.locator(".preview-slot").nth(1).click()
     assert not _slot_section(page, "Frame").is_visible()  # Basic hides them, and must keep them
-    _slot_section(page, "Fit").locator("select").select_option("cover")
-    cfg = _saved(write_cfg, lambda c: c["wall_color"] == "#123456" and c["slots"][1].get("fill_mode") == "cover")
+    assert not _slot_section(page, "Fit").is_visible()  # a slot's own Fit / Fill is Advanced
+    page.locator(".toggle-row:has(#g-fill-mode) .toggle-track").click()  # Basic's global Fill frames
+    cfg = _saved(write_cfg, lambda c: c["wall_color"] == "#123456" and c.get("fill_mode") == "cover")
+    assert "fill_mode" not in cfg["slots"][1]
     assert cfg["frame_defaults"]["frame_width"] == 20
     assert cfg["date_format"] == "iso"
     slot = cfg["slots"][1]
@@ -538,4 +558,62 @@ def test_editor_works_without_local_storage(write_cfg, open_editor):
     assert _visible(page, "#g-frame-width")
     page.locator(".preview-slot").nth(0).click()
     assert _slot_section(page, "Frame").is_visible()  # re-renders keep the in-page choice
+    assert w.errors == []
+
+
+# --- Fill frames: a Basic global toggle; a slot's own Fit / Fill is an Advanced override ---
+
+def test_fill_frames_is_basic_and_a_slot_override_is_advanced(write_cfg, open_editor):
+    write_cfg(fill_mode="cover", slot_overrides={2: {"fill_mode": "contain"}, 3: {"fill_mode": "cover"}})
+    w = open_editor()
+    page = w.page
+    assert page.locator("#g-fill-mode").is_checked()
+    assert _visible(page, ".toggle-row:has(#g-fill-mode)")
+    # Slot 2's Fit differs from the global Fill: counted; slot 3's matches it: not counted
+    assert page.locator("#advanced-hint-text").text_content() == "1 advanced setting active"
+    assert page.locator("#advanced-hint").get_attribute("title") == "Slot 2: Fit / fill"
+    page.locator(".preview-slot").nth(1).click()
+    assert not _slot_section(page, "Fit").is_visible()
+
+    page.locator('#editor-mode button[data-mode="advanced"]').click()
+    sel = page.locator("#slot-fill-mode")
+    assert sel.input_value() == "contain"
+    assert sel.locator("option").first.text_content() == "Default (global: Fill)"
+    sel.select_option("")  # back to the global setting: the key goes, so it follows Fill frames
+    cfg = _saved(write_cfg, lambda c: "fill_mode" not in c["slots"][1])
+    assert cfg["fill_mode"] == "cover" and cfg["slots"][2]["fill_mode"] == "cover"
+
+    page.locator(".toggle-row:has(#g-fill-mode) .toggle-track").click()
+    _saved(write_cfg, lambda c: c["fill_mode"] == "contain")
+    assert page.locator("#slot-fill-mode option").first.text_content() == "Default (global: Fit)"
+    assert w.errors == []
+
+
+def test_a_config_without_fill_mode_shows_fit(write_cfg, open_editor):
+    write_cfg()  # from before the global setting: no fill_mode anywhere
+    page = open_editor().page
+    assert not page.locator("#g-fill-mode").is_checked()
+    assert not page.locator("#advanced-hint").is_visible()
+
+
+def test_reset_slots_to_global_clears_slot_fill(write_cfg, open_editor):
+    write_cfg(fill_mode="cover", slot_overrides={2: {"fill_mode": "contain"}})
+    page = open_editor(editor_mode="advanced").page
+    page.get_by_role("button", name="Reset slots to global settings").click()
+    page.locator(".modal").get_by_role("button", name="Reset all slots").click()
+    cfg = _saved(write_cfg, lambda c: "fill_mode" not in c["slots"][1])
+    assert cfg["fill_mode"] == "cover"
+
+
+def test_tap_for_details_is_basic_and_saves(write_cfg, open_editor):
+    write_cfg()  # from before the setting: no tap_for_details, which means on
+    w = open_editor(editor_mode="basic")
+    page = w.page
+    assert _visible(page, ".toggle-row:has(#g-tap-details)")
+    assert page.locator("#g-tap-details").is_checked()
+    assert not page.locator("#advanced-hint").is_visible()
+    page.locator(".toggle-row:has(#g-tap-details) .toggle-track").click()
+    _saved(write_cfg, lambda c: c.get("tap_for_details") is False)
+    page.locator(".toggle-row:has(#g-tap-details) .toggle-track").click()
+    _saved(write_cfg, lambda c: c.get("tap_for_details") is True)
     assert w.errors == []

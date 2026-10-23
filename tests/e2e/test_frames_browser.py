@@ -29,10 +29,15 @@ from test_browser import VIEWPORT, PageWatcher, browser, server  # noqa: E402,F4
 
 FRAMES_DIR = REPO_ROOT / "frontend" / "assets" / "frames"
 MANIFEST = {
-    name: {k: int(v) for k, v in re.findall(r"(slice|tile|default_width): (\d+)", body)}
+    name: {"repeat": "round"} | {k: int(v) if v.isdigit() else v.strip("'")
+                                 for k, v in re.findall(r"(slice|tile|default_width|repeat): ('\w+'|\d+)", body)}
     for name, body in re.findall(r"^\s*(\w+): \{(.*?)\},?$", (FRAMES_DIR / "frames.js").read_text(), re.M)
 }
 S, T = MANIFEST["wood"]["slice"], MANIFEST["wood"]["tile"]
+# The design-vote styles (2026-10-20), after wood and gold
+NEW_STYLES = ["black", "silver", "white", "barnwood"]
+ALL_STYLES = ["wood", "gold", *NEW_STYLES]
+ROUND_STYLES = [s for s in ALL_STYLES if MANIFEST[s]["repeat"] == "round"]  # barnwood: stretch
 MAGENTA, GREEN, CYAN = (255, 0, 255), (0, 255, 0), (0, 255, 255)
 PHOTO_COLORS = [(200, 80, 40), (40, 120, 200), (40, 200, 80), (180, 180, 40)]
 NOON_UTC = dt.datetime(2026, 10, 13, 12, 0, tzinfo=dt.timezone.utc)
@@ -189,6 +194,33 @@ def corner_mads(shot: Image.Image, src: Image.Image, w: int) -> list[float]:
     return out
 
 
+def expected_edge(src: Image.Image, side: str, length: int, w: int, repeat: str = "round") -> Image.Image:
+    """An edge of a `w` px border-image frame, `length` px long between the corners, built the
+    way `round` lays it out: the asset's edge tile scaled to `w` deep and repeated a whole
+    number of times, each copy squeezed to fit (`stretch`: one copy, stretched)."""
+    tile = src.width - 2 * S
+    n = 1 if repeat == "stretch" else max(1, int(length / (tile * w / S) + 0.5))  # half up, like the browser
+    crops = {"top": (S, 0, S + tile, S), "bottom": (S, S + tile, S + tile, src.width),
+             "left": (0, S, S, S + tile), "right": (S + tile, S, src.width, S + tile)}
+    piece = src.crop(crops[side])
+    horizontal = side in ("top", "bottom")
+    out = Image.new("RGB", (length, w) if horizontal else (w, length))
+    for i in range(n):
+        a, b = round(i * length / n), round((i + 1) * length / n)
+        out.paste(piece.resize((b - a, w) if horizontal else (w, b - a), Image.LANCZOS),
+                  (a, 0) if horizontal else (0, a))
+    return out
+
+
+def edge_mads(shot: Image.Image, src: Image.Image, w: int, repeat: str = "round") -> dict[str, float]:
+    """MAD of each edge of a framed slot against the asset's edge tile laid out with `repeat`."""
+    W, H = shot.size
+    boxes = {"top": (w, 0, W - w, w), "bottom": (w, H - w, W - w, H),
+             "left": (0, w, w, H - w), "right": (W - w, w, W, H - w)}
+    return {side: mad(shot.crop(box), expected_edge(src, side, (W if side in ("top", "bottom") else H) - 2 * w, w, repeat))
+            for side, box in boxes.items()}
+
+
 def _best_period(line: list, lo: int, hi: int) -> tuple[int, float]:
     """The shift p in [lo, hi] at which `line` best repeats, and the MAD at that shift."""
     best = None
@@ -219,52 +251,100 @@ def test_corners_match_the_asset_at_1_to_1(write_cfg, open_display):
     assert w.errors == []
 
 
-@pytest.mark.parametrize("style", ["wood", "gold"])
+@pytest.mark.parametrize("style", ALL_STYLES)
 def test_corners_scale_uniformly_at_the_default_width(write_cfg, open_display, style):
     width = MANIFEST[style]["default_width"]
     write_cfg({"frame_style": style, "frame_width": width})
     w = open_display()
     for slot_id in slot_ids(w.page):
         assert frame(w.page, slot_id)["widths"] == [width] * 4
-    mads = corner_mads(slot_shot(w.page, 1), asset(style), width)
+    shot = slot_shot(w.page, 1)
+    mads = corner_mads(shot, asset(style), width)
     assert max(mads) <= 12, mads
+    # The edges between them are the asset's edge tile, repeated with `round` (no seams), or for
+    # barnwood one long board stretched to fit
+    assert frame(w.page, 1)["repeat"] == MANIFEST[style]["repeat"]
+    edges = edge_mads(shot, asset(style), width, MANIFEST[style]["repeat"])
+    assert max(edges.values()) <= 12, edges
     assert w.errors == []
 
 
-def test_edges_repeat_the_tile_rather_than_stretch(write_cfg, open_display):
-    write_cfg({"frame_style": "wood", "frame_width": S}, layout="hero-left", slots=5)
+@pytest.mark.parametrize("style", ROUND_STYLES)
+def test_edges_repeat_the_tile_rather_than_stretch(write_cfg, open_display, style):
+    tile = MANIFEST[style]["tile"]
+    fw = S * T // tile  # the width at which this style's edge tile is T px long on screen
+    write_cfg({"frame_style": style, "frame_width": fw}, layout="hero-left", slots=5)
     w = open_display()
     shot = slot_shot(w.page, 1)
     W, H = shot.size
-    v = S // 2
+    v = fw // 2
     edges = {
-        "top": [shot.getpixel((x, v)) for x in range(S, W - S)],
-        "bottom": [shot.getpixel((x, H - 1 - v)) for x in range(S, W - S)],
-        "left": [shot.getpixel((v, y)) for y in range(S, H - S)],
-        "right": [shot.getpixel((W - 1 - v, y)) for y in range(S, H - S)],
+        "top": [shot.getpixel((x, v)) for x in range(fw, W - fw)],
+        "bottom": [shot.getpixel((x, H - 1 - v)) for x in range(fw, W - fw)],
+        "left": [shot.getpixel((v, y)) for y in range(fw, H - fw)],
+        "right": [shot.getpixel((W - 1 - v, y)) for y in range(fw, H - fw)],
     }
-    for side, line in edges.items():
-        period, diff = _best_period(line, T // 2 + 10, T * 3 // 2)
-        # The texture repeats about every tile length, a whole number of times along the edge
-        assert diff <= 8, (side, period, diff)
-        assert abs(len(line) / period - round(len(line) / period)) < 0.05, (side, len(line), period)
-        assert abs(period - T) <= T / 2, (side, period)
+    # Only the grained woods have one clear period to find: gold's beads repeat every 24 px, and
+    # the flat styles have almost no texture along the board
+    if style == "wood":
+        for side, line in edges.items():
+            period, diff = _best_period(line, T // 2 + 10, T * 3 // 2)
+            # The texture repeats about every tile length, a whole number of times along the edge
+            assert diff <= 8, (side, period, diff)
+            assert abs(len(line) / period - round(len(line) / period)) < 0.05, (side, len(line), period)
+            assert abs(period - T) <= T / 2, (side, period)
     # And the first tile on the top edge is the asset's edge tile, squeezed only to fit
-    n = round((W - 2 * S) / T)
-    tile_len = round((W - 2 * S) / n)
-    expected = asset("wood").crop((S, 0, S + T, S)).resize((tile_len, S), Image.LANCZOS)
-    assert mad(shot.crop((S, 0, S + tile_len, S)), expected) <= 10
+    n = round((W - 2 * fw) / T)
+    tile_len = round((W - 2 * fw) / n)
+    expected = asset(style).crop((S, 0, S + tile, S)).resize((tile_len, fw), Image.LANCZOS)
+    assert mad(shot.crop((fw, 0, fw + tile_len, fw)), expected) <= 10
+    # Every edge, tile after tile
+    edges = edge_mads(shot, asset(style), fw)
+    assert max(edges.values()) <= 10, edges
     assert w.errors == []
 
 
-def test_small_slots_cap_the_moulding_and_keep_corners_square(write_cfg, open_display):
-    write_cfg({"frame_style": "gold", "frame_width": 36, "mat_color": "#ff00ff", "mat_width": 6},
+def _peak_autocorrelation(line: list[float], min_lag: int = 100) -> tuple[float, int]:
+    """The strongest normalised autocorrelation of `line` at a lag of `min_lag` px or more (a
+    repeated tile gives ~1.0 at its period), and that lag."""
+    n = len(line)
+    mean = sum(line) / n
+    d = [x - mean for x in line]
+    var = sum(x * x for x in d)
+    return max((sum(d[i] * d[i + k] for i in range(n - k)) / var * n / (n - k), k) for k in range(min_lag, n // 2))
+
+
+@pytest.mark.parametrize("width", [36, 48])
+def test_barnwood_does_not_repeat_along_a_gallery_edge(write_cfg, open_display, width):
+    """QA on PR #27: with a repeated 576 px tile the knot and cracks recurred about every 300 px
+    along a 1920 px gallery edge (autocorrelation 1.0). Now each edge is one board, stretched."""
+    write_cfg({"frame_style": "barnwood", "frame_width": 36}, layout="gallery-salon", slots=8,
+              gallery={"frame_width": width})
+    w = open_display()
+    g = w.page.evaluate(GALLERY_FRAME_JS)
+    assert g["style"] == "barnwood" and g["widths"] == [width] * 4 and g["repeat"] == "stretch"
+    shot = Image.open(io.BytesIO(w.page.screenshot(clip=rect(w.page, ".gallery-frame"), animations="disabled"))).convert("RGB")
+    # The edges are the asset's one board each, and the corners the asset's corners
+    edges = edge_mads(shot, asset("barnwood"), width, "stretch")
+    assert max(edges.values()) <= 12, edges
+    assert max(corner_mads(shot, asset("barnwood"), width)) <= 12
+    # No repeat along the long top edge: luminance down the middle of the moulding
+    band = shot.convert("L").crop((width, width // 4, shot.width - width, 3 * width // 4))
+    line = [sum(band.getpixel((x, y)) for y in range(band.height)) / band.height for x in range(band.width)]
+    peak, lag = _peak_autocorrelation(line)
+    assert peak < 0.6, (peak, lag)
+    assert w.errors == []
+
+
+@pytest.mark.parametrize("style", ["gold", *NEW_STYLES])
+def test_small_slots_cap_the_moulding_and_keep_corners_square(write_cfg, open_display, style):
+    write_cfg({"frame_style": style, "frame_width": 36, "mat_color": "#ff00ff", "mat_width": 6},
               layout="hero-left", slots=5, wall_color="#00ffff")
     w = open_display(viewport={"width": 800, "height": 450})
     widths = {}
     for slot_id in slot_ids(w.page):
         f = frame(w.page, slot_id)
-        assert "/assets/frames/gold.png" in f["image"]
+        assert f"/assets/frames/{style}.png" in f["image"]
         assert len(set(f["widths"])) == 1
         widths[slot_id] = f["widths"][0]
         # Capped at a sixth of the slot's short side, never above the configured width
@@ -272,7 +352,7 @@ def test_small_slots_cap_the_moulding_and_keep_corners_square(write_cfg, open_di
     assert widths[1] == 36          # the big slot keeps the configured width...
     assert widths[2] < 36           # ...the small ones (185 x 207) are capped
     shot = slot_shot(w.page, 2)
-    assert max(corner_mads(shot, asset("gold"), int(widths[2]))) <= 14
+    assert max(corner_mads(shot, asset(style), int(widths[2]))) <= 14
     # The moulding is opaque: no wall color shows through anywhere inside the slot
     assert not any(near(px, CYAN, 20) for px in shot.getdata())
     assert w.errors == []
@@ -436,14 +516,15 @@ def test_heic_photo_is_framed(write_cfg, open_display):
     assert w.errors == []
 
 
-def test_missing_frames_js_falls_back_to_solid(write_cfg, open_display):
+@pytest.mark.parametrize("style", ["wood", *NEW_STYLES])
+def test_missing_frames_js_falls_back_to_solid(write_cfg, open_display, style):
     requested = []
 
     def not_found(route):
         requested.append(route.request.url)
         route.fulfill(status=404, body="")
 
-    write_cfg({"frame_style": "wood", "frame_width": 20, "frame_color": "#00ff00"})
+    write_cfg({"frame_style": style, "frame_width": 20, "frame_color": "#00ff00"})
     w = open_display(routes=[("**/assets/frames/frames.js", not_found)])
     assert requested, "the display never asked for frames.js"
     for slot_id in slot_ids(w.page):
@@ -451,6 +532,46 @@ def test_missing_frames_js_falls_back_to_solid(write_cfg, open_display):
         assert f["image"] == "none"
         assert f["widths"] == [20] * 4 and f["color"] == "rgb(0, 255, 0)"
     assert _no_errors(w) == []
+
+
+# --- The new styles on a gallery mat and with time of day ---
+
+GALLERY_FRAME_JS = """() => { const el = document.querySelector('.gallery-frame'); const cs = getComputedStyle(el);
+  return { style: el.dataset.frameStyle, image: cs.borderImageSource, slice: cs.borderImageSlice,
+           repeat: cs.borderImageRepeat, widths: [cs.borderTopWidth, cs.borderRightWidth,
+           cs.borderBottomWidth, cs.borderLeftWidth].map(parseFloat) }; }"""
+
+
+@pytest.mark.parametrize("style", NEW_STYLES)
+def test_new_style_frames_the_gallery_mat(write_cfg, open_display, style):
+    # The Frame section's style on the gallery's outer frame, at the gallery's own width (48)
+    write_cfg({"frame_style": style, "frame_width": MANIFEST[style]["default_width"]},
+              layout="gallery-salon", slots=8)
+    w = open_display()
+    g = w.page.evaluate(GALLERY_FRAME_JS)
+    assert g["style"] == style and f"/assets/frames/{style}.png" in g["image"]
+    assert g["widths"] == [48] * 4 and g["repeat"] == MANIFEST[style]["repeat"]
+    shot = Image.open(io.BytesIO(w.page.screenshot(clip=rect(w.page, ".gallery-frame"), animations="disabled"))).convert("RGB")
+    assert max(corner_mads(shot, asset(style), 48)) <= 12
+    edges = edge_mads(shot, asset(style), 48, MANIFEST[style]["repeat"])
+    assert max(edges.values()) <= 12, edges
+    assert w.errors == []
+
+
+@pytest.mark.parametrize("style", NEW_STYLES)
+def test_time_of_day_switches_to_a_new_style_in_both_modes(write_cfg, open_display, style):
+    night = dt.datetime(2026, 10, 13, 22, 0, tzinfo=dt.timezone.utc)
+    tod = _tod()
+    tod["night"]["frame_style"] = style
+    write_cfg({"frame_style": "wood", "frame_width": 28}, layout="gallery-salon", slots=8, time_of_day=tod)
+    w = open_display(at=night)
+    assert w.page.evaluate(GALLERY_FRAME_JS)["style"] == style
+    write_cfg({"frame_style": "wood", "frame_width": 28}, time_of_day=tod)
+    w = open_display(at=night)
+    f = frame(w.page, 1)
+    assert f"/assets/frames/{style}.png" in f["image"] and f["widths"] == [28] * 4  # the period's width
+    assert max(corner_mads(slot_shot(w.page, 1), asset(style), 28)) <= 12
+    assert w.errors == []
 
 
 # --- Editor ---
@@ -473,7 +594,8 @@ def test_editor_default_frame_style(write_cfg, open_display):
     w = open_display("/editor/")
     page = w.page
     options = page.eval_on_selector_all("#g-frame-style option", "els => els.map(o => [o.value, o.textContent])")
-    assert options == [["solid", "Solid color"], ["wood", "Wood"], ["gold", "Gold"]]
+    assert options == [["solid", "Solid color"], ["wood", "Wood"], ["gold", "Gold"], ["black", "Black gallery"],
+                       ["silver", "Brushed silver"], ["white", "White modern"], ["barnwood", "Rustic barnwood"]]
     assert page.is_enabled("#g-frame-color")
 
     page.select_option("#g-frame-style", "wood")
@@ -481,7 +603,7 @@ def test_editor_default_frame_style(write_cfg, open_display):
     assert cfg["frame_defaults"]["frame_width"] == 28  # a thin solid width jumps to the style's default
     assert page.input_value("#g-frame-width") == "28"
     assert page.is_disabled("#g-frame-color")
-    assert page.is_visible("#g-frame-color-hint")
+    assert page.locator(".field:has(#g-frame-color) + .inactive-reason").text_content() == "Color applies to solid frames only."
     previews = page.evaluate(PREVIEW_IMAGES_JS)
     assert len(previews) == 4 and all("/assets/frames/wood.png" in p for p in previews)
 
@@ -492,6 +614,56 @@ def test_editor_default_frame_style(write_cfg, open_display):
     assert page.is_enabled("#g-frame-color")
     assert all(p == "none" for p in page.evaluate(PREVIEW_IMAGES_JS))
     assert w.errors == []
+
+
+DECORATIVE_OPTIONS = [["wood", "Wood"], ["gold", "Gold"], ["black", "Black gallery"], ["silver", "Brushed silver"],
+                      ["white", "White modern"], ["barnwood", "Rustic barnwood"]]
+OPTIONS_JS = "els => els.map(o => [o.value, o.textContent])"
+
+
+def test_editor_pickers_list_the_new_styles(write_cfg, open_display):
+    write_cfg({"frame_style": "solid", "frame_width": 8}, layout="gallery-salon", slots=8,
+              gallery={"frame_override": True})
+    w = open_display("/editor/")
+    page = w.page
+    solid = [["solid", "Solid color"]]
+    # Frame section, the gallery's own frame, and each time-of-day period
+    assert page.eval_on_selector_all("#g-frame-style option", OPTIONS_JS) == solid + DECORATIVE_OPTIONS
+    assert page.eval_on_selector_all("#g-gal-frame-style option", OPTIONS_JS) == solid + DECORATIVE_OPTIONS
+    page.click("#tod-configure-btn")
+    tod = page.locator(".tod-modal-overlay .field").filter(has_text="Frame style").locator("select")
+    assert tod.count() == 2
+    for i in range(2):
+        assert tod.nth(i).locator("option").evaluate_all(OPTIONS_JS) == [["", "Same as default"], *solid, *DECORATIVE_OPTIONS]
+    assert w.errors == []
+
+
+PREVIEW_FRAME_JS = """sel => { const cs = getComputedStyle(document.querySelector(sel));
+  return { image: cs.borderImageSource, slice: cs.borderImageSlice, repeat: cs.borderImageRepeat,
+           width: parseFloat(cs.borderTopWidth) }; }"""
+
+
+@pytest.mark.parametrize("style", NEW_STYLES)
+def test_editor_preview_matches_the_display(write_cfg, open_display, style):
+    write_cfg({"frame_style": "solid", "frame_width": 8})
+    w = open_display("/editor/")
+    page = w.page
+    page.select_option("#g-frame-style", style)
+    width = MANIFEST[style]["default_width"]
+    cfg = _saved(write_cfg, lambda c: c["frame_defaults"].get("frame_style") == style)
+    assert cfg["frame_defaults"]["frame_width"] == width  # a thin solid width jumps to the style's default
+    assert page.input_value("#g-frame-width") == str(width)
+    assert page.is_disabled("#g-frame-color")
+    preview = page.evaluate(PREVIEW_FRAME_JS, ".preview-slot")
+    display = open_display()
+    shown = display.page.evaluate(PREVIEW_FRAME_JS, "#slot-1 .mat-frame")
+    # Same asset, slice and tiling; the preview draws the display's width at its own scale
+    assert f"/assets/frames/{style}.png" in shown["image"] and shown["width"] == width
+    assert (preview["image"], preview["slice"], preview["repeat"]) == (shown["image"], shown["slice"], shown["repeat"])
+    scale = page.evaluate("() => document.querySelector('.preview-slot').offsetWidth") / display.page.evaluate(
+        "() => document.getElementById('slot-1').offsetWidth")
+    assert preview["width"] == pytest.approx(width * scale, abs=1)
+    assert w.errors == [] and display.errors == []
 
 
 def test_editor_slot_frame_style(write_cfg, open_display):
@@ -524,12 +696,13 @@ def test_editor_time_of_day_frame_style(write_cfg, open_display):
     w = open_display("/editor/")
     page = w.page
     page.click("#tod-configure-btn")
+    page.click("#tod-modal-enabled + .toggle-track")  # templates are greyed while time of day is off
     day = page.locator(".tod-modal-overlay .field").filter(has_text="Frame style").first.locator("select")
     assert day.input_value() == ""  # "Same as default"
     day.select_option("gold")
     cfg = _saved(write_cfg, lambda c: (c.get("time_of_day") or {}).get("day", {}).get("frame_style") == "gold")
     assert cfg["time_of_day"]["day"]["frame_width"] == 36  # the template's 8 px default is bumped
-    assert page.locator(".tod-modal-overlay .field").filter(has_text="Frame color").first.locator("input").is_disabled()
+    assert page.locator(".tod-modal-overlay .field").filter(has_text="Frame color").first.locator("input[type=color]").is_disabled()
     day.select_option("")
     cfg = _saved(write_cfg, lambda c: "frame_style" not in c["time_of_day"]["day"])
     assert "frame_style" not in cfg["time_of_day"]["night"]
@@ -543,6 +716,7 @@ def test_editor_time_of_day_keeps_a_typed_width_when_leaving_gold(write_cfg, ope
     w = open_display("/editor/")
     page = w.page
     page.click("#tod-configure-btn")
+    page.click("#tod-modal-enabled + .toggle-track")  # templates are greyed while time of day is off
     fields = page.locator(".tod-modal-overlay .field")
     day = fields.filter(has_text="Frame style").first.locator("select")
     width = fields.filter(has_text="Frame width").first.locator("input")
@@ -564,6 +738,7 @@ def test_editor_frame_width_is_capped(write_cfg, open_display):
     assert cfg["frame_defaults"]["frame_width"] == 80
     assert page.input_value("#g-frame-width") == "80"
     page.click("#tod-configure-btn")
+    page.click("#tod-modal-enabled + .toggle-track")  # templates are greyed while time of day is off
     tod_width = page.locator(".tod-modal-overlay .field").filter(has_text="Frame width").first.locator("input")
     tod_width.fill("500")
     cfg = _saved(write_cfg, lambda c: (c.get("time_of_day") or {}).get("day", {}).get("frame_width") not in (None, 8))

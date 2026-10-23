@@ -12,7 +12,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import media_index
+import profiles
 import transcode
+from layouts import KNOWN_SHAPES, load_layouts
 from heic import HEIC_EXTENSIONS, HeicConversionError, get_converted, is_heic
 from metadata.exif import get_metadata
 from metadata.video import get_video_metadata
@@ -62,13 +64,26 @@ DEFAULT_CONFIG = {
     "show_metadata": True,
     "date_format": "long",
     "max_metadata_pills": 3,
+    # Pills on the photo, or in a caption on the mat under it; auto = on the mat for gallery mats
+    "label_position": "auto",  # auto | photo | mat (README → Metadata pills)
+    # How the metadata looks: pill | caption | placard | whisper (README → Metadata label styles).
+    # Caption and placard always sit on the mat and whisper on the photo; label_position is for pills.
+    "label_style": "pill",
+    # cover = Fill (crop, no black bars) for new installs; a config without it means contain
+    # (Fit). A slot's own fill_mode overrides it (README → Fit and Fill).
+    "fill_mode": "cover",
+    # Click, tap or press Enter on a photo on the display to see it larger with all its
+    # metadata; off for kiosk screens (README → Photo details)
+    "tap_for_details": True,
+    # Also the outer frame of gallery mats, unless gallery.frame_override (README → Gallery mat).
+    # New installs start with wood; existing config.json files keep their own frame_defaults.
     "frame_defaults": {
         "mat_color": "#000000",
         "mat_width": 16,
         "show_frame": True,
         "frame_color": "#2c2318",
-        "frame_width": 8,
-        "frame_style": "solid",  # or a decorative style from frontend/assets/frames/frames.js
+        "frame_width": 28,  # wood's default_width in frontend/assets/frames/frames.js
+        "frame_style": "wood",  # solid, or a decorative style from frames.js
     },
     "metadata_defaults": {
         "show_date": True,
@@ -85,6 +100,23 @@ DEFAULT_CONFIG = {
     },
     # Daily layout rotation (README → Daily layout rotation); an empty list means every layout
     "layout_rotation": {"enabled": False, "layouts": [], "change_at": "04:00"},
+    # Gallery mat (README → Gallery mat): one frame and mat, slots are openings. Used by gallery
+    # layouts and any layout layout_modes switches to "gallery"; px at 1920x1080
+    "gallery": {
+        "mat_color": "#f4f1ea",
+        "outer_margin": 64,
+        "gutter": 28,
+        "wall_margin": 12,
+        "bevel": True,
+        "bevel_width": 4,
+        "bevel_color": "#fbfaf6",
+        "show_frame": True,  # show_frame, frame_style and frame_color apply only with frame_override
+        "frame_style": "wood",
+        "frame_color": "#2c2318",
+        "frame_width": 48,
+        "frame_override": False,  # False: the outer frame's look follows frame_defaults
+    },
+    "layout_modes": {},  # layout id -> "gallery" | "slots", overriding the layout's own mode
     "source_path": "photos",  # relative to the server's cwd — run.sh / run.bat start in the repo root
     "include_subfolders": True,  # media folders include their subfolders (README → Subfolders)
     "slots": [
@@ -105,8 +137,16 @@ def load_config() -> dict:
     return default_config()
 
 
+def write_json_atomic(path: Path, data) -> None:
+    """Write via a temp file and rename, so a reader (the display polls config.json) never sees
+    a half-written file."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    os.replace(tmp, path)
+
+
 def save_config(config: dict) -> None:
-    CONFIG_PATH.write_text(json.dumps(config, indent=2))
+    write_json_atomic(CONFIG_PATH, config)
 
 
 def effective_subfolders(slot: dict, config: dict) -> bool:
@@ -193,6 +233,95 @@ def set_config(config: dict):
     return {"ok": True}
 
 
+# --- Reset to defaults, saved presets and one-step undo (README → Presets and reset) ---
+# Kept next to config.json: the previous config before a reset or preset (one step of undo, from
+# any device), and the saved presets.
+
+def backup_path() -> Path:
+    return CONFIG_PATH.with_name("config.backup.json")
+
+
+def presets_path() -> Path:
+    return CONFIG_PATH.with_name("presets.json")
+
+
+def _replace_config(new: dict, reason: str) -> None:
+    """Save ``new`` after keeping the current config as the undo backup."""
+    write_json_atomic(backup_path(), {"saved_at": profiles.now_iso(), "reason": reason, "config": load_config()})
+    set_config(new)
+
+
+def _changes(before: dict, after: dict) -> dict:
+    changes = profiles.changed_settings(before, after, DEFAULT_CONFIG)
+    return {"changes": changes, "count": len(changes)}
+
+
+@app.post("/api/config/reset")
+def reset_config(dry_run: bool = False):
+    """Every look setting back to the defaults; folders, photo/video modes, video settings and the
+    slot count are kept. ``dry_run`` only reports what would change."""
+    current = load_config()
+    new = profiles.reset_config(current, default_config())
+    if dry_run:
+        return _changes(current, new)
+    result = _changes(current, new)
+    _replace_config(new, "reset")
+    return {"config": new, "count": result["count"]}
+
+
+@app.get("/api/config/backup")
+def config_backup():
+    backup = profiles.read_json(backup_path())
+    if not isinstance(backup, dict) or not isinstance(backup.get("config"), dict):
+        return {"exists": False}
+    return {"exists": True, "reason": backup.get("reason"), "saved_at": backup.get("saved_at")}
+
+
+@app.post("/api/config/undo")
+def undo_config():
+    """Restore the config from before the last reset or preset. One step: the backup goes."""
+    backup = profiles.read_json(backup_path())
+    if not isinstance(backup, dict) or not isinstance(backup.get("config"), dict):
+        raise HTTPException(status_code=404, detail="Nothing to undo")
+    set_config(backup["config"])
+    backup_path().unlink(missing_ok=True)
+    return {"config": backup["config"], "reason": backup.get("reason")}
+
+
+@app.get("/api/presets")
+def get_presets():
+    return {"presets": profiles.read_presets(presets_path())}
+
+
+@app.put("/api/presets/{preset_id}")
+def save_preset(preset_id: str, body: dict | None = None):
+    """Save the current config's look as this preset (created, or replaced)."""
+    name = (body or {}).get("name")
+    presets = profiles.read_presets(presets_path())
+    old = next((p for p in presets if p["id"] == preset_id), None)
+    name = name if isinstance(name, str) and name.strip() else (old or {}).get("name") or "My preset"
+    presets, preset = profiles.upsert_preset(presets, preset_id, name, profiles.extract_look(load_config()))
+    write_json_atomic(presets_path(), profiles.presets_document(presets))
+    return {"preset": preset}
+
+
+@app.post("/api/presets/{preset_id}/apply")
+def apply_preset(preset_id: str, dry_run: bool = False):
+    """The preset's look on the current config (folders kept). Settings this version can't use
+    (removed layouts, unknown shapes or keys) are dropped and listed in ``warnings``."""
+    preset = next((p for p in profiles.read_presets(presets_path()) if p["id"] == preset_id), None)
+    if preset is None:
+        raise HTTPException(status_code=404, detail="No such preset")
+    current = load_config()
+    layout_ids = [l["id"] for l in load_layouts(LAYOUTS_PATH)]
+    new, warnings = profiles.apply_look(current, preset.get("settings"), default_config(), layout_ids, KNOWN_SHAPES)
+    result = {**_changes(current, new), "warnings": warnings}
+    if dry_run:
+        return result
+    _replace_config(new, "preset")
+    return {"config": new, "count": result["count"], "warnings": warnings}
+
+
 @app.get("/api/browse")
 def browse_directory(path: str = ""):
     start = Path(path).resolve() if path else Path.home()
@@ -211,10 +340,7 @@ def browse_directory(path: str = ""):
 
 @app.get("/api/layouts")
 def get_layouts():
-    layouts = []
-    for f in sorted(LAYOUTS_PATH.glob("*.json")):
-        layouts.append(json.loads(f.read_text()))
-    return layouts
+    return load_layouts(LAYOUTS_PATH)  # invalid files are skipped with a warning
 
 
 @app.get("/api/images/random")
@@ -304,10 +430,23 @@ def serve_video(path: str):
     return FileResponse(str(clip.serve), media_type="video/mp4")
 
 
+class RevalidatingStaticFiles(StaticFiles):
+    """Static files the browser must re-check on every load (``Cache-Control: no-cache``).
+
+    Without it a browser (or TV) may keep using an old copy of a script after PicMe is updated,
+    so the editor or display runs a mix of old and new code. Unchanged files still come back as a
+    cheap 304 via their ETag."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # Serve the display and editor frontends
-app.mount("/display", StaticFiles(directory=str(FRONTEND_DISPLAY), html=True), name="display")
-app.mount("/editor",  StaticFiles(directory=str(FRONTEND_EDITOR),  html=True), name="editor")
-app.mount("/assets",  StaticFiles(directory=str(FRONTEND_ASSETS)), name="assets")
+app.mount("/display", RevalidatingStaticFiles(directory=str(FRONTEND_DISPLAY), html=True), name="display")
+app.mount("/editor",  RevalidatingStaticFiles(directory=str(FRONTEND_EDITOR),  html=True), name="editor")
+app.mount("/assets",  RevalidatingStaticFiles(directory=str(FRONTEND_ASSETS)), name="assets")
 
 # Serve a simple root redirect
 @app.get("/")

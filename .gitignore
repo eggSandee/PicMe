@@ -15,6 +15,8 @@ build/
 
 # Config (auto-managed, user-specific)
 config.json
+config.backup.json
+presets.json
 
 # Photos (never commit user photos)
 photos/

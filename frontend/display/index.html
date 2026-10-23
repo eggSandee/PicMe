@@ -46,9 +46,11 @@
       box-sizing: border-box;
     }
 
-    /* Media sit inside the mat: --mat is the mat width, set per slot by applyFrameStyle */
+    /* Media sit inside the mat: --mat is the mat width, set per slot by applyFrameStyle;
+       --mat-bottom is the bottom mat, wider when it holds a caption (labels on the mat) */
     .mat-frame img, .mat-frame video {
-      width: calc(100% - 2 * var(--mat, 0px)); height: calc(100% - 2 * var(--mat, 0px));
+      width: calc(100% - 2 * var(--mat, 0px));
+      height: calc(100% - var(--mat, 0px) - var(--mat-bottom, var(--mat, 0px)));
       object-fit: contain; /* default; overridden per-slot by applyFrameStyle */
       position: absolute;
       top: var(--mat, 0px); left: var(--mat, 0px);
@@ -102,6 +104,14 @@
     /* Hidden by fitOverlay when the slot is too short for every pill */
     .overlay-pill.fit-hidden { display: none; }
 
+    /* Labels on the mat (label_position): a caption under the photo — one centred row, date
+       first. Nothing but mat behind it, so no blur. fitOverlay lets a pill that is too long
+       shrink, so its text scrolls (a non-date pill no narrower than its inline min-width). */
+    .slot-overlay.caption { flex-direction: row; align-items: center; max-height: none; }
+    .slot-overlay.caption .overlay-pill { backdrop-filter: none; }
+    .slot-overlay.caption .overlay-pill[data-date] { order: -1; }
+    .slot-overlay.caption .overlay-pill.caption-squeeze { flex-shrink: 1; min-width: 0; }
+
     /* Text that doesn't fit scrolls (fitOverlay sets the animation); it is never cut with "…" */
     .pill-clip { display: block; overflow: hidden; }
     /* Soft edges while scrolling, instead of glyphs cut hard at the padding */
@@ -145,16 +155,119 @@
       display: none;
       z-index: 999;
     }
+
+    /* ── Photo details (README → Photo details): the photo or video, whole and unclipped, over
+       a dim collage with its metadata beside it. Sized by fitDetailMedia. ── */
+    #collage[data-details="on"] .mat-frame { cursor: pointer; }
+    .slot:focus { outline: none; }
+    /* Arrow keys on a TV remote: a ring on the slot that Enter opens (on the shape's box in a
+       gallery mat, not the whole cell) */
+    #collage:not(.gallery) .slot:focus-visible,
+    #collage.gallery .slot:focus-visible .opening-box { outline: 4px solid #fff; outline-offset: -4px; }
+
+    #detail {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.75);
+      animation: detail-fade 0.2s ease;
+    }
+    #detail[hidden] { display: none; }
+    .detail-card {
+      display: flex;
+      align-items: center;
+      gap: 2.5vmin;
+      max-width: 85vw;
+      max-height: 85vh;
+      animation: detail-grow 0.2s ease;
+    }
+    .detail-media { flex: 0 0 auto; display: flex; }
+    .detail-media img, .detail-media video {
+      display: block;
+      max-width: 85vw;
+      max-height: 85vh;
+      object-fit: contain;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+    }
+    /* The pill look (palette, faint light edge, blur), as a list sized for across the room */
+    .detail-panel {
+      flex: 0 0 auto;
+      width: clamp(220px, 24vw, 420px);
+      max-height: 85vh;
+      overflow: auto;
+      padding: 1em 1.2em;
+      background: rgba(20, 20, 20, 0.62);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(4px);
+      border-radius: 12px;
+      color: #fff;
+      font-size: clamp(14px, 2.2vmin, 28px);
+      line-height: 1.25;
+    }
+    .detail-panel dl > div + div { margin-top: 0.6em; }
+    .detail-panel dt { font-size: 0.68em; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.6; }
+    .detail-panel dd { overflow-wrap: anywhere; }
+    .detail-note { opacity: 0.7; }
+    .detail-file { margin-top: 0.8em; font-size: 0.68em; opacity: 0.55; overflow-wrap: anywhere; }
+    .detail-panel dl:empty + .detail-note:empty + .detail-file { margin-top: 0; }
+    .detail-close {
+      position: fixed;
+      top: 2.5vmin;
+      right: 2.5vmin;
+      width: clamp(36px, 6vmin, 72px);
+      height: clamp(36px, 6vmin, 72px);
+      border: 0;
+      border-radius: 50%;
+      background: rgba(20, 20, 20, 0.62);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+      color: #fff;
+      font-size: clamp(22px, 3.6vmin, 44px);
+      line-height: 1;
+      cursor: pointer;
+    }
+    .detail-close:focus { outline: none; }
+    .detail-close:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+    /* Portrait screens: the details go under the photo, two columns */
+    @media (orientation: portrait) {
+      .detail-card { flex-direction: column; }
+      .detail-panel { width: auto; min-width: min(85vw, 420px); align-self: stretch; }
+      .detail-panel dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6em 1.2em; }
+      .detail-panel dl > div + div { margin-top: 0; }
+    }
+    @keyframes detail-fade { from { opacity: 0; } }
+    @keyframes detail-grow { from { transform: scale(0.96); } }
+    @media (prefers-reduced-motion: reduce) {
+      #detail, .detail-card { animation: none; }
+    }
   </style>
+  <link rel="stylesheet" href="/display/label-styles.css" />
 </head>
 <body>
   <div id="collage"></div>
   <div id="error-banner"></div>
   <a id="editor-btn" href="/editor">⚙ Editor</a>
+  <div id="detail" hidden role="dialog" aria-modal="true" aria-label="Photo details">
+    <div class="detail-card">
+      <div class="detail-media"></div>
+      <div class="detail-panel">
+        <dl></dl>
+        <p class="detail-note"></p>
+        <p class="detail-file"></p>
+      </div>
+    </div>
+    <button type="button" class="detail-close" aria-label="Close">×</button>
+  </div>
 
   <script src="/display/layout-rotation.js"></script>
   <script src="/display/pill-size.js"></script>
+  <script src="/display/label-styles.js"></script>
   <script src="/assets/frames/frames.js"></script>
+  <script src="/display/shapes.js"></script>
+  <script src="/display/gallery.js"></script>
+  <script src="/display/time-of-day.js"></script>
   <script>
     const API = '';  // same origin
 
@@ -162,6 +275,8 @@
     let layouts = null;
     let activeSlots = [];
     let activeLayoutId = null;  // the layout on screen (today's pick when rotation is on)
+    let activeLayout = null;
+    let activeMode = 'slots';   // 'gallery': one frame and mat, slots are openings (gallery.js)
 
     async function fetchJSON(url) {
       const r = await fetch(url);
@@ -176,9 +291,52 @@
       setTimeout(() => { el.style.display = 'none'; }, 6000);
     }
 
+    // A slot's media and pill overlay — the same for a separate-frame slot and a gallery opening
+    function makeSlotMedia() {
+      // Mat/frame wrapper — provides the matte border and optional outer frame
+      const matFrame = document.createElement('div');
+      matFrame.className = 'mat-frame';
+
+      // Two img elements for crossfade, inside the mat
+      const imgA = document.createElement('img');
+      const imgB = document.createElement('img');
+      imgA.className = 'visible';
+      imgB.className = 'hidden';
+      matFrame.append(imgA, imgB);
+
+      // Two video elements for video-mode slots, crossfaded the same way.
+      // No `loop` attribute — loops are counted manually in the `ended` handler.
+      const vidA = document.createElement('video');
+      const vidB = document.createElement('video');
+      for (const v of [vidA, vidB]) {
+        v.muted = true;
+        v.playsInline = true;
+        v.setAttribute('playsinline', '');
+        v.preload = 'auto';
+      }
+      vidA.className = 'visible';
+      vidB.className = 'hidden';
+      matFrame.append(vidA, vidB);
+
+      // Metadata overlay sits above the mat, anchored to the slot.
+      // Pills are created dynamically in updateOverlay so hidden fields take no space.
+      const overlay = document.createElement('div');
+      overlay.className = 'slot-overlay';
+
+      return { matFrame, overlay };
+    }
+
     function applyLayout(layout, slotCount) {
       const collage = document.getElementById('collage');
       collage.dataset.layout = layout.id;
+      collage.dataset.mode = activeMode;
+
+      // Gallery mat: one frame and mat, each slot an opening (same #slot-N / .mat-frame DOM)
+      if (activeMode === 'gallery') {
+        PicMeGallery.build(collage, layout, slotCount, { makeSlot: makeSlotMedia });
+        return;
+      }
+
       collage.style.gridTemplateColumns = layout.grid_template_columns;
       collage.style.gridTemplateRows = layout.grid_template_rows;
 
@@ -189,37 +347,7 @@
         div.className = 'slot';
         div.id = `slot-${slotDef.id}`;
         div.style.gridArea = slotDef.grid_area;
-
-        // Mat/frame wrapper — provides the matte border and optional outer frame
-        const matFrame = document.createElement('div');
-        matFrame.className = 'mat-frame';
-
-        // Two img elements for crossfade, inside the mat
-        const imgA = document.createElement('img');
-        const imgB = document.createElement('img');
-        imgA.className = 'visible';
-        imgB.className = 'hidden';
-        matFrame.append(imgA, imgB);
-
-        // Two video elements for video-mode slots, crossfaded the same way.
-        // No `loop` attribute — loops are counted manually in the `ended` handler.
-        const vidA = document.createElement('video');
-        const vidB = document.createElement('video');
-        for (const v of [vidA, vidB]) {
-          v.muted = true;
-          v.playsInline = true;
-          v.setAttribute('playsinline', '');
-          v.preload = 'auto';
-        }
-        vidA.className = 'visible';
-        vidB.className = 'hidden';
-        matFrame.append(vidA, vidB);
-
-        // Metadata overlay sits above the mat, anchored to the slot.
-        // Pills are created dynamically in updateOverlay so hidden fields take no space.
-        const overlay = document.createElement('div');
-        overlay.className = 'slot-overlay';
-
+        const { matFrame, overlay } = makeSlotMedia();
         div.append(matFrame, overlay);
         collage.appendChild(div);
       }
@@ -233,36 +361,94 @@
       return `${API}/api/video?path=${encodeURIComponent(filePath)}`;
     }
 
+    // The day or night template in effect now (time-of-day.js, shared with the editor)
     function getTimeOfDayTemplate() {
-      const tod = config?.time_of_day;
-      if (!tod?.enabled) return null;
-      const now = new Date();
-      const cur = now.getHours() * 60 + now.getMinutes();
-      const [dh, dm] = (tod.day_start || '07:00').split(':').map(Number);
-      const [nh, nm] = (tod.night_start || '20:00').split(':').map(Number);
-      const dayMins = dh * 60 + dm, nightMins = nh * 60 + nm;
-      const isDay = dayMins < nightMins
-        ? (cur >= dayMins && cur < nightMins)
-        : (cur >= dayMins || cur < nightMins);
-      return isDay ? (tod.day || null) : (tod.night || null);
+      return PicMeTimeOfDay.currentPeriod(config, new Date())?.template ?? null;
     }
 
     function getTodPeriodName() {
-      const tod = config?.time_of_day;
-      if (!tod?.enabled) return null;
-      return getTimeOfDayTemplate() === tod.day ? 'day' : 'night';
+      return PicMeTimeOfDay.currentPeriod(config, new Date())?.name ?? null;
     }
 
     let lastTodPeriod = null;
 
+    // The metadata look (README → Metadata label styles): 'pill', or a style from label-styles.js
+    function labelStyle() {
+      return window.PicMeLabels ? PicMeLabels.resolveStyle(config.label_style) : 'pill';
+    }
+
+    // Where this screen's labels go: 'mat' (a caption under each photo) or 'photo'. Caption and
+    // placard are always on the mat and whisper on the photo; label_position is for pills.
+    function labelPlacement() {
+      if (window.PicMeLabels) return PicMeLabels.placement(labelStyle(), config.label_position, activeMode);
+      return window.PicMePills ? PicMePills.labelPlacement(config.label_position, activeMode) : 'photo';
+    }
+
+    // Whether the slot puts any pill on screen (video slots only show the date)
+    function slotHasPills(slotCfg) {
+      if (config.show_metadata === false) return false;
+      const meta = effectiveMeta(slotCfg);
+      return !!meta.show_date || (slotCfg.mode !== 'video' && METADATA_FIELDS.some(f => meta[f.flag]));
+    }
+
+    // Frames, then one pill size for every slot on screen (README → Metadata pills): each slot's
+    // pill area is measured, the shortest side sizes them all, and labels on the mat get a
+    // caption band sized from it.
     function applyTodStyles() {
       const tod = getTimeOfDayTemplate();
-      document.getElementById('collage').style.background = tod?.wall_color ?? config.wall_color ?? '#1a1a1a';
+      const collage = document.getElementById('collage');
+      collage.style.background = tod?.wall_color ?? config.wall_color ?? '#1a1a1a';
+      const placement = labelPlacement();
+      const style = labelStyle();
+      collage.dataset.labels = placement;
+      collage.dataset.labelStyle = style;
+      // Each slot's pill sizes, or null for a slot without pills (it doesn't set the size)
+      const sizes = activeSlots.map(s => (slotHasPills(s) ? (window.PicMePills?.resolve(effectiveMeta(s)) ?? {}) : null));
+      let short = 0;
+      if (activeMode === 'gallery') {
+        // One frame and mat for the whole display (time of day changes their colours only);
+        // per-slot frame settings apply on separate-frame layouts
+        const gcfg = PicMeGallery.resolveGallery(config, tod);
+        let openings;
+        ({ short, openings } = PicMeGallery.layoutWithLabels(collage, gcfg, activeLayout,
+                                                             activeSlots, { placement, sizes, style }));
+        for (const slotCfg of activeSlots) {
+          const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+          if (!slotEl) continue;
+          applyFit(slotEl, slotCfg);
+          slotEl._labelGeo = { gallery: openings[slotCfg.id], matColor: gcfg.mat_color };
+        }
+      } else {
+        short = applySlotFrames(placement, sizes, style);
+      }
       for (const slotCfg of activeSlots) {
         const slotEl = document.getElementById(`slot-${slotCfg.id}`);
-        if (slotEl) applyFrameStyle(slotEl, slotCfg);
+        if (slotEl) applyPillStyle(slotEl, slotCfg, short);
       }
       lastTodPeriod = getTodPeriodName();
+    }
+
+    // Separate frames for every slot on screen, with a caption band in each bottom mat when the
+    // labels are on the mat. Returns the shortest pill area on screen. The band is sized from
+    // the areas measured before it, so the two can't feed back.
+    function applySlotFrames(placement, sizes, style = 'pill') {
+      const P = window.PicMePills, L = window.PicMeLabels;
+      const mat = placement === 'mat';
+      const els = activeSlots.map(s => document.getElementById(`slot-${s.id}`));
+      const geo = activeSlots.map((s, i) => (els[i] ? applyFrameStyle(els[i], s, 0) : null));
+      // A caption labels the whole photo; on the photo, pills keep --pill-inset from the slot edge
+      const area = g => (mat ? g.photo : { w: g.slot.w - 2 * g.inset, h: g.slot.h - 2 * g.inset });
+      const all = geo.filter(Boolean);
+      const shown = geo.filter((g, i) => g && sizes[i]);
+      const short = P ? P.sharedShort((shown.length ? shown : all).map(area)) : 0;
+      if (mat && P && shown.length) {
+        // A label style's band (a placard needs two lines), capped by the style
+        const need = Math.max(...sizes.filter(Boolean).map(s => (L ? L.captionBand(style, s, short) : P.captionBand(s, short))));
+        const minH = Math.min(...all.map(g => g.photo.h));
+        const band = Math.min(need, L ? L.maxBand(style, minH) : Math.floor(P.CAPTION_MAX_FRACTION * minH));
+        activeSlots.forEach((s, i) => { if (els[i]) applyFrameStyle(els[i], s, band); });
+      }
+      return short;
     }
 
     const TOD_FRAME_KEYS = ['mat_color', 'mat_width', 'show_frame', 'frame_color', 'frame_width', 'frame_style'];
@@ -274,9 +460,12 @@
       return frames && style && Object.prototype.hasOwnProperty.call(frames, style) ? frames[style] : null;
     }
 
-    function applyFrameStyle(slotEl, slotCfg) {
+    // The slot's frame and mat; `band` px more bottom mat holds a caption (labels on the mat).
+    // Returns { slot, photo: {w, h}, inset }: the slot's size, the photo's space inside the
+    // frame and mat (before the band), and the slot's --pill-inset.
+    function applyFrameStyle(slotEl, slotCfg, band = 0) {
       const matFrame = slotEl.querySelector('.mat-frame');
-      if (!matFrame) return;
+      if (!matFrame) return null;
 
       // TOD template sits between global defaults and per-slot overrides in priority.
       // Only keys the template sets: an unset key must not blank out the global value.
@@ -285,7 +474,7 @@
       if (tod) for (const key of TOD_FRAME_KEYS) if (tod[key] !== undefined) todFrame[key] = tod[key];
       const frameCfg = { ...(config.frame_defaults || {}), ...todFrame, ...(slotCfg.frame || {}) };
 
-      const matWidth  = frameCfg.mat_width  ?? 16;
+      const matWidth  = Number(frameCfg.mat_width ?? 16) || 0;
       const matColor  = frameCfg.mat_color  ?? '#000000';
       const frameOn   = frameCfg.show_frame ?? true;
       const frameWidth = frameCfg.frame_width ?? 8;
@@ -293,30 +482,55 @@
       const asset = frameOn ? frameAsset(frameCfg.frame_style ?? 'solid') : null;
 
       matFrame.style.padding    = `${matWidth}px`;
+      matFrame.style.paddingBottom = `${matWidth + band}px`;
       matFrame.style.setProperty('--mat', `${matWidth}px`);
+      if (band > 0) matFrame.style.setProperty('--mat-bottom', `${matWidth + band}px`);
+      else matFrame.style.removeProperty('--mat-bottom');
       matFrame.style.background = matColor;
+      let border = 0;
       if (asset) {
-        // A 9-slice PNG: corners scale uniformly (never stretch) and edges tile with `round`.
+        // A 9-slice PNG: corners scale uniformly (never stretch) and edges tile with `round`
+        // (or, for a style whose manifest says so, one long edge tile is stretched to fit).
         // On a small slot the moulding is capped at a sixth of the short side.
         const fit = Math.floor(Math.min(slotEl.clientWidth, slotEl.clientHeight) / 6);
         const w = Math.min(Number(frameWidth) || 0, Math.max(4, fit));
         matFrame.style.border = `${w}px solid transparent`;
-        matFrame.style.borderImage = `url("${asset.src}") ${asset.slice} / ${w}px / 0 round`;
+        matFrame.style.borderImage = `url("${asset.src}") ${asset.slice} / ${w}px / 0 ${asset.repeat || 'round'}`;
         matFrame.style.backgroundClip = 'padding-box';
         // Keep the metadata pills inside the moulding
         slotEl.style.setProperty('--pill-inset', `${w + 10}px`);
+        border = w;
       } else {
         matFrame.style.border = frameOn ? `${frameWidth}px solid ${frameColor}` : 'none';
         matFrame.style.borderImage = 'none';
         matFrame.style.backgroundClip = '';
         slotEl.style.removeProperty('--pill-inset');
+        border = frameOn ? Number(frameWidth) || 0 : 0;
       }
 
-      const fit = slotCfg.fill_mode === 'cover' ? 'cover' : 'contain';
-      matFrame.querySelectorAll('img, video').forEach(el => el.style.objectFit = fit);
+      // A caption sits in the bottom mat, under the photo, centred on it
+      const edge = border + matWidth;
+      const slotW = slotEl.clientWidth, slotH = slotEl.clientHeight;
+      const overlay = slotEl.querySelector('.slot-overlay');
+      if (overlay) {
+        overlay.classList.toggle('caption', band > 0);
+        Object.assign(overlay.style, band > 0
+          ? { left: `${edge}px`, right: `${edge}px`, top: '', bottom: `${edge}px`, height: `${band}px`,
+              width: 'fit-content', margin: '0 auto', maxWidth: `${Math.max(0, slotW - 2 * edge)}px`, maxHeight: '' }
+          : { left: '', right: '', top: '', bottom: '', height: '', width: '', margin: '', maxWidth: '', maxHeight: '' });
+      }
 
-      // Pill size depends on the space inside the frame, so it follows every frame change
-      applyPillStyle(slotEl, slotCfg);
+      applyFit(slotEl, slotCfg);
+      slotEl._labelGeo = { slots: { edge, mat: matWidth, band, w: slotW, h: slotH }, matColor };
+      return { slot: { w: slotW, h: slotH }, photo: { w: Math.max(0, slotW - 2 * edge), h: Math.max(0, slotH - 2 * edge) },
+               inset: pillInset(slotEl) };
+    }
+
+    // Fit (contain, letterboxed) or Fill (cover, cropped), in either mode: the slot's own
+    // fill_mode, else the global one, else Fit (a config from before the global setting)
+    function applyFit(slotEl, slotCfg) {
+      const fit = (slotCfg.fill_mode ?? config.fill_mode) === 'cover' ? 'cover' : 'contain';
+      slotEl.querySelectorAll('.mat-frame img, .mat-frame video').forEach(el => el.style.objectFit = fit);
     }
 
     // ── Metadata pill size (README → Metadata pills) ──
@@ -332,17 +546,59 @@
       return parseFloat(getComputedStyle(slotEl).getPropertyValue('--pill-inset')) || 0;
     }
 
-    // Set the slot's pill tokens for the space inside its frame, then re-fit its pills.
-    // Without pill-size.js the CSS fallbacks apply.
-    function applyPillStyle(slotEl, slotCfg) {
+    // Set the slot's pill tokens, then re-fit its pills. `short`: the shortest pill area on
+    // screen (applyTodStyles), so every slot gets the same size; the slot's own text_size (with
+    // use_global.metadata off) scales it. Without pill-size.js the CSS fallbacks apply.
+    function applyPillStyle(slotEl, slotCfg, short) {
       if (window.PicMePills) {
-        const inset = pillInset(slotEl);
-        const w = Math.max(0, slotEl.clientWidth - 2 * inset);
-        const h = Math.max(0, slotEl.clientHeight - 2 * inset);
-        const tokens = PicMePills.tokens(PicMePills.resolve(effectiveMeta(slotCfg)), w, h);
+        const tokens = PicMePills.tokens(PicMePills.resolve(effectiveMeta(slotCfg)), short, short);
         for (const [name, value] of Object.entries(tokens)) slotEl.style.setProperty(name, value);
       }
       fitOverlay(slotEl);
+    }
+
+    // Where a label style may sit in this slot (PicMeLabels.place): the caption band under the
+    // photo, or the bottom of the photo inside --pill-inset (a gallery opening's safe rect, so a
+    // whisper stays inside a heart or a circle, centred there). From the geometry applyTodStyles
+    // left on the slot.
+    function labelArea(slotEl) {
+      const geo = slotEl._labelGeo;
+      const style = labelStyle();
+      if (!geo || style === 'pill') return null;
+      const where = PicMeLabels.placement(style, config.label_position, activeMode);
+      const pillPx = parseFloat(slotEl.style.getPropertyValue('--pill-font-size')) || PicMePills.FONT_MIN;
+      const matFrame = slotEl.querySelector('.mat-frame');
+      const area = geo.gallery ? PicMeLabels.openingArea(geo.gallery, where, matFrame)
+                               : PicMeLabels.frameArea(geo.slots, where, matFrame);
+      return area && PicMeLabels.visibleArea({ ...area, where, fontPx: PicMeLabels.fontPx(style, pillPx), matColor: geo.matColor },
+                                             fitMediaSize(slotEl));
+    }
+
+    // In Fit (contain), the natural size of the photo or video on screen, so labels follow the
+    // photo you see rather than the opening (README → Metadata label styles); null in Fill or
+    // before it has loaded
+    function fitMediaSize(slotEl) {
+      const slotCfg = activeSlots.find(s => `slot-${s.id}` === slotEl.id);
+      if (!slotCfg || (slotCfg.fill_mode ?? config.fill_mode) === 'cover') return null;
+      const video = slotEl.classList.contains('video-mode');
+      const el = slotEl.querySelector(video ? '.mat-frame video.visible' : '.mat-frame img.visible');
+      const w = video ? el?.videoWidth : el?.naturalWidth, h = video ? el?.videoHeight : el?.naturalHeight;
+      return w > 0 && h > 0 ? { w, h } : null;
+    }
+
+    // Position and fit a styled label (not pills) in its slot
+    function placeLabel(slotEl) {
+      const overlay = slotEl.querySelector('.slot-overlay');
+      if (!overlay?._label) return;
+      const area = labelArea(slotEl);
+      if (!area) { PicMeLabels.clear(overlay); return; }
+      PicMeLabels.place(overlay, area, { marquee: d => marqueeAnimation(d, slotWindowSec(slotEl)) });
+    }
+
+    // A photo slot shows each photo for cycle_seconds; video slots have no fixed window
+    function slotWindowSec(slotEl) {
+      const slotCfg = (config.slots || []).find(s => `slot-${s.id}` === slotEl.id);
+      return slotCfg && slotCfg.mode !== 'video' ? Number(slotCfg.cycle_seconds) : undefined;
     }
 
     // One @keyframes rule per scroll distance, added on first use
@@ -360,27 +616,55 @@
       return `${m.name} ${m.duration.toFixed(2)}s linear infinite`;
     }
 
-    // Make the slot's pills fit inside the overlay (the slot minus --pill-inset on each side):
-    // 1. Too tall: hide non-date pills from the lowest priority up. The date is never hidden;
-    //    if it alone doesn't fit, it drops to the smallest font and the overlay clips it.
+    // Make the slot's pills fit inside the overlay (on the photo: the slot minus --pill-inset on
+    // each side; on the mat: one row in the caption band):
+    // 1. Too many: hide non-date pills from the lowest priority up. The date is never hidden.
+    //    On the photo, a date that alone doesn't fit drops to the smallest font and the overlay
+    //    clips it. In a caption, the last non-date pill left may shrink to a few words (and
+    //    scroll) before it is hidden too, and a date that alone is too wide shrinks.
     // 2. Too wide: the pill's text scrolls slowly back and forth (static under reduced motion).
     // Hidden pills stay in the DOM, so a resize can bring them back.
     function fitOverlay(slotEl) {
       const overlay = slotEl.querySelector('.slot-overlay');
       if (!overlay) return;
+      if (overlay._label) { placeLabel(slotEl); return; }
       const pills = [...overlay.querySelectorAll('.overlay-pill')];
       overlay.style.removeProperty('--pill-font-size');
-      pills.forEach(p => p.classList.remove('fit-hidden'));
+      pills.forEach(p => { p.classList.remove('fit-hidden', 'caption-squeeze'); p.style.minWidth = ''; });
       if (pills.length === 0) return;
 
-      const overflows = () => overlay.scrollHeight > overlay.clientHeight + 0.5;
+      const caption = overlay.classList.contains('caption');
+      // A gallery caption starts at the left edge of the photo you see (Fit leaves bars beside it)
+      const opening = slotEl._labelGeo?.gallery;
+      if (caption && opening?.caption && window.PicMeLabels) {
+        const a = PicMeLabels.visibleArea(PicMeLabels.openingArea(opening, 'mat', null), fitMediaSize(slotEl));
+        Object.assign(overlay.style, { left: `${Math.round(a.rect.x)}px`, maxWidth: `${Math.max(0, Math.floor(a.rect.w))}px` });
+      }
+      const overflows = caption
+        ? () => overlay.scrollWidth > overlay.clientWidth + 0.5
+        : () => overlay.scrollHeight > overlay.clientHeight + 0.5;
       const optional = pills.filter(p => !p.dataset.date);
-      while (overflows() && optional.length) optional.pop().classList.add('fit-hidden');
-      if (overflows() && window.PicMePills) overlay.style.setProperty('--pill-font-size', `${PicMePills.FONT_MIN}px`);
+      if (caption) {
+        // At full width first, so a caption stays crisp: only the last pill left may scroll
+        while (overflows() && optional.length > 1) optional.pop().classList.add('fit-hidden');
+        const last = optional[0];
+        if (overflows() && last && window.PicMePills) {
+          const em = parseFloat(getComputedStyle(last).fontSize) || 16;
+          last.style.minWidth = `${Math.min(last.offsetWidth, PicMePills.CAPTION_PILL_MIN_EM * em)}px`;
+          last.classList.add('caption-squeeze');
+          if (overflows()) {
+            last.classList.remove('caption-squeeze');
+            last.style.minWidth = '';
+            optional.pop().classList.add('fit-hidden');
+          }
+        }
+        if (overflows()) pills.forEach(p => { if (p.dataset.date) p.classList.add('caption-squeeze'); });
+      } else {
+        while (overflows() && optional.length) optional.pop().classList.add('fit-hidden');
+        if (overflows() && window.PicMePills) overlay.style.setProperty('--pill-font-size', `${PicMePills.FONT_MIN}px`);
+      }
 
-      // A photo slot shows each photo for cycle_seconds; video slots have no fixed window
-      const slotCfg = (config.slots || []).find(s => `slot-${s.id}` === slotEl.id);
-      const windowSec = slotCfg && slotCfg.mode !== 'video' ? Number(slotCfg.cycle_seconds) : undefined;
+      const windowSec = slotWindowSec(slotEl);
 
       // Measure every pill first, then write, so this lays out once
       const visible = pills.filter(p => !p.classList.contains('fit-hidden'));
@@ -571,6 +855,8 @@
       // Release this slot's old image
       if (state.currentPath) releasePath(state.currentPath);
       state.currentPath = path;
+      // Only an editor folder move swaps an open slot's photo: don't keep showing the old one
+      if (detail?.slotCfg.id === slotCfg.id) closeDetail();
 
       next.className = 'visible';
       current.className = 'hidden';
@@ -656,10 +942,10 @@
     }
 
     function videoEls(slotCfg) {
-      const slotEl = document.getElementById(`slot-${slotCfg.id}`);
-      if (!slotEl) return null;
-      const [vidA, vidB] = slotEl.querySelectorAll('.mat-frame video');
+      // The pair found by initVideoSlot: the detail view borrows one, out of the slot
       const state = slotState[slotCfg.id];
+      if (!state?.vids) return null;
+      const [vidA, vidB] = state.vids;
       return state.activeVid === 'A' ? { current: vidA, next: vidB } : { current: vidB, next: vidA };
     }
 
@@ -694,6 +980,8 @@
       clearTimeout(state.watchdog);
       const seconds = (isFinite(v.duration) ? v.duration : 300) + 30;
       state.watchdog = setTimeout(() => {
+        // Looping in the detail view: check again later rather than cut it off
+        if (detail?.slotCfg.id === slotCfg.id) { armWatchdog(slotCfg, v); return; }
         console.warn(`Slot ${slotCfg.id}: playback watchdog fired — advancing`);
         loadNextVideo(slotCfg);
       }, seconds * 1000);
@@ -728,6 +1016,8 @@
     async function loadNextVideo(slotCfg) {
       const state = slotState[slotCfg.id];
       if (!state || state.videoLoading) return;
+      // An error or stall on the open video: put it back in the slot before advancing
+      if (detail?.slotCfg.id === slotCfg.id) closeDetail();
       const els = videoEls(slotCfg);
       if (!els) return;
       const { current, next } = els;
@@ -822,13 +1112,15 @@
       if (!slotEl) return;
       slotEl.classList.add('video-mode');
       const state = slotState[slotCfg.id];
+      state.vids = [...slotEl.querySelectorAll('.mat-frame video')];
       const isActive = v => videoEls(slotCfg)?.current === v && !!v.getAttribute('src') && !state.videoLoading;
 
-      slotEl.querySelectorAll('.mat-frame video').forEach(v => {
+      state.vids.forEach(v => {
         v.addEventListener('ended', () => {
           if (!isActive(v)) return;
-          // video_loops is read live so editor changes apply to the current video
-          if (++state.playCount < videoLoops(slotCfg)) {
+          // video_loops is read live so editor changes apply to the current video. Open in the
+          // detail view, it loops until closed.
+          if (detail?.slotCfg.id === slotCfg.id || ++state.playCount < videoLoops(slotCfg)) {
             v.currentTime = 0;
             playVideo(v, slotCfg).then(() => armWatchdog(slotCfg, v), () => loadNextVideo(slotCfg));
           } else {
@@ -867,27 +1159,36 @@
     // Non-date fields in priority order. max_metadata_pills applies to these only.
     // Date is handled separately — always rendered last (bottom) if enabled.
     const METADATA_FIELDS = [
-      { flag: 'show_location',      key: 'location' },
-      { flag: 'show_camera',        key: 'camera' },
-      { flag: 'show_megapixels',    key: 'megapixels' },
-      { flag: 'show_fstop',         key: 'fstop' },
-      { flag: 'show_shutter_speed', key: 'shutter_speed' },
-      { flag: 'show_iso',           key: 'iso' },
-      { flag: 'show_focal_length',  key: 'focal_length' },
+      { flag: 'show_location',      key: 'location',      label: 'Location' },
+      { flag: 'show_camera',        key: 'camera',        label: 'Camera' },
+      { flag: 'show_megapixels',    key: 'megapixels',    label: 'Megapixels' },
+      { flag: 'show_fstop',         key: 'fstop',         label: 'Aperture' },
+      { flag: 'show_shutter_speed', key: 'shutter_speed', label: 'Shutter speed' },
+      { flag: 'show_iso',           key: 'iso',           label: 'ISO' },
+      { flag: 'show_focal_length',  key: 'focal_length',  label: 'Focal length' },
     ];
 
-    const DATE_FORMATS = {
-      long:   { year: 'numeric', month: 'long',    day: 'numeric' }, // July 4, 2019
-      medium: { year: 'numeric', month: 'short',   day: 'numeric' }, // Jul 4, 2019
-      short:  { year: 'numeric', month: 'numeric', day: 'numeric' }, // 7/4/2019
-    };
-
+    // date_format (long | medium | short | iso), shared with the editor's previews
     function formatDate(isoDate) {
-      const fmt = config.date_format || 'long';
-      if (fmt === 'iso') return isoDate;
-      const opts = DATE_FORMATS[fmt] || DATE_FORMATS.long;
-      // Parse as local date (append T00:00 to avoid UTC shift)
-      return new Intl.DateTimeFormat(undefined, opts).format(new Date(isoDate + 'T00:00'));
+      return PicMeLabels.formatDate(isoDate, config.date_format || 'long');
+    }
+
+    // The fields a slot shows for an /api/metadata reply: [{ key, text, prio }], the date first,
+    // then METADATA_FIELDS order up to maxFields (PicMeLabels.fields, shared with the editor)
+    function slotFields(data, meta, maxFields = Infinity) {
+      return PicMeLabels.fields(data, meta, { order: METADATA_FIELDS, maxFields, formatDate });
+    }
+
+    // Every field an /api/metadata reply has, as { key, label, text }: the date first, then
+    // METADATA_FIELDS order. The server formats the values (f/2.8, 1/250s, ISO 400, 35mm,
+    // 12.2 MP); only the date is formatted here (date_format).
+    function metadataEntries(data) {
+      const out = [];
+      if (data?.date_iso) out.push({ key: 'date', label: 'Date', text: formatDate(data.date_iso) });
+      for (const { key, label } of METADATA_FIELDS) {
+        if (data?.[key]) out.push({ key, label, text: String(data[key]) });
+      }
+      return out;
     }
 
     // The text sits in a clip box so a long pill can scroll inside its padding
@@ -916,7 +1217,8 @@
       const seq = state.overlaySeq = (state.overlaySeq || 0) + 1;
 
       // Clear previous pills completely — hidden elements in a flex column take up space
-      overlay.innerHTML = '';
+      if (window.PicMeLabels) PicMeLabels.clear(overlay);
+      else overlay.innerHTML = '';
 
       // Global kill switch
       if (config.show_metadata === false) return;
@@ -934,26 +1236,29 @@
       try {
         const data = await fetchJSON(`${API}/api/metadata?path=${encodeURIComponent(imagePath)}`);
         if (seq !== state.overlaySeq || config.show_metadata === false) return;
+        state.meta = { path: imagePath, data };  // the detail view reuses it
 
-        const pills = [];
+        // The date, then the other fields in priority order up to the cap (not counting the date)
+        const fields = slotFields(data, meta, maxPills);
+        if (fields.length === 0) return;
 
-        // Non-date fields up to the cap
-        let shown = 0;
-        for (const { flag, key } of METADATA_FIELDS) {
-          if (shown >= maxPills) break;
-          if (!meta[flag] || !data[key]) continue;
-          pills.push(makePill(data[key]));
-          shown++;
+        // A label style (README → Metadata label styles) instead of pills
+        const style = labelStyle();
+        if (style !== 'pill') {
+          PicMeLabels.render(overlay, style, fields);
+          placeLabel(slotEl);
+          requestAnimationFrame(() => requestAnimationFrame(() => PicMeLabels.show(overlay)));
+          return;
         }
 
-        // Date always at bottom, not counted against the cap
-        if (meta.show_date && data.date_iso) {
-          const pill = makePill(formatDate(data.date_iso));
+        // Pills: the date at the bottom
+        const pills = fields.filter(f => f.key !== 'date').map(f => makePill(f.text));
+        const date = fields.find(f => f.key === 'date');
+        if (date) {
+          const pill = makePill(date.text);
           pill.dataset.date = '1';
           pills.push(pill);
         }
-
-        if (pills.length === 0) return;
         pills.forEach(p => overlay.appendChild(p));
         // Measured at opacity 0, before the fade-in: opacity doesn't affect layout
         fitOverlay(slotEl);
@@ -975,6 +1280,254 @@
       }
     }
 
+    // ── Photo details (README → Photo details) ──
+    // Click, tap, or Enter on a slot focused with the arrow keys, opens its photo or video over
+    // the collage with every metadata field the file has. While open, the slot and its group
+    // don't cycle and a video loops; cycling carries on at the next tick after it closes.
+
+    const DETAIL_IDLE_MS = 45000;  // no input for this long closes it, so a TV never gets stuck
+    let detail = null;             // the open view: { slotCfg, path, token, video, placeholder, returnFocus }
+    let detailToken = 0;
+    let detailIdleTimer = null;
+    let focusIdleTimer = null;
+
+    function detailsEnabled() {
+      return !!config && config.tap_for_details !== false;
+    }
+
+    function slotCfgOf(slotEl) {
+      return activeSlots.find(s => `slot-${s.id}` === slotEl?.id) || null;
+    }
+
+    // The open slot and the slots in its group stop cycling
+    function isHeld(slotCfg) {
+      if (!detail) return false;
+      const open = detail.slotCfg;
+      return open.id === slotCfg.id || (!!open.group && slotCfg.group === open.group);
+    }
+
+    // Slots take focus (arrow keys) and show a pointer only while the setting is on
+    function applyDetailsSetting() {
+      const on = detailsEnabled();
+      const collage = document.getElementById('collage');
+      if (on) collage.dataset.details = 'on';
+      else delete collage.dataset.details;
+      for (const s of activeSlots) {
+        const el = document.getElementById(`slot-${s.id}`);
+        if (!el) continue;
+        if (on) el.tabIndex = 0;
+        else el.removeAttribute('tabindex');
+      }
+      if (!on) closeDetail();
+    }
+
+    function openDetail(slotCfg, { keyboard = false } = {}) {
+      const state = slotState[slotCfg?.id];
+      const slotEl = slotCfg && document.getElementById(`slot-${slotCfg.id}`);
+      if (!detailsEnabled() || detail || !state?.currentPath || !slotEl) return;
+      const root = document.getElementById('detail');
+      const media = root.querySelector('.detail-media');
+      const path = state.currentPath;
+      let video = null;
+      if (slotCfg.mode === 'video') {
+        // Mid-swap the next video isn't on screen yet
+        video = state.videoLoading ? null : videoEls(slotCfg)?.current;
+        if (!video?.getAttribute('src')) return;
+      }
+      detail = { slotCfg, path, token: ++detailToken, returnFocus: keyboard ? slotEl : null };
+
+      if (video) {
+        // Move the playing element itself: it keeps its place and its decoder (a second
+        // <video> of the same file would need another hardware decoder)
+        detail.video = video;
+        detail.placeholder = document.createComment('detail');
+        video.replaceWith(detail.placeholder);
+        media.appendChild(video);
+        video.style.objectFit = 'contain';
+        playVideo(video, slotCfg).catch(() => {});
+      } else {
+        const img = document.createElement('img');
+        img.alt = '';
+        img.addEventListener('load', fitDetailMedia);
+        img.src = imageUrl(path);  // already cached: the slot shows it
+        media.appendChild(img);
+      }
+      renderDetailPanel(slotCfg, path);
+      root.hidden = false;
+      fitDetailMedia();
+      root.querySelector('.detail-close').focus({ preventScroll: true });
+      bumpDetailIdle();
+    }
+
+    function closeDetail() {
+      if (!detail) return;
+      const { slotCfg, video, placeholder, returnFocus } = detail;
+      detail = null;
+      clearTimeout(detailIdleTimer);
+      const root = document.getElementById('detail');
+      root.hidden = true;
+      if (video) {
+        if (placeholder.parentNode) placeholder.replaceWith(video);
+        video.style.width = video.style.height = '';
+        const slotEl = document.getElementById(`slot-${slotCfg.id}`);
+        if (slotEl) applyFit(slotEl, slotCfg);
+        if (video.getAttribute('src') && videoEls(slotCfg)?.current === video) {
+          playVideo(video, slotCfg).catch(() => {});
+          armWatchdog(slotCfg, video);
+        }
+      }
+      root.querySelector('.detail-media').innerHTML = '';
+      root.querySelector('.detail-panel dl').innerHTML = '';
+      if (returnFocus?.isConnected) {
+        returnFocus.focus({ preventScroll: true });
+        armFocusIdle();
+      } else if (root.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
+    }
+
+    function bumpDetailIdle() {
+      clearTimeout(detailIdleTimer);
+      detailIdleTimer = setTimeout(closeDetail, DETAIL_IDLE_MS);
+    }
+
+    // The arrow-key ring goes away after the same idle time, so it doesn't sit on a TV forever
+    function armFocusIdle() {
+      clearTimeout(focusIdleTimer);
+      focusIdleTimer = setTimeout(() => {
+        const el = document.activeElement;
+        if (!detail && el?.matches?.('#collage .slot')) el.blur();
+      }, DETAIL_IDLE_MS);
+    }
+
+    // Every field the file has, whatever the pill settings (show_metadata, show_*): the slot's
+    // last metadata reply if it is for this file, else a fetch
+    async function renderDetailPanel(slotCfg, path) {
+      const root = document.getElementById('detail');
+      const list = root.querySelector('.detail-panel dl');
+      const note = root.querySelector('.detail-note');
+      root.querySelector('.detail-file').textContent = path.split(/[\\/]/).pop();
+      list.innerHTML = '';
+      note.textContent = '';
+      const token = detail.token;
+      const cached = slotState[slotCfg.id]?.meta;
+      let data = cached?.path === path ? cached.data : null;
+      if (!data) {
+        note.textContent = 'Loading details…';
+        try {
+          data = await fetchJSON(`${API}/api/metadata?path=${encodeURIComponent(path)}`);
+        } catch (e) {
+          data = {};  // just the file name
+        }
+        if (detail?.token !== token) return;  // closed or reopened meanwhile
+        note.textContent = '';
+      }
+      for (const { key, label, text } of metadataEntries(data)) {
+        const row = document.createElement('div');
+        row.dataset.field = key;
+        const dt = document.createElement('dt');
+        dt.textContent = label;
+        const dd = document.createElement('dd');
+        dd.textContent = text;
+        row.append(dt, dd);
+        list.appendChild(row);
+      }
+      fitDetailMedia();  // the panel's size changed (under the photo on a portrait screen)
+    }
+
+    // The largest size with the media's shape that fits 85% of the screen beside (or, portrait,
+    // above) the panel, upscaling small photos. The card hugs it, so a click next to the photo
+    // is outside.
+    function fitDetailMedia() {
+      const root = document.getElementById('detail');
+      const m = detail && root.querySelector('.detail-media > img, .detail-media > video');
+      if (!m) return;
+      const w = m.naturalWidth || m.videoWidth, h = m.naturalHeight || m.videoHeight;
+      if (!w || !h) return;
+      const card = root.querySelector('.detail-card'), panel = root.querySelector('.detail-panel');
+      const cs = getComputedStyle(card);
+      const gap = parseFloat(cs.columnGap) || 0;
+      const maxW = window.innerWidth * 0.85, maxH = window.innerHeight * 0.85;
+      const column = cs.flexDirection === 'column';
+      const availW = column ? maxW : maxW - panel.offsetWidth - gap;
+      const availH = column ? maxH - panel.offsetHeight - gap : maxH;
+      const s = Math.max(0, Math.min(availW / w, availH / h));
+      m.style.width = `${Math.floor(w * s)}px`;
+      m.style.height = `${Math.floor(h * s)}px`;
+    }
+
+    const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    const BACK_KEYS = new Set(['Escape', 'Backspace', 'GoBack', 'BrowserBack']);
+    const BACK_KEY_CODES = new Set([461, 10009]);  // the Back button on webOS and Tizen remotes
+
+    // Focus the nearest slot in the arrow's direction (off-axis distance counts double); with
+    // none focused, the top-left one
+    function moveSlotFocus([dx, dy]) {
+      const slots = activeSlots.map(s => document.getElementById(`slot-${s.id}`)).filter(Boolean);
+      const rect = el => el.getBoundingClientRect();
+      const centre = el => { const r = rect(el); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+      const from = slots.includes(document.activeElement) ? document.activeElement : null;
+      let best = null;
+      if (!from) {
+        let bestScore = Infinity;
+        for (const el of slots) {
+          const r = rect(el);
+          if (r.left + r.top < bestScore) { bestScore = r.left + r.top; best = el; }
+        }
+      } else {
+        const c = centre(from);
+        let bestScore = Infinity;
+        for (const el of slots) {
+          if (el === from) continue;
+          const p = centre(el);
+          const along = (p.x - c.x) * dx + (p.y - c.y) * dy;
+          if (along < 1) continue;
+          const across = Math.abs((p.x - c.x) * dy + (p.y - c.y) * dx);
+          if (along + 2 * across < bestScore) { bestScore = along + 2 * across; best = el; }
+        }
+      }
+      best?.focus({ preventScroll: true });
+    }
+
+    document.addEventListener('keydown', e => {
+      if (!detailsEnabled()) return;
+      if (detail) {
+        bumpDetailIdle();
+        if (BACK_KEYS.has(e.key) || BACK_KEY_CODES.has(e.keyCode)) {
+          e.preventDefault();  // Backspace / Back must not leave the page
+          closeDetail();
+        } else if (e.key === 'Tab') {
+          e.preventDefault();  // the close button is the only control
+          document.querySelector('#detail .detail-close').focus();
+        }
+        return;  // Enter on the close button clicks it
+      }
+      const dir = ARROWS[e.key];
+      if (dir) {
+        e.preventDefault();
+        moveSlotFocus(dir);
+        armFocusIdle();
+      } else if ((e.key === 'Enter' || e.key === ' ') && document.activeElement?.matches?.('#collage .slot')) {
+        e.preventDefault();
+        openDetail(slotCfgOf(document.activeElement), { keyboard: true });
+      }
+    });
+
+    for (const type of ['pointermove', 'pointerdown', 'wheel']) {
+      document.addEventListener(type, () => { if (detail) bumpDetailIdle(); }, { passive: true });
+    }
+
+    // Only the photo itself opens it: a gallery opening's cell also covers the mat around its
+    // shape, and clip-path keeps clicks outside the shape off .mat-frame
+    document.getElementById('collage').addEventListener('click', e => {
+      const slotEl = e.target.closest('.mat-frame')?.closest('.slot');
+      if (slotEl && detailsEnabled()) openDetail(slotCfgOf(slotEl));
+    });
+
+    document.getElementById('detail').addEventListener('click', e => {
+      if (e.target.closest('.detail-close') || !e.target.closest('.detail-media > *, .detail-panel')) closeDetail();
+    });
+
     // Config polling — apply changes live when config.json is updated by the editor
     let configHash = '';
     async function checkConfigUpdate() {
@@ -987,6 +1540,11 @@
         // A different layout on screen requires a DOM rebuild — reload is the simplest correct path.
         // Compare the effective layout, so a rotation edit that keeps today's pick doesn't reload.
         if (PicMeRotation.resolveLayout(fresh, layouts)?.id !== activeLayoutId) {
+          window.location.reload();
+          return;
+        }
+        // So does switching the layout between separate frames and a gallery mat
+        if (window.PicMeGallery && PicMeGallery.effectiveMode(fresh, activeLayout) !== activeMode) {
           window.location.reload();
           return;
         }
@@ -1026,8 +1584,9 @@
         const oldSlots = config.slots || [];
         Object.assign(config, fresh);
         config.slots = oldSlots;
-        // checkRotation() reads these, so a removed key must not linger
-        for (const key of ['layout_rotation', 'daily_layout_rotation']) {
+        // checkRotation() and the gallery read these, so a removed key must not linger
+        for (const key of ['layout_rotation', 'daily_layout_rotation', 'gallery', 'layout_modes', 'label_position', 'label_style',
+                           'fill_mode', 'tap_for_details']) {
           if (!(key in fresh)) delete config[key];
         }
         // Replace each slot's settings, so a key the editor dropped (e.g. after swapping two
@@ -1041,6 +1600,7 @@
 
         // Re-apply wall color + frame (TOD template re-evaluated after config patch)
         applyTodStyles();
+        applyDetailsSetting();
 
         activeSlots.forEach((slotCfg, i) => {
           if (slotCfg.mode === 'video') applyVideoAudio(slotCfg);
@@ -1073,11 +1633,12 @@
           // Find all on-screen photo slots in this group
           const groupSlots = activeSlots.filter(s => s.group === group && s.mode !== 'video');
           groupTimers[group] = setInterval(() => {
-            groupSlots.forEach(s => loadNextImage(s));
+            // Paused while one of them is open in the detail view (or a video in the group is)
+            if (!groupSlots.some(isHeld)) groupSlots.forEach(s => loadNextImage(s));
           }, seconds * 1000);
         }
       } else {
-        setInterval(() => loadNextImage(slotCfg), seconds * 1000);
+        setInterval(() => { if (!isHeld(slotCfg)) loadNextImage(slotCfg); }, seconds * 1000);
       }
     }
 
@@ -1134,6 +1695,8 @@
       const layout = PicMeRotation.resolveLayout(config, layouts);
       if (!layout) { showError('No layouts found.'); return; }
       activeLayoutId = layout.id;
+      activeLayout = layout;
+      activeMode = window.PicMeGallery ? PicMeGallery.effectiveMode(config, layout) : 'slots';
 
       // Pad config.slots up to the layout's slot count using slot 1's config as a template
       const slotTemplate = config.slots[0] || { mode: 'photos', source: 'local', source_path: 'photos', cycle_seconds: 30 };
@@ -1145,6 +1708,7 @@
 
       // Apply wall color and frame styles (respects TOD template if enabled)
       applyTodStyles();
+      applyDetailsSetting();
 
       // Initialize state and load first image/video for each slot
       for (const slotCfg of activeSlots) {
@@ -1174,12 +1738,22 @@
       }, 30000);
     }
 
-    // Decorative frame widths and pill sizes depend on slot size, so re-fit them after a resize
+    // Decorative frame widths, gallery openings and pill sizes depend on size, so re-fit them after a resize
     let resizeTimer = null;
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => { if (config) applyTodStyles(); }, 150);
+      resizeTimer = setTimeout(() => { if (config) applyTodStyles(); fitDetailMedia(); }, 150);
     });
+
+    // A label style's serif arrives after its first fit (font-display: swap): fit again with it
+    if (document.fonts) {
+      document.fonts.addEventListener('loadingdone', () => {
+        for (const s of activeSlots) {
+          const el = document.getElementById(`slot-${s.id}`);
+          if (el?.querySelector('.slot-overlay')?._label) placeLabel(el);
+        }
+      });
+    }
 
     init();
   </script>

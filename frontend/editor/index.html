@@ -49,12 +49,14 @@
       gap: 0;
     }
 
+    /* Preview, a draggable divider, then the slot settings (which scroll). --preview-h is set by
+       the divider (editor-split): the preview keeps the display's 16:9, scaled to fit. */
     #main {
-      padding: 24px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
+      padding: 24px 24px 16px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: var(--preview-h, 60%) 16px minmax(0, 1fr);
+      min-height: 0;
     }
 
     #footer {
@@ -81,6 +83,34 @@
       color: var(--text-muted);
       margin-bottom: 12px;
     }
+
+    /* Click a section's title to fold it (editor-sections); remembered per browser */
+    .section-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: none;
+      padding: 0;
+      font: inherit;
+      color: inherit;
+      letter-spacing: inherit;
+      text-transform: inherit;
+      cursor: pointer;
+    }
+    .section-toggle:hover, .section-toggle:focus-visible { color: var(--text); }
+    .section-toggle::before {
+      content: '';
+      width: 5px;
+      height: 5px;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: rotate(45deg) translate(-1px, -1px);
+      transition: transform 0.15s;
+    }
+    .sidebar-section.collapsed .section-toggle::before { transform: rotate(-45deg); }
+    .sidebar-section.collapsed h3, .sidebar-section.collapsed .sidebar-header-row { margin-bottom: 0; }
+    .section-body[hidden] { display: none !important; }
 
     /* ── Layout picker ── */
     #layout-picker {
@@ -122,19 +152,71 @@
 
     .layout-thumb.active span { color: var(--accent); }
 
-    /* Daily rotation: eligibility checkbox and "Today" badge on each layout thumbnail */
+    /* Daily rotation: a small eligibility checkbox in each thumbnail's bottom-right corner (the
+       Gallery and Today badges hold the top corners), and the "Today" badge */
     .layout-thumb { position: relative; }
-    .layout-thumb .rotation-pick-row {
+    .layout-thumb .thumb-frame { position: relative; margin-bottom: 4px; }
+    .layout-thumb .thumb-frame .thumb-grid { margin-bottom: 0; }
+    .layout-thumb .rotation-pick-corner {
+      position: absolute;
+      right: 1px;
+      bottom: 1px;
+      z-index: 1;
+      /* 24x24 click target around the small visible box */
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 4px;
-      margin-top: 4px;
-      font-size: 11px;
+      width: 24px;
+      height: 24px;
+      line-height: 0;
+      cursor: pointer;
+      opacity: 0.55;
+      transition: opacity 0.15s;
+    }
+    .layout-thumb .rotation-pick-corner::before {
+      content: '';
+      position: absolute;
+      inset: 3px;
+      border-radius: 3px;
+      background: rgba(0, 0, 0, 0.45);
+    }
+    .layout-thumb .rotation-pick-corner.checked,
+    .layout-thumb .rotation-pick-corner:hover,
+    .layout-thumb .rotation-pick-corner:focus-within { opacity: 1; }
+    .layout-thumb .rotation-pick {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      position: relative;
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+    .layout-thumb .layout-mode-row { margin-top: 2px; }
+    .layout-thumb .thumb-grid.thumb-gallery { display: block; position: relative; overflow: hidden; }
+    .layout-thumb .gallery-badge {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      font-size: 9px;
+      font-weight: 600;
+      color: #fff;
+      background: #8a6d3b;
+      border-radius: 3px;
+      padding: 1px 4px;
+    }
+    .layout-thumb.active .gallery-badge { color: #fff; }
+    .layout-thumb .layout-mode-chip {
+      margin: 0;
+      padding: 0 5px;
+      font-size: 10px;
+      line-height: 16px;
       color: var(--text-muted);
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
       cursor: pointer;
     }
-    .layout-thumb .rotation-pick { accent-color: var(--accent); }
+    .layout-thumb .layout-mode-chip[aria-pressed="true"] { color: #fff; background: #8a6d3b; border-color: #8a6d3b; }
     .layout-thumb .today-badge {
       position: absolute;
       top: 4px;
@@ -147,6 +229,25 @@
       padding: 1px 4px;
     }
     #rotation-options[hidden] { display: none; }
+    /* Section title with small text links on the right (Layout: Select all / Deselect all) */
+    .sidebar-header-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+    .sidebar-header-row h3 { margin-bottom: 0; }
+    #rotation-bulk { display: flex; align-items: baseline; gap: 4px; font-size: 11px; line-height: inherit; color: var(--text-muted); }
+    #rotation-bulk[hidden] { display: none; }
+    .link-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      font: inherit;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .link-btn:hover:not(:disabled), .link-btn:focus-visible { color: var(--accent); text-decoration: underline; }
+    .link-btn:disabled { opacity: 0.45; cursor: default; }
+    /* Why a control is disabled: it changes nothing on the layouts the display can show */
+    .scope-hint { font-size: 11px; color: var(--text-muted); margin: -6px 0 10px; line-height: 1.4; }
+    .scope-hint[hidden] { display: none; }
+    .field-hint { font-size: 11px; color: var(--text-muted); margin: 2px 0 4px; line-height: 1.4; }
     #rotation-status { font-size: 12px; color: var(--text); line-height: 1.4; margin-top: 8px; }
     #rotation-slot-hint { font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.5; }
     #rotation-slot-hint .btn { padding: 2px 8px; font-size: 11px; margin: 0 4px 0 0; }
@@ -250,7 +351,33 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 16px;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
+    /* The box the preview fits in: as wide as the area, as tall as the divider allows */
+    #preview-fit { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: flex-start; }
+
+    /* ── Divider between the preview and the slot settings: drag, arrow keys, double-click resets ── */
+    #pane-divider {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: row-resize;
+      touch-action: none;
+      outline: none;
+    }
+    #pane-divider::before {
+      content: '';
+      width: 48px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--border);
+      transition: background 0.15s, width 0.15s;
+    }
+    #pane-divider:hover::before, #pane-divider.dragging::before, #pane-divider:focus-visible::before { background: var(--accent); width: 72px; }
+    body.pane-resizing, body.pane-resizing * { cursor: row-resize !important; user-select: none; }
 
     #preview-area h2 {
       font-size: 13px;
@@ -261,7 +388,9 @@
 
     #collage-preview {
       width: 100%;
+      flex-shrink: 0;
       aspect-ratio: 16/9;
+      min-height: 0;
       display: grid;
       gap: 4px;
       background: #1a1a1a;
@@ -283,6 +412,13 @@
     }
 
     .preview-slot:hover { border-color: var(--accent); background: #2a3a4a; }
+    /* Under the slot number: the opening's aspect ratio and Fit / Fill ("3:2 · Fill") */
+    /* Plain text in the slot number's colour, font and weight, just smaller */
+    .slot-tags { font-size: 0.6em; font-family: inherit; font-weight: inherit; color: inherit; line-height: 1.2; margin-top: 0.15em;
+                 position: relative; z-index: 1; text-align: center; white-space: nowrap; max-width: calc(100% - 4px); overflow: hidden; }
+    .preview-slot .slot-tags { font-size: clamp(9px, 0.95vw, 12px); }
+    .slot-tags[hidden] { display: none; }
+    .gallery-stage .slot-tags { font-size: 32px; margin: 0; font-weight: 600; color: var(--text-muted); max-width: none; }
     .preview-slot.selected { border-color: var(--slot-selected); background: #1e3a5a; color: var(--accent); }
 
     /* Drag a slot onto another to swap them (slot-drag.js); a long press starts it on touch */
@@ -292,12 +428,25 @@
     .drag-ghost { z-index: 2000; opacity: 0.85; box-shadow: 0 8px 24px rgba(0,0,0,0.6); }
     body.drag-active, body.drag-active * { cursor: grabbing !important; }
 
+    /* Gallery mat: the display's renderer (/display/gallery.js) on a 1920x1080 stage, scaled to fit */
+    #collage-preview.gallery-preview { display: block; position: relative; overflow: hidden; padding: 0; }
+    .gallery-stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+    .gallery-stage .opening { cursor: pointer; }
+    .gallery-stage .opening.drag-source { opacity: 0.4; }
+    .gallery-stage .drop-target { outline-width: 6px; outline-offset: -6px; }
+    .gallery-stage .slot-overlay { position: absolute; display: flex; flex-direction: column; align-items: flex-start; overflow: hidden; pointer-events: none; }
+    .gallery-stage .slot-overlay.caption { flex-direction: row; align-items: center; }
+    .gallery-stage .opening-mark { position: absolute; pointer-events: none; z-index: 11; }
+    .opening-ghost { background: var(--surface2); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; color: var(--text-muted); }
+
     /* ── Slot config panel ── */
     #slot-panel {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 16px;
+      min-height: 0;
+      overflow-y: auto;
     }
 
     #slot-panel h2 {
@@ -353,13 +502,6 @@
     .adopt-row > span {
       font-size: 10px;
       color: var(--text-muted);
-    }
-
-    /* Grayed-out section content when "Use global" is on */
-    .section-disabled {
-      opacity: 0.4;
-      pointer-events: none;
-      user-select: none;
     }
 
     /* Small colored dot next to a field label indicating it overrides the global */
@@ -464,6 +606,12 @@
     .btn-danger-solid { background: #c0392b; color: white; }
     .btn-danger-solid:hover { background: #a93226; }
 
+    /* Reset: the last sidebar section, a quiet danger zone (red title, full-width buttons) */
+    .sidebar-section.danger-zone { border-top: 1px solid rgba(192,57,43,0.3); border-bottom: none; }
+    .danger-zone h3, .danger-zone .section-toggle { color: #e74c3c; }
+    .danger-zone .btn-danger { width: 100%; padding: 7px 12px; }
+    .danger-zone .field-hint { margin-bottom: 12px; }
+
     /* ── Modal ── */
     .folder-item {
       padding: 8px 12px;
@@ -546,12 +694,66 @@
       accent-color: var(--accent);
     }
 
+    .profile-block { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .frame-gallery-block { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+    .profile-row { display: flex; gap: 6px; }
+    .profile-row .btn { flex: 1; padding: 7px 6px; font-size: 12px; }
+    .btn:disabled { opacity: 0.45; cursor: default; }
+    #undo-row .link-btn, .tod-note .link-btn { color: var(--accent); }
+    /* After a reset from the bottom of the sidebar, the Undo row is brought into view and flashed */
+    #undo-row.flash { animation: undo-flash 1.8s ease-out; border-radius: 4px; }
+    @keyframes undo-flash { 0%, 35% { background: rgba(74, 144, 226, 0.28); } 100% { background: transparent; } }
+    @media (prefers-reduced-motion: reduce) { #undo-row.flash { animation: none; } }
+    .tod-note { margin-top: 6px; }
+    .modal-note .warn { color: #e0a030; }
+
     .modal-btn-row {
       display: flex;
       gap: 8px;
       justify-content: flex-end;
     }
+
+    /* Label style picker (README → Metadata label styles): each option is a live mini preview,
+       drawn by the display's renderer (/display/label-styles.js) */
+    .label-style-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .field .label-style-option { position: relative; display: block; margin: 0; cursor: pointer; border: 2px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; background: var(--surface2); }
+    .label-style-option:hover { border-color: var(--text-muted); }
+    .label-style-option.selected { border-color: var(--accent); }
+    .label-style-option input { position: absolute; opacity: 0; pointer-events: none; }
+    .label-style-option:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .label-style-swatch { position: relative; height: 78px; overflow: hidden; }
+    .label-style-swatch .swatch-photo { position: absolute; overflow: hidden;
+      background: linear-gradient(180deg, #4b6a9a 0%, #e59a6a 58%, #5a3d4a 60%, #2c2230 100%); }
+    .label-style-swatch .swatch-pill { position: absolute; left: 6px; bottom: 6px; padding: 1px 6px; border-radius: 999px;
+      background: rgba(20, 20, 20, 0.62); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18); color: #fff;
+      font-size: 10px; line-height: 1.25; white-space: nowrap; }
+    .label-style-name { display: block; padding: 4px 6px; font-size: 12px; color: var(--text); }
+    .label-style-note { font-size: 12px; color: var(--text-muted); margin: 6px 0 0; }
+    .label-style-note:empty { display: none; }
+
+    /* A control that changes nothing right now (setInactive): greyed, disabled, not-allowed cursor,
+       no hover, with its reason. The reason line and a time-of-day note stay readable and usable. */
+    .field-inactive > :not(.tod-note):not(.inactive-reason) { opacity: 0.45; }
+    :is(input, select).field-inactive { opacity: 0.45; }
+    .field-inactive .field-inactive > :not(.tod-note):not(.inactive-reason),
+    .field-inactive :is(input, select).field-inactive { opacity: 1; }  /* not twice */
+    .field-inactive, .field-inactive :not(.tod-note):not(.tod-note *):not(.inactive-reason) { cursor: not-allowed !important; }
+    .field-inactive .toggle-track { pointer-events: none; }
+    .field-inactive.toggle-row > label:first-child, .field-inactive .toggle-row > label:first-child { color: var(--text-muted); }
+    .field-inactive .label-style-option:hover { border-color: var(--border); }
+    .field-inactive .label-style-option.selected:hover { border-color: var(--accent); }
+    .layout-thumb .rotation-pick-corner.field-inactive,
+    .layout-thumb .rotation-pick-corner.field-inactive:hover { opacity: 0.3; }
+    .layout-thumb .rotation-pick-corner.field-inactive > * { opacity: 1; }
+    .inactive-reason { font-size: 11px; color: var(--text-muted); margin: -6px 0 10px; line-height: 1.4; }
+    .inactive-reason.at-start { margin: 0 0 10px; }
+    .inactive-reason[hidden] { display: none; }
+    /* Any other disabled control in a form still reads as disabled */
+    :is(.field, .toggle-row) :is(input, select):disabled:not(.field-inactive *) { opacity: 0.45; cursor: not-allowed; }
+    .toggle input:disabled:not(.field-inactive *) + .toggle-track { opacity: 0.45; cursor: not-allowed; }
   </style>
+  <link rel="stylesheet" href="/display/label-styles.css" />
 </head>
 <body>
 <div id="app" class="mode-basic">
@@ -567,29 +769,16 @@
       <p id="advanced-hint" hidden><span id="advanced-hint-text"></span> · <button type="button" id="advanced-hint-show">Show</button></p>
     </div>
 
-    <div class="sidebar-section">
-      <h3>Layout</h3>
-      <div id="layout-picker" data-setting="layout.picker"></div>
-
-      <div class="toggle-row" style="margin-top:10px" data-setting="rotation.enabled">
-        <label>Rotate layout daily</label>
-        <label class="toggle">
-          <input type="checkbox" id="g-rotation-enabled" />
-          <span class="toggle-track"></span>
-        </label>
-      </div>
-      <div id="rotation-options">
-        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 10px;" data-setting="rotation.layouts">Tick the layouts to rotate through. The display shows one each day; clicking a layout still sets the base layout used when rotation is off.</p>
-        <div class="field" data-setting="rotation.change_at">
-          <label>Switch layout at</label>
-          <input type="time" id="g-rotation-change-at" />
-        </div>
-        <p id="rotation-status" data-setting="rotation.status"></p>
-      </div>
-    </div>
-
-    <div class="sidebar-section">
+    <div class="sidebar-section" data-section="global">
       <h3>Global Settings</h3>
+      <div class="profile-block" data-setting="settings.profile">
+        <div class="profile-row">
+          <button type="button" class="btn btn-secondary" id="preset-save">Save as my preset</button>
+          <button type="button" class="btn btn-secondary" id="preset-apply" disabled>Apply my preset</button>
+        </div>
+        <p class="field-hint" id="preset-status">No preset saved yet.</p>
+        <p class="field-hint" id="undo-row" hidden><span id="undo-text"></span> · <button type="button" class="link-btn" id="undo-btn">Undo</button></p>
+      </div>
 
       <div class="field" data-setting="global.source_path">
         <label>Default media folder</label>
@@ -612,36 +801,76 @@
         <input type="color" id="g-wall-color" />
       </div>
 
-      <button class="btn btn-danger" style="width:100%;margin-top:14px;padding:7px 12px;" onclick="openResetAllModal()" data-setting="slots.reset_all">
-        Reset all slots to global
-      </button>
-    </div>
-
-    <div class="sidebar-section" data-setting="videos">
-      <h3>Videos</h3>
-
-      <div class="field">
-        <label>Max video size</label>
-        <select id="g-video-max-edge">
-          <option value="1280">720p</option>
-          <option value="1920">1080p (recommended)</option>
-          <option value="3840">4K</option>
-          <option value="0">Original</option>
-        </select>
-      </div>
-
-      <div class="toggle-row">
-        <label>Include Live Photo clips</label>
+      <div class="toggle-row" data-setting="global.fill_mode">
+        <label for="g-fill-mode">Fill frames (crop, no black bars)</label>
         <label class="toggle">
-          <input type="checkbox" id="g-include-live-photos" />
+          <input type="checkbox" id="g-fill-mode" />
           <span class="toggle-track"></span>
         </label>
       </div>
-      <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;">iPhone (HEVC) videos are converted to H.264 in the background so every browser can play them. Larger clips are scaled down to the max size. Live Photo clips are the 2–3 second videos saved alongside Live Photos.</p>
+      <p class="field-hint" data-setting="global.fill_mode">Off: whole photos and videos, with bars where their shape differs from the frame. A slot can choose its own (Advanced).</p>
+
+      <div class="toggle-row" data-setting="global.tap_for_details">
+        <label for="g-tap-details">Tap a photo for details</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-tap-details" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <p class="field-hint" data-setting="global.tap_for_details">Click, tap or press Enter on a photo on the display to see it larger with its date, place and camera details. Turn off for kiosk screens.</p>
+
+      <div id="g-tod" data-setting="time_of_day">
+        <div class="toggle-row">
+          <label for="tod-enabled">Time-of-day colors</label>
+          <label class="toggle">
+            <input type="checkbox" id="tod-enabled" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <p class="field-hint" style="margin:0 0 10px;">Automatically shift wall and frame colors between day and night.</p>
+        <button type="button" class="btn btn-secondary" style="width:100%;" id="tod-configure-btn">Configure day / night colors…</button>
+      </div>
     </div>
 
-    <div class="sidebar-section">
-      <h3>Default Frame</h3>
+    <div class="sidebar-section" data-section="layout">
+      <div class="sidebar-header-row">
+        <h3>Layout</h3>
+        <span id="rotation-bulk" data-setting="rotation.bulk" hidden>
+          <button type="button" class="link-btn" id="rotation-select-all">Select all</button>
+          <span aria-hidden="true">·</span>
+          <button type="button" class="link-btn" id="rotation-deselect-all">Deselect all</button>
+        </span>
+      </div>
+      <div id="layout-picker" data-setting="layout.picker"></div>
+
+      <div class="field" style="margin-top:10px" data-setting="layout.mode">
+        <label>Frames</label>
+        <div class="mode-switch" id="layout-mode" role="group" aria-label="Frames for this layout">
+          <button type="button" data-mode="slots" aria-pressed="true">Separate</button>
+          <button type="button" data-mode="gallery" aria-pressed="false">Gallery mat</button>
+        </div>
+      </div>
+
+      <div class="toggle-row" style="margin-top:10px" data-setting="rotation.enabled">
+        <label>Rotate layout daily</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-rotation-enabled" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <div id="rotation-options">
+        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 10px;" data-setting="rotation.layouts">Tick the box in a layout's corner to rotate through it. The display shows one each day; clicking a layout still sets the base layout used when rotation is off.</p>
+        <div class="field" data-setting="rotation.change_at">
+          <label>Switch layout at</label>
+          <input type="time" id="g-rotation-change-at" />
+        </div>
+        <p id="rotation-status" data-setting="rotation.status"></p>
+      </div>
+    </div>
+
+    <div class="sidebar-section" data-section="frame">
+      <h3>Frame</h3>
+      <p id="frame-gallery-hint" class="scope-hint" style="margin-top:-6px" data-setting="frame.frame_style" hidden>Also the outer frame of gallery-mat layouts.</p>
 
       <div class="field" data-setting="frame.mat_color">
         <label>Mat color</label>
@@ -669,29 +898,85 @@
       <div class="field" data-setting="frame.frame_color">
         <label>Frame color</label>
         <input type="color" id="g-frame-color" />
-        <p id="g-frame-color-hint" style="display:none;font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.4;">Color applies to solid frames only.</p>
       </div>
 
       <div class="field" data-setting="frame.frame_width">
         <label>Frame width (px)</label>
         <input type="number" id="g-frame-width" min="0" max="80" />
       </div>
-    </div>
 
-    <div class="sidebar-section" data-setting="time_of_day">
-      <h3>Time-of-Day</h3>
-      <div class="toggle-row" style="margin-bottom:10px;">
-        <label>Enabled</label>
-        <label class="toggle">
-          <input type="checkbox" id="tod-enabled" />
-          <span class="toggle-track"></span>
-        </label>
+      <div id="frame-gallery-own" class="frame-gallery-block">
+        <div class="toggle-row" style="margin-bottom:8px" data-setting="gallery.frame_override">
+          <label for="g-gal-frame-override">Different gallery mat frame</label>
+          <label class="toggle">
+            <input type="checkbox" id="g-gal-frame-override" aria-controls="g-gal-own-frame" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <div id="g-gal-own-frame" hidden>
+          <div class="field" data-setting="gallery.frame_style">
+            <label>Gallery frame style</label>
+            <select id="g-gal-frame-style"></select>
+          </div>
+          <div class="toggle-row" style="margin-bottom:8px" data-setting="gallery.show_frame">
+            <label>Show gallery frame</label>
+            <label class="toggle">
+              <input type="checkbox" id="g-gal-show-frame" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="field" data-setting="gallery.frame_color">
+            <label>Gallery frame color</label>
+            <input type="color" id="g-gal-frame-color" />
+          </div>
+        </div>
       </div>
-      <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Automatically shift wall and frame colors between day and night.</p>
-      <button class="btn btn-secondary" style="width:100%;" id="tod-configure-btn">Configure templates…</button>
     </div>
 
-    <div class="sidebar-section">
+    <div class="sidebar-section" id="gallery-section" data-section="gallery">
+      <h3>Gallery Mat</h3>
+      <div id="gallery-fields">
+        <p id="gallery-off-hint" class="inactive-reason at-start" hidden></p>
+        <div class="field" data-setting="gallery.mat_color">
+          <label>Mat color</label>
+          <input type="color" id="g-gal-mat-color" />
+        </div>
+        <div class="field" data-setting="gallery.frame_width">
+          <label>Outer frame width (px)</label>
+          <input type="number" id="g-gal-frame-width" data-key="frame_width" />
+        </div>
+        <div class="field" data-setting="gallery.margin">
+          <label>Mat around the openings (px)</label>
+          <input type="number" id="g-gal-margin" data-key="outer_margin" />
+        </div>
+        <div class="field" data-setting="gallery.gutter">
+          <label>Mat between openings (px)</label>
+          <input type="number" id="g-gal-gutter" data-key="gutter" />
+        </div>
+        <div class="field" data-setting="gallery.wall_margin">
+          <label>Wall around the frame (px)</label>
+          <input type="number" id="g-gal-wall-margin" data-key="wall_margin" />
+        </div>
+        <div class="toggle-row" data-setting="gallery.bevel">
+          <label>Bevelled openings</label>
+          <label class="toggle">
+            <input type="checkbox" id="g-gal-bevel" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <div class="field" style="margin-top:8px" data-setting="gallery.bevel">
+          <label>Bevel width (px)</label>
+          <input type="number" id="g-gal-bevel-width" data-key="bevel_width" />
+        </div>
+        <div class="field" data-setting="gallery.bevel">
+          <label>Bevel color</label>
+          <input type="color" id="g-gal-bevel-color" />
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;line-height:1.4;" id="gallery-help" data-setting="gallery.mat_color">The frame's style and colour come from the Frame section. Sizes are px on a 1920×1080 screen. Time-of-day periods can change the mat and frame colours (Same as default keeps these); widths stay as set here.</p>
+      </div>
+    </div>
+
+    <div class="sidebar-section" data-section="metadata">
       <h3>Default Metadata</h3>
       <div class="toggle-row" data-setting="metadata.show">
         <label for="g-show-metadata">Show metadata</label>
@@ -702,6 +987,11 @@
       </div>
       <div id="g-meta-body" class="collapsible open">
         <div class="collapsible-inner">
+          <div class="field" data-setting="metadata.style">
+            <label id="g-label-style-label">Label style</label>
+            <div id="g-label-style" class="label-style-picker" role="radiogroup" aria-labelledby="g-label-style-label"></div>
+            <p id="g-label-style-note" class="label-style-note"></p>
+          </div>
           <div class="field" data-setting="metadata.sizes">
             <label>Text size</label>
             <select id="g-text-size"></select>
@@ -710,7 +1000,15 @@
             <label>Pill size</label>
             <select id="g-pill-size"></select>
           </div>
-          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;" data-setting="metadata.sizes">Sizes scale with each slot. Small slots hide lower-priority pills (never the date), and text too long for its pill scrolls.</p>
+          <div class="field" data-setting="metadata.position">
+            <label for="g-label-position">Label position</label>
+            <select id="g-label-position">
+              <option value="auto">Auto (on the mat for gallery layouts)</option>
+              <option value="photo">On the photo</option>
+              <option value="mat">On the mat</option>
+            </select>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;" data-setting="metadata.sizes">One size for every slot on screen, set by the smallest. On the mat, pills sit in a caption under each photo and never cover it. Lower-priority pills hide when there's no room (never the date), and text too long for its pill scrolls.</p>
           <div id="g-meta-toggles" data-setting="metadata.fields"></div>
           <div class="field" style="margin-top:12px" data-setting="metadata.date_format">
             <label>Date format</label>
@@ -729,6 +1027,37 @@
       </div>
     </div>
 
+    <div class="sidebar-section" data-section="videos" data-setting="videos">
+      <h3>Videos</h3>
+
+      <div class="field">
+        <label>Max video size</label>
+        <select id="g-video-max-edge">
+          <option value="1280">720p</option>
+          <option value="1920">1080p (recommended)</option>
+          <option value="3840">4K</option>
+          <option value="0">Original</option>
+        </select>
+      </div>
+
+      <div class="toggle-row">
+        <label>Include Live Photo clips</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-include-live-photos" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;">iPhone (HEVC) videos are converted to H.264 in the background so every browser can play them. Larger clips are scaled down to the max size. Live Photo clips are the 2–3 second videos saved alongside Live Photos.</p>
+    </div>
+
+    <div class="sidebar-section danger-zone" data-section="reset">
+      <h3>Reset</h3>
+      <button type="button" class="btn btn-danger" id="reset-defaults" data-setting="settings.reset_defaults">Reset everything to defaults…</button>
+      <p class="field-hint" id="reset-defaults-hint" data-setting="settings.reset_defaults">Folders and video settings are kept. Undo is at the top of Global Settings.</p>
+      <button type="button" class="btn btn-danger" id="reset-slots" onclick="openResetAllModal()" data-setting="slots.reset_all"
+              title="Clears each slot's own folder, frame, metadata and Fit / Fill only.">Reset slots to global settings</button>
+    </div>
+
   </aside>
 
   <!-- ── Main ── -->
@@ -736,9 +1065,12 @@
 
     <div id="preview-area">
       <h2>Layout Preview — click a slot to configure it<span data-setting="slots.rearrange">, drag to swap</span></h2>
-      <div id="collage-preview"></div>
+      <div id="preview-fit"><div id="collage-preview"></div></div>
       <div id="rotation-slot-hint" data-setting="rotation.slot_hint" hidden></div>
     </div>
+
+    <div id="pane-divider" role="separator" tabindex="0" aria-orientation="horizontal" aria-controls="preview-area"
+         aria-label="Resize the preview" title="Drag to resize the preview · double-click to reset"></div>
 
     <div id="slot-panel">
       <h2 id="slot-panel-title">Select a slot to configure it</h2>
@@ -760,7 +1092,12 @@
 </div>
 <script src="/display/layout-rotation.js"></script>
 <script src="/display/pill-size.js"></script>
+<script src="/display/label-styles.js"></script>
 <script src="/assets/frames/frames.js"></script>
+<script src="/display/shapes.js"></script>
+<script src="/display/gallery.js"></script>
+<script src="/display/time-of-day.js"></script>
+<script src="/display/aspect.js"></script>
 <script src="/editor/slot-drag.js"></script>
 <script>
   const API = '';
@@ -831,6 +1168,13 @@
     return { ...getGlobalMeta(), ...(slotCfg.metadata || {}) };
   }
 
+  // Fit ('contain') or Fill ('cover'): the slot's own choice, else the global one. A config from
+  // before the global setting has none, which means Fit (same rule as the display's applyFit).
+  function globalFill() { return config.fill_mode === 'cover' ? 'cover' : 'contain'; }
+  function effectiveFill(slotCfg) {
+    return slotCfg?.fill_mode === 'cover' || slotCfg?.fill_mode === 'contain' ? slotCfg.fill_mode : globalFill();
+  }
+
   function hasCustomSettings(slotCfg) {
     return slotCfg.use_global?.frame     === false ||
            slotCfg.use_global?.metadata  === false ||
@@ -885,17 +1229,24 @@
 
   const EDITOR_SETTINGS = {
     'layout.picker':      { tier: 'basic',    label: 'Layout' },
+    'layout.mode':        { tier: 'basic',    label: 'Frames: separate or gallery mat' },
     'rotation.enabled':   { tier: 'basic',    label: 'Rotate layout daily' },
     'rotation.status':    { tier: 'basic',    label: 'Rotation status' },
     'rotation.slot_hint': { tier: 'basic',    label: 'Slots shown on some days (Edit slot N, drop targets)' },
-    'rotation.layouts':   { tier: 'advanced', label: 'Layouts to rotate',
-                            active: () => rotationOn() && config.layout_rotation.layouts.length > 0 },
+    // The checkbox in each thumbnail's corner, and Select all / Deselect all on the Layout header
+    'rotation.layouts':   { tier: 'basic',    label: 'Layouts to rotate' },
+    'rotation.bulk':      { tier: 'basic',    label: 'Select / deselect all layouts' },
     'rotation.change_at': { tier: 'advanced', label: 'Switch layout at',
                             active: () => rotationOn() && (config.layout_rotation.change_at || '04:00') !== '04:00' },
+    // Frames per rotated layout: the chips on other layouts' thumbnails
+    'rotation.layout_modes': { tier: 'advanced', label: 'Frames per rotated layout',
+                            active: () => rotationOn() && eligibleIds().some(id => id !== config.layout && id in (config.layout_modes || {})) },
     'global.source_path': { tier: 'basic',    label: 'Default media folder' },
     'global.include_subfolders': { tier: 'advanced', label: 'Include subfolders',
                             active: () => config.include_subfolders === false },
     'global.wall_color':  { tier: 'basic',    label: 'Wall color' },
+    'global.fill_mode':   { tier: 'basic',    label: 'Fill frames' },
+    'global.tap_for_details': { tier: 'basic', label: 'Tap a photo for details' },
     'frame.mat_color':    { tier: 'basic',    label: 'Mat color' },
     'frame.frame_style':  { tier: 'basic',    label: 'Frame style' },
     'frame.mat_width':    { tier: 'advanced', label: 'Mat width',
@@ -905,12 +1256,32 @@
     'frame.frame_color':  { tier: 'advanced', label: 'Frame color',
                             active: () => !frameAsset(getGlobalFrame().frame_style) &&
                                           (getGlobalFrame().frame_color ?? '#2c2318').toLowerCase() !== '#2c2318' },
-    // Wood and gold bump the width to their own default, so compare against that
+    // Decorative styles bump the width to their own default, so compare against that
     'frame.frame_width':  { tier: 'advanced', label: 'Frame width',
                             active: () => (getGlobalFrame().frame_width ?? 8) !==
                                           (frameAsset(getGlobalFrame().frame_style)?.default_width ?? 8) },
+    'gallery.mat_color':  { tier: 'basic',    label: 'Gallery mat color' },
+    // The gallery's outer frame follows the Frame section unless it has its own (these four)
+    'gallery.frame_override': { tier: 'basic', label: 'Gallery: own frame' },
+    'gallery.frame_style': { tier: 'basic', label: 'Gallery frame style' },
+    'gallery.show_frame': { tier: 'basic', label: 'Gallery: show frame' },
+    'gallery.frame_color': { tier: 'basic', label: 'Gallery frame color' },
+    'gallery.frame_width': { tier: 'advanced', label: 'Gallery outer frame width',
+                            active: () => galleryCfg().frame_width !== GALLERY_DEFAULTS.frame_width },
+    'gallery.margin':     { tier: 'advanced', label: 'Gallery: mat around the openings',
+                            active: () => galleryCfg().outer_margin !== GALLERY_DEFAULTS.outer_margin },
+    'gallery.gutter':     { tier: 'advanced', label: 'Gallery: mat between openings',
+                            active: () => galleryCfg().gutter !== GALLERY_DEFAULTS.gutter },
+    'gallery.wall_margin': { tier: 'advanced', label: 'Gallery: wall around the frame',
+                            active: () => galleryCfg().wall_margin !== GALLERY_DEFAULTS.wall_margin },
+    'gallery.bevel':      { tier: 'advanced', label: 'Gallery bevel',
+                            active: () => { const g = galleryCfg();
+                              return g.bevel !== GALLERY_DEFAULTS.bevel || g.bevel_width !== GALLERY_DEFAULTS.bevel_width ||
+                                     g.bevel_color.toLowerCase() !== GALLERY_DEFAULTS.bevel_color; } },
     'metadata.show':      { tier: 'basic',    label: 'Show metadata' },
     'metadata.sizes':     { tier: 'basic',    label: 'Text and pill size' },
+    'metadata.style':     { tier: 'basic',    label: 'Label style' },
+    'metadata.position':  { tier: 'basic',    label: 'Label position' },
     'metadata.fields':    { tier: 'basic',    label: 'Metadata fields' },
     'metadata.date_format': { tier: 'advanced', label: 'Date format',
                             active: () => (config.date_format || 'long') !== 'long' },
@@ -919,9 +1290,13 @@
     'time_of_day':        { tier: 'advanced', label: 'Time-of-day colors',
                             active: () => config.time_of_day?.enabled === true },
     'videos':             { tier: 'advanced', label: 'Video settings',
-                            active: () => (config.video_max_edge ?? 1920) !== 1920 || config.include_live_photos === true },
-    'slots.reset_all':    { tier: 'advanced', label: 'Reset all slots' },
+                            active: () => (config.video_max_edge ?? 1920) !== 1920 || config.include_live_photos === false },
+    // Top of Global Settings: save / apply the preset, undo that or a reset (the resets are in Reset)
+    'settings.profile':   { tier: 'basic',    label: 'Preset and undo' },
+    'settings.reset_defaults': { tier: 'basic', label: 'Reset everything to defaults' },
+    'slots.reset_all':    { tier: 'advanced', label: 'Reset slots to global settings' },
     'slots.rearrange':    { tier: 'basic',    label: 'Drag slots to swap' },
+    'preview.tags':       { tier: 'basic',    label: 'Slot sizes and Fit / Fill in the preview' },
     'slot.source':        { tier: 'basic',    label: 'Media folder' },
     'slot.source_adopt':  { tier: 'advanced', label: 'Media folder: use global' },
     'slot.include_subfolders': { tier: 'advanced', label: 'Include subfolders',
@@ -936,8 +1311,10 @@
     'slot.cycle_seconds': { tier: 'basic',    label: 'Change every' },
     'slot.group':         { tier: 'advanced', label: 'Group',
                             slotActive: s => !!s.group },
-    'slot.fill_mode':     { tier: 'basic',    label: 'Fit / fill' },
-    'slot.opening_shape': { tier: 'basic',    label: 'Opening shape' },  // gallery mode (M4.5)
+    // A slot's own Fit / Fill, overriding the global "Fill frames"
+    'slot.fill_mode':     { tier: 'advanced', label: 'Fit / fill',
+                            slotActive: s => s.fill_mode != null && s.fill_mode !== globalFill() },
+    'slot.opening_shape': { tier: 'basic',    label: 'Opening shape' },  // gallery mat (shape stays with the position)
     'slot.frame':         { tier: 'advanced', label: 'Frame',
                             slotActive: s => s.use_global?.frame === false &&
                                              Object.keys(s.frame || {}).some(k => isFrameKeyOverridden(s, k)) },
@@ -998,6 +1375,7 @@
     if (!config) return;
     renderSlotPanel();  // the slot folder and metadata summary differ in Basic
     refreshAdvancedHint();
+    refreshTodNotes();  // in Basic the frame style's note covers the hidden frame colour
   }
 
   // Labels of the advanced settings config sets away from their defaults (every slot, dormant ones too)
@@ -1038,6 +1416,46 @@
     return { el, inner };
   }
 
+  // ── Settings that change nothing right now ──
+  // The one switch for a control, or a group of them, with no effect in the current state:
+  // .field-inactive greys it (CSS) and every control inside is disabled, so the look and the
+  // behaviour can't drift apart. `why` says why: a line after it, or with at: 'start' first inside
+  // it (after a section's heading), or at: 'title' a tooltip only. A falsy `why` brings it back.
+  // Groups nest: a control stays disabled while anything around it is inactive. Time-of-day notes
+  // inside stay usable.
+  const INACTIVE_CONTROLS = 'input, select, textarea, button';
+
+  function setInactive(el, why, { at = 'after' } = {}) {
+    if (!el) return;
+    const off = !!why;
+    el.classList.toggle('field-inactive', off);
+    if (at === 'title') {
+      if (!('activeTitle' in el.dataset)) el.dataset.activeTitle = el.title;
+      el.title = off ? why : el.dataset.activeTitle;
+    } else {
+      let reason = at === 'start' ? el.querySelector(':scope > .inactive-reason')
+        : el.nextElementSibling?.classList.contains('inactive-reason') ? el.nextElementSibling : null;
+      if (!reason && off) {
+        reason = document.createElement('p');
+        reason.className = 'inactive-reason';
+        if (at === 'start') {
+          reason.classList.add('at-start');
+          const head = el.querySelector(':scope > h4, :scope > .section-header-row');
+          if (head) head.after(reason); else el.prepend(reason);
+        } else {
+          if (el.dataset.setting) tag(reason, el.dataset.setting);  // Basic hides it with the control
+          el.after(reason);
+        }
+      }
+      if (reason) { reason.textContent = why || ''; reason.hidden = !off; }
+    }
+    const controls = el.matches(INACTIVE_CONTROLS) ? [el] : el.querySelectorAll(INACTIVE_CONTROLS);
+    for (const c of controls) if (!c.closest('.tod-note')) c.disabled = !!c.closest('.field-inactive');
+  }
+
+  // The field (or toggle row) around a control
+  function fieldOf(id) { return document.getElementById(id)?.closest('.field, .toggle-row'); }
+
   // ── Metadata pill size (sizing shared with the display: /display/pill-size.js) ──
 
   const TEXT_SIZE_OPTIONS = [['small', 'Small'], ['medium', 'Medium (default)'], ['large', 'Large'], ['x-large', 'Extra large']];
@@ -1049,8 +1467,122 @@
       : { text_size: meta?.text_size || 'medium', pill_size: meta?.pill_size || 'medium' };
   }
 
+  // ── Label styles (README → Metadata label styles; the display's renderer: /display/label-styles.js) ──
+
+  const LABEL_STYLE_OPTIONS = [['pill', 'Pills'], ['caption', 'Serif caption'], ['placard', 'Museum placard'], ['whisper', 'Corner whisper']];
+  // The display's METADATA_FIELDS order: { flag: 'show_location', key: 'location' }, ...
+  const LABEL_ORDER = META_FIELDS.filter(f => f.key !== 'show_date').map(f => ({ flag: f.key, key: f.key.slice(5) }));
+
+  function labelStyle() { return PicMeLabels.resolveStyle(config.label_style); }
+
+  function sampleDate() { return PicMeLabels.formatDate(PicMeLabels.SAMPLE.date_iso, config.date_format || 'long'); }
+
+  // A slot's label in the current style with sample text, as the display draws it: the same
+  // fields (max pills, video slots date only), renderer, placement and fit.
+  // area: PicMeLabels.openingArea / frameArea, plus where, fontPx and matColor.
+  function previewLabel(overlay, slotCfg, area) {
+    let meta = getSlotMeta(slotCfg);
+    if (slotCfg.mode === 'video') meta = { show_date: meta.show_date };
+    const max = config.max_metadata_pills > 0 ? config.max_metadata_pills : Infinity;
+    const fields = PicMeLabels.fields(PicMeLabels.SAMPLE, meta, { order: LABEL_ORDER, maxFields: max, formatDate: sampleDate });
+    if (!area || !fields.length) return;
+    PicMeLabels.render(overlay, labelStyle(), fields);
+    PicMeLabels.place(overlay, area);
+    PicMeLabels.show(overlay);
+  }
+
+  // The mat the labels sit on now: the gallery mat on a gallery layout, else the Frame section's
+  function currentMatColor() {
+    const layout = layouts?.find(l => l.id === config.layout) || layouts?.[0];
+    return layout && layoutMode(layout) === 'gallery' ? galleryCfg().mat_color : (getGlobalFrame().mat_color || '#000000');
+  }
+
+  // The picker: one live mini preview per style, on the current mat, with the date format
+  function renderLabelStylePicker() {
+    const picker = document.getElementById('g-label-style');
+    if (!picker || !config) return;
+    const current = labelStyle();
+    const mat = currentMatColor();
+    picker.innerHTML = '';
+    for (const [style, name] of LABEL_STYLE_OPTIONS) {
+      const opt = document.createElement('label');
+      opt.className = 'label-style-option' + (style === current ? ' selected' : '');
+      opt.dataset.style = style;
+      const input = document.createElement('input');
+      Object.assign(input, { type: 'radio', name: 'g-label-style', value: style, checked: style === current });
+      input.onchange = () => setLabelStyle(style);
+      const swatch = document.createElement('div');
+      swatch.className = 'label-style-swatch';
+      swatch.style.background = mat;
+      const label = document.createElement('span');
+      label.className = 'label-style-name';
+      label.textContent = name;
+      opt.append(input, swatch, label);
+      picker.appendChild(opt);
+      drawSwatch(swatch, style, mat);
+    }
+    const note = document.getElementById('g-label-style-note');
+    note.textContent = current === 'whisper' ? 'Corner whisper always sits on the photo. Label position and pill size are for pills.'
+      : current !== 'pill' ? 'Caption and placard always sit on the mat, under the photo. Label position and pill size are for pills.' : '';
+    setInactive(fieldOf('g-label-position'), labelPositionWhy(current));
+    setInactive(fieldOf('g-pill-size'), pillSizeWhy(current));
+  }
+
+  // The other styles place their label themselves, and size it from the text size alone
+  function labelPositionWhy(style) {
+    return style === 'whisper' ? 'Corner whisper always sits on the photo.'
+      : style !== 'pill' ? 'Caption and placard always sit on the mat.' : null;
+  }
+  function pillSizeWhy(style) { return style !== 'pill' ? 'Pill size is for the Pills style.' : null; }
+
+  // A sample photo on the mat with the style's label (date and place)
+  function drawSwatch(swatch, style, mat) {
+    const W = swatch.clientWidth, H = swatch.clientHeight;
+    if (!W || !H) return;  // a folded section: drawn again when it opens (labelPickerResize)
+    const onMat = PicMeLabels.SPEC[style].where === 'mat';
+    const photo = { x: 8, y: 6, w: W - 16, h: H - (style === 'placard' ? 42 : onMat ? 32 : 12) };
+    const photoEl = document.createElement('div');
+    photoEl.className = 'swatch-photo';
+    Object.assign(photoEl.style, { left: `${photo.x}px`, top: `${photo.y}px`, width: `${photo.w}px`, height: `${photo.h}px` });
+    swatch.appendChild(photoEl);
+    if (style === 'pill') {
+      const pill = document.createElement('span');
+      pill.className = 'swatch-pill';
+      pill.textContent = sampleDate();
+      photoEl.appendChild(pill);
+      return;
+    }
+    const overlay = document.createElement('div');
+    overlay.className = 'slot-overlay';
+    swatch.appendChild(overlay);
+    const fields = [{ key: 'date', text: sampleDate(), prio: 0 }, { key: 'location', text: 'Lake Tahoe', prio: 1 }];
+    PicMeLabels.render(overlay, style, fields);
+    const area = onMat
+      ? { where: 'mat', rect: { x: photo.x, y: photo.y + photo.h, w: photo.w, h: H - photo.y - photo.h }, align: 'start' }
+      : { where: 'photo', rect: { x: photo.x + 4, y: photo.y + 4, w: photo.w - 8, h: photo.h - 8 }, align: 'end',
+          scrim: { host: photoEl, left: 0, right: 0, bottom: 0, photoBottom: photo.y + photo.h } };
+    PicMeLabels.place(overlay, { ...area, fontPx: style === 'whisper' ? 9 : 10, matColor: mat });
+    PicMeLabels.show(overlay);
+  }
+
+  function setLabelStyle(style) {
+    config.label_style = PicMeLabels.resolveStyle(style);
+    buildPreview();
+    scheduleAutoSave();
+  }
+
+  // The label styles' serif arrives after the first fit (font-display: swap): fit the previews again
+  if (document.fonts) document.fonts.addEventListener('loadingdone', () => { if (config && layouts) buildPreview(); });
+
+  // The picker measures its swatches, so draw it again once it has a size (a folded section opening)
+  const labelPickerResize = window.ResizeObserver ? new ResizeObserver(entries => {
+    const w = Math.round(entries[0].contentRect.width);
+    if (w && w !== labelPickerResize.width) { labelPickerResize.width = w; renderLabelStylePicker(); }
+  }) : null;
+
   // ── Frame styles ──
-  // Decorative styles (wood, gold) come from frames.js; without it only solid frames are offered.
+  // Decorative styles (wood, gold, black, silver, ...) come from frames.js; without it only solid
+  // frames are offered.
 
   const SOLID_FRAME_OPTION = ['solid', 'Solid color'];
   const DECORATIVE_MIN_WIDTH = 16;  // narrower than this, a decorative moulding loses its detail
@@ -1080,23 +1612,345 @@
     return asset && (width ?? 8) < DECORATIVE_MIN_WIDTH ? asset.default_width : width;
   }
 
-  // The display's frame border (applyFrameStyle), minus time-of-day. Call once `el` is laid out:
-  // a decorative frame is capped at a sixth of the cell's short side, like a small slot.
-  function frameBorderStyle(el, frameCfg) {
+  // The display's frame border (applyFrameStyle), minus time-of-day, drawn `scale` preview px
+  // per display px. Call once `el` is laid out: a decorative frame is capped at a sixth of the
+  // cell's short side (in display px), like a small slot.
+  function frameBorderStyle(el, frameCfg, scale = 1) {
     const frameOn = frameCfg.show_frame ?? true;
-    const width = frameCfg.frame_width ?? 8;
+    const width = Number(frameCfg.frame_width ?? 8) || 0;
     const asset = frameOn ? frameAsset(frameCfg.frame_style ?? 'solid') : null;
     if (asset) {
-      const fit = Math.floor(Math.min(el.clientWidth, el.clientHeight) / 6);
-      const w = Math.min(Number(width) || 0, Math.max(4, fit));
+      const fit = Math.floor(Math.min(el.offsetWidth, el.offsetHeight) / scale / 6);
+      const w = Math.min(width, Math.max(4, fit)) * scale;
       el.style.border = `${w}px solid transparent`;
-      el.style.borderImage = `url("${asset.src}") ${asset.slice} / ${w}px / 0 round`;
+      el.style.borderImage = `url("${asset.src}") ${asset.slice} / ${w}px / 0 ${asset.repeat || 'round'}`;
       el.style.backgroundClip = 'padding-box';
     } else {
-      el.style.border = frameOn ? `${width}px solid ${frameCfg.frame_color ?? '#2c2318'}` : 'none';
+      el.style.border = frameOn ? `${width * scale}px solid ${frameCfg.frame_color ?? '#2c2318'}` : 'none';
       el.style.borderImage = 'none';
       el.style.backgroundClip = '';
     }
+  }
+
+  // ── Gallery mat (renderer shared with the display: /display/gallery.js and shapes.js) ──
+
+  const GALLERY_DEFAULTS = PicMeGallery.GALLERY_DEFAULTS;
+  const isPlainObject = v => !!v && typeof v === 'object' && !Array.isArray(v);
+
+  // The gallery settings as the display uses them (defaults filled in, numbers clamped), minus time of day
+  function galleryCfg() { return PicMeGallery.resolveGallery(config, null); }
+
+  function ensureGallery() {
+    if (!isPlainObject(config.gallery)) config.gallery = { ...GALLERY_DEFAULTS };
+    return config.gallery;
+  }
+
+  function layoutMode(layout) { return PicMeGallery.effectiveMode(config, layout); }
+
+  function baseLayout() { return layouts.find(l => l.id === config.layout) || layouts[0]; }
+
+  // Store a layout's mode; its own default is stored as no entry, so the layout file decides
+  function setLayoutMode(layout, mode) {
+    const modes = isPlainObject(config.layout_modes) ? { ...config.layout_modes } : {};
+    if (mode === (layout.gallery === true ? 'gallery' : 'slots')) delete modes[layout.id];
+    else modes[layout.id] = mode;
+    config.layout_modes = modes;
+  }
+
+  function onLayoutModeChanged() {
+    buildLayoutPicker();
+    refreshLayoutModeUI();
+    buildPreview();
+    refreshGallerySection();
+    renderSlotPanel();
+    scheduleAutoSave();
+  }
+
+  function refreshLayoutModeUI() {
+    const mode = layoutMode(baseLayout());
+    for (const btn of document.querySelectorAll('#layout-mode button')) {
+      btn.setAttribute('aria-pressed', String(btn.dataset.mode === mode));
+    }
+  }
+
+  const GALLERY_UNUSED_WHY = 'For gallery layouts: one frame and mat around every photo. Pick a Gallery layout, or set Frames to Gallery mat.';
+  const GALLERY_FRAME_UNUSED_WHY = 'Gallery-mat layouts only. Pick a Gallery layout, or set Frames to Gallery mat.';
+
+  // The Gallery Mat fields work while some layout the display can show is a gallery mat
+  function refreshGallerySection() {
+    const g = galleryCfg();
+    document.getElementById('g-gal-frame-override').checked = g.frame_override;
+    document.getElementById('g-gal-own-frame').hidden = !g.frame_override;
+    document.getElementById('gallery-help').textContent = (g.frame_override
+      ? "The gallery frame's style and colour are set at the bottom of the Frame section (Different gallery mat frame)."
+      : "The frame's style and colour come from the Frame section.") +
+      ' Sizes are px on a 1920×1080 screen. Time-of-day periods can change the mat and frame colours (Same as default keeps these); widths stay as set here.';
+    document.getElementById('g-gal-mat-color').value = g.mat_color;
+    document.getElementById('g-gal-frame-style').value = frameAsset(g.frame_style) ? g.frame_style : 'solid';
+    document.getElementById('g-gal-show-frame').checked = g.show_frame;
+    document.getElementById('g-gal-frame-color').value = g.frame_color;
+    document.getElementById('g-gal-bevel').checked = g.bevel;
+    document.getElementById('g-gal-bevel-color').value = g.bevel_color;
+    for (const inp of document.querySelectorAll('#gallery-fields input[data-key]')) inp.value = g[inp.dataset.key];
+    refreshGalleryInactive();
+    refreshFrameSection();
+  }
+
+  // Gallery Mat: greyed while no layout on screen is a gallery mat; inside it, what the gallery's
+  // frame and bevel switches turn off
+  function refreshGalleryInactive() {
+    const { anyGallery } = screenModes();
+    const g = galleryCfg();
+    setInactive(document.getElementById('gallery-fields'), anyGallery ? null : GALLERY_UNUSED_WHY, { at: 'start' });
+    // The gallery's own frame sits in the Frame section, so it greys on its own
+    setInactive(document.getElementById('frame-gallery-own'), anyGallery ? null : GALLERY_FRAME_UNUSED_WHY, { at: 'start' });
+    const frames = galleryFrames();
+    const offWhy = frameOffWhy(frames, g.frame_override ? 'Show gallery frame is off.' : 'Show frame border is off (Frame section).');
+    setInactive(fieldOf('g-gal-frame-style'), offWhy);
+    setInactive(fieldOf('g-gal-frame-color'), offWhy || solidOnlyWhy(frames));
+    setInactive(fieldOf('g-gal-frame-width'), offWhy);
+    const bevelWhy = g.bevel ? null : 'Bevelled openings are off.';
+    setInactive(fieldOf('g-gal-bevel-width'), bevelWhy);
+    setInactive(fieldOf('g-gal-bevel-color'), bevelWhy);
+  }
+
+  // Whether the layouts the display can show use separate frames, a gallery mat, or both
+  function screenModes() {
+    const reach = reachableLayouts();
+    return { anySeparate: reach.some(l => layoutMode(l) !== 'gallery'), anyGallery: reach.some(l => layoutMode(l) === 'gallery') };
+  }
+
+  // What a frame setting can show in: the day and night templates while time of day is on (they
+  // can turn the frame on or off, or change its style), else the settings alone
+  function todStates() {
+    const tod = config.time_of_day;
+    return tod?.enabled === true ? [tod.day || {}, tod.night || {}] : [{}];
+  }
+
+  // Separate frames in each state, as the display's applyFrameStyle merges them: defaults, the
+  // template's keys, then `own` (a slot's own frame). { on, decorative } each.
+  const TOD_FRAME_KEYS = ['mat_color', 'mat_width', 'show_frame', 'frame_color', 'frame_width', 'frame_style'];
+  function separateFrames(own = {}) {
+    return todStates().map(t => {
+      const c = { ...getGlobalFrame(), ...Object.fromEntries(TOD_FRAME_KEYS.filter(k => t[k] !== undefined).map(k => [k, t[k]])), ...own };
+      return { on: c.show_frame ?? true, decorative: !!frameAsset(c.frame_style ?? 'solid') };
+    });
+  }
+
+  // The gallery's outer frame in each state (gallery.js resolveGallery)
+  function galleryFrames() {
+    return todStates().map(t => { const g = PicMeGallery.resolveGallery(config, t); return { on: g.show_frame, decorative: !!frameAsset(g.frame_style) }; });
+  }
+
+  // No frame ever shows: its style, colour and width change nothing
+  function frameOffWhy(frames, why) { return frames.some(f => f.on) ? null : why; }
+  // Every frame that shows is decorative: the colour changes nothing
+  function solidOnlyWhy(frames) { return frames.some(f => f.on && !f.decorative) ? null : 'Color applies to solid frames only.'; }
+
+  // The Frame section sets separate frames and, unless the gallery has its own frame (its switch is
+  // at the bottom of this section), the look (on/off, style, colour) of the gallery's outer frame.
+  // Mat and widths are separate-frame only.
+  function refreshFrameSection() {
+    const { anySeparate, anyGallery } = screenModes();
+    const own = galleryCfg().frame_override;
+    document.getElementById('frame-gallery-hint').hidden = !anyGallery || own;
+    const separateOnly = anySeparate ? null : 'Separate-frame layouts only.';
+    // The frames this section's look reaches, and why none shows
+    const separate = anySeparate ? separateFrames() : [];
+    const frames = [...separate, ...(anyGallery && !own ? galleryFrames() : [])];
+    const offText = getGlobalFrame().show_frame === false ? 'Show frame border is off.' : 'Time of day turns the frame off all day.';
+    setInactive(fieldOf('g-mat-color'), separateOnly);
+    setInactive(fieldOf('g-mat-width'), separateOnly);
+    const look = anySeparate || !own ? null : 'Separate-frame layouts only. Gallery mats use their own frame (below).';
+    setInactive(fieldOf('g-show-frame'), look);
+    setInactive(fieldOf('g-frame-style'), look || frameOffWhy(frames, offText));
+    setInactive(fieldOf('g-frame-color'), look || frameOffWhy(frames, offText) || solidOnlyWhy(frames));
+    setInactive(fieldOf('g-frame-width'), separateOnly || frameOffWhy(separate, offText));
+  }
+
+  // Every rule that depends on more than its own section; edits come through scheduleAutoSave
+  let _refreshSlotInactive = null;  // the open slot panel's
+  function refreshInactiveControls() {
+    if (!config || !layouts) return;
+    refreshGalleryInactive();
+    refreshFrameSection();
+    _refreshSlotInactive?.();
+  }
+
+  function onGalleryChanged() {
+    buildPreview();
+    buildLayoutPicker();  // gallery thumbnails show the mat and frame
+    refreshGallerySection();
+    scheduleAutoSave();
+  }
+
+  function bindGallerySettings() {
+    const styleSel = document.getElementById('g-gal-frame-style');
+    styleSel.innerHTML = '';
+    for (const [val, lbl] of frameStyleOptions()) styleSel.add(new Option(lbl, val));
+    const set = (key, value) => { ensureGallery()[key] = value; onGalleryChanged(); };
+    document.getElementById('g-gal-mat-color').oninput = e => set('mat_color', e.target.value);
+    document.getElementById('g-gal-frame-color').oninput = e => set('frame_color', e.target.value);
+    document.getElementById('g-gal-bevel-color').oninput = e => set('bevel_color', e.target.value);
+    document.getElementById('g-gal-show-frame').onchange = e => set('show_frame', e.target.checked);
+    document.getElementById('g-gal-frame-override').onchange = e => set('frame_override', e.target.checked);
+    document.getElementById('g-gal-bevel').onchange = e => set('bevel', e.target.checked);
+    styleSel.onchange = e => {
+      const g = ensureGallery();
+      g.frame_style = e.target.value;
+      g.frame_width = widthForStyle(g.frame_style, galleryCfg().frame_width);
+      onGalleryChanged();
+    };
+    // Whole px within GALLERY_LIMITS, checked on commit (blur / Enter); anything else reverts
+    for (const inp of document.querySelectorAll('#gallery-fields input[data-key]')) {
+      const key = inp.dataset.key;
+      const [lo, hi] = PicMeGallery.GALLERY_LIMITS[key];
+      inp.min = lo;
+      inp.max = hi;
+      inp.step = 1;
+      inp.onchange = () => {
+        const v = inp.value.trim();
+        if (/^\d+$/.test(v) && Number(v) >= lo && Number(v) <= hi) set(key, Number(v));
+        else inp.value = galleryCfg()[key];
+      };
+    }
+    for (const btn of document.querySelectorAll('#layout-mode button')) {
+      btn.onclick = () => { setLayoutMode(baseLayout(), btn.dataset.mode); onLayoutModeChanged(); };
+    }
+    refreshLayoutModeUI();
+    refreshGallerySection();
+  }
+
+  // Gallery previews are drawn at 1920x1080 on a stage scaled to their box, so they are the
+  // display's layout exactly; re-scaled whenever the box resizes
+  const stageObserver = window.ResizeObserver
+    ? new ResizeObserver(entries => entries.forEach(e => fitStage(e.target.querySelector(':scope > .gallery-stage'))))
+    : null;
+
+  function fitStage(stage) {
+    if (!stage || !stage.parentElement) return 0;
+    const k = stage.parentElement.clientWidth / 1920;
+    stage.style.transform = `scale(${k})`;
+    return k;
+  }
+
+  function makeStage(parent) {
+    const stage = document.createElement('div');
+    stage.className = 'gallery-stage';
+    stage.style.background = config.wall_color || '#1a1a1a';
+    parent.appendChild(stage);
+    stageObserver?.observe(parent);
+    return stage;
+  }
+
+  function renderGalleryThumb(grid, layout) {
+    grid.innerHTML = '';
+    grid.classList.add('thumb-gallery');
+    const stage = makeStage(grid);
+    fitStage(stage);
+    PicMeGallery.build(stage, layout, layout.slots.length, {
+      ids: false,
+      makeSlot: () => {
+        const matFrame = document.createElement('div');
+        matFrame.className = 'mat-frame';
+        matFrame.style.background = '#6a6a6a';
+        return { matFrame };
+      },
+    });
+    PicMeGallery.applyStyles(stage, galleryCfg(), layout, config.slots, { deco: false });
+  }
+
+  function buildGalleryPreview(layout, preview) {
+    preview.classList.add('gallery-preview');
+    preview.style.background = config.wall_color || '#1a1a1a';
+    preview.innerHTML = '';
+    const stage = makeStage(preview);
+    const k = fitStage(stage) || 0.5;
+    const activeSlots = config.slots.slice(0, layout.slots.length);
+    // Unconfigured slots are padded on the display from slot 1's config — mirror its mode here
+    const slotAt = i => activeSlots[i] || { id: layout.slots[i].id, mode: config.slots[0]?.mode };
+
+    PicMeGallery.build(stage, layout, layout.slots.length, {
+      ids: false,
+      makeSlot: slotDef => {
+        const matFrame = document.createElement('div');
+        matFrame.className = 'mat-frame';
+        matFrame.style.cssText = 'background:#2e2e2e;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:72px;font-weight:600;color:#888;';
+        matFrame.textContent = slotDef.id;
+        const overlay = document.createElement('div');
+        overlay.className = 'slot-overlay';
+        return { matFrame, overlay };
+      },
+    });
+    // The display's labels: one pill size for every opening, captions on the mat by default, and
+    // the label style's placement and band
+    const style = labelStyle();
+    const placement = PicMeLabels.placement(style, config.label_position, 'gallery');
+    const sizes = layout.slots.map((d, i) => (previewShowsPills(slotAt(i)) ? pillSizes(getSlotMeta(slotAt(i))) : null));
+    const { openings, short } = PicMeGallery.layoutWithLabels(stage, galleryCfg(), layout, activeSlots, { placement, sizes, style }, {
+      idPrefix: 'pv', selectedId: selectedSlotId, selectWidth: Math.max(6, 3 / k),
+    });
+
+    stage.querySelectorAll('.opening').forEach((el, i) => {
+      const slotCfg = slotAt(i);
+      const id = slotCfg.id ?? layout.slots[i].id;
+      const o = openings[Number(el.dataset.slotId)];
+      el.dataset.slot = el.dataset.dragKey = id;
+      el.classList.toggle('selected', id === selectedSlotId);
+      el.addEventListener('click', () => selectSlot(id));
+      const boxEl = el.querySelector('.opening-box');
+      // The photo's opening: the shape's box inside the bevel (the stage is the 1920x1080 reference).
+      // Under the number, outside the shape's clip so a heart doesn't cut it off.
+      const tags = makeSlotTags();
+      tags.classList.add('opening-mark');
+      tags.style.cssText = `left:${o.box.w / 2}px;top:${o.box.h / 2 + 46}px;transform:translateX(-50%);`;
+      setSlotTags(tags, { w: o.box.w - 2 * o.bevel, h: o.box.h - 2 * o.bevel }, activeSlots[i] || config.slots[0]);
+      boxEl.appendChild(tags);
+      // Badges at the top corners of the part of the shape the pills may use
+      if (activeSlots[i] && hasCustomSettings(slotCfg)) {
+        const dot = document.createElement('div');
+        dot.className = 'opening-mark custom-dot';
+        dot.title = 'This slot has custom settings (not using global defaults)';
+        dot.style.cssText = `left:${o.safe.x + o.safe.w - 30}px;top:${o.safe.y + 14}px;width:16px;height:16px;background:var(--accent);border-radius:50%;opacity:0.85;`;
+        boxEl.appendChild(dot);
+      }
+      if (slotCfg.mode === 'video') {
+        const play = document.createElement('span');
+        play.className = 'opening-mark';
+        play.textContent = '▶';
+        play.title = activeSlots[i] ? 'Video slot' : 'Video slot (copies slot 1 until configured)';
+        play.style.cssText = `left:${o.safe.x + 12}px;top:${o.safe.y + 8}px;font-size:26px;color:#aaa;`;
+        boxEl.appendChild(play);
+      }
+      if (sizes[i] && style !== 'pill') {
+        // Stage px are display px: the display's area for the opening, and its font
+        const area = PicMeLabels.openingArea(o, placement, el.querySelector('.mat-frame'));
+        const fontPx = PicMeLabels.fontPx(style, PicMePills.fontSize(sizes[i], short, short));
+        previewLabel(el.querySelector('.slot-overlay'), slotCfg, area && { ...area, where: placement, fontPx, matColor: galleryCfg().mat_color });
+      } else if (sizes[i]) {
+        // Stage px are display px; the overlay is placed by gallery.js, on the photo or in the caption
+        const room = o.caption ? o.caption.w : o.safe.h - 2 * o.inset;
+        el.querySelector('.slot-overlay').appendChild(previewPills(slotCfg, { short, scale: 1, room, caption: !!o.caption }));
+      }
+    });
+  }
+
+  // Like the display: no pills when the slot has no field on (its Show metadata is off)
+  function previewShowsPills(slotCfg) {
+    return config.show_metadata !== false && slotShowsMetadata(slotCfg);
+  }
+
+  // Drag stand-in for a gallery opening: its on-screen size, with the slot number
+  function openingGhost(el, rect) {
+    const g = document.createElement('div');
+    g.className = 'opening-ghost';
+    g.textContent = el.dataset.slot;
+    const scale = Math.min(0.9, 240 / Math.max(rect.width, 1));
+    Object.assign(g.style, {
+      position: 'fixed', left: '0', top: '0', margin: '0', pointerEvents: 'none',
+      width: `${rect.width}px`, height: `${rect.height}px`, transform: `scale(${scale})`,
+    });
+    return g;
   }
 
   // ── Daily layout rotation (resolver shared with the display: /display/layout-rotation.js) ──
@@ -1155,9 +2009,11 @@
     }
   }
 
-  // Swap everything but the slot number between slots idA and idB. Whole slots move, so frame,
-  // video and group settings stay consistent, and keys added later move too. A preview cell
-  // without a config.slots entry yet gets one first.
+  // Swap everything but the slot number and the opening shape between slots idA and idB. Whole
+  // slots move, so frame, video and group settings stay consistent, and keys added later move
+  // too. The shape is the hole cut in the mat at that position, not part of what it shows, so
+  // it stays put (like the slot number). A preview cell without a config.slots entry yet gets
+  // one first.
   function swapSlotSettings(idA, idB) {
     if (!Number.isInteger(idA) || !Number.isInteger(idB) || idA < 1 || idB < 1 || idA === idB) return false;
     ensureSlotsFor(Math.max(idA, idB));
@@ -1165,10 +2021,10 @@
     const index = id => { const i = slots.findIndex(s => s.id === id); return i >= 0 ? i : id - 1; };
     const ia = index(idA), ib = index(idB);
     if (!slots[ia] || !slots[ib]) return false;
-    const { id: _a, ...a } = slots[ia];
-    const { id: _b, ...b } = slots[ib];
-    slots[ia] = { id: slots[ia].id, ...structuredClone(b) };
-    slots[ib] = { id: slots[ib].id, ...structuredClone(a) };
+    const { id: _a, shape: shapeA, ...a } = slots[ia];
+    const { id: _b, shape: shapeB, ...b } = slots[ib];
+    slots[ia] = { id: slots[ia].id, ...structuredClone(b), ...(shapeA !== undefined && { shape: shapeA }) };
+    slots[ib] = { id: slots[ib].id, ...structuredClone(a), ...(shapeB !== undefined && { shape: shapeB }) };
     return true;
   }
 
@@ -1180,10 +2036,18 @@
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
 
+  const ROTATION_OFF_WHY = 'Turn on Rotate layout daily to use these.';
+
   function refreshRotationUI() {
     const on = rotationOn();
     document.getElementById('g-rotation-enabled').checked = on;
-    document.getElementById('rotation-options').hidden = !on;
+    setInactive(document.getElementById('rotation-options'), on ? null : ROTATION_OFF_WHY, { at: 'start' });
+    // Select all / Deselect all on the Layout header, disabled when they'd change nothing
+    document.getElementById('rotation-bulk').hidden = !on;
+    const ticked = on ? eligibleIds() : [];
+    document.getElementById('rotation-select-all').disabled = ticked.length === layouts.length;
+    document.getElementById('rotation-deselect-all').disabled =
+      layouts.length < 2 || (ticked.length === 1 && ticked[0] === baseLayout().id);
     document.getElementById('g-rotation-change-at').value = config.layout_rotation?.change_at || '04:00';
 
     const status = document.getElementById('rotation-status');
@@ -1259,10 +2123,26 @@
     return true;
   }
 
+  // Every layout (stored as [] = all, so layouts added later join too)
+  function selectAllRotation() {
+    ensureRotation();
+    config.layout_rotation.layouts = [];
+    onRotationChanged();
+  }
+
+  // One layout must stay ticked: the base layout. The status line then asks for a second one.
+  function deselectAllRotation() {
+    if (layouts.length < 2) return;
+    ensureRotation();
+    config.layout_rotation.layouts = [baseLayout().id];
+    onRotationChanged();
+  }
+
   function onRotationChanged() {
     ensureReachableSlots();
     buildLayoutPicker();
     refreshRotationUI();
+    refreshGallerySection();
     renderSlotPanel();
     scheduleAutoSave();
   }
@@ -1272,6 +2152,7 @@
   function buildLayoutPicker() {
     const container = document.getElementById('layout-picker');
     container.innerHTML = '';
+    const galleryThumbs = [];
     const rotating = rotationOn();
     const eligible = new Set(eligibleIds());
     const todayId = rotating ? PicMeRotation.resolveLayout(config, layouts)?.id : null;
@@ -1294,23 +2175,56 @@
       const label = document.createElement('span');
       label.textContent = layout.name;
 
-      thumb.append(grid, label);
+      // The grid's own box, so a corner checkbox survives the gallery thumbnail's redraw
+      const frame = document.createElement('div');
+      frame.className = 'thumb-frame';
+      frame.appendChild(grid);
+      thumb.append(frame, label);
+      const gallery = layoutMode(layout) === 'gallery';
+      if (gallery) {
+        galleryThumbs.push([grid, layout]);
+        const badge = document.createElement('span');
+        badge.className = 'gallery-badge';
+        badge.textContent = 'Gallery';
+        badge.title = 'One frame and mat, with the slots cut into it';
+        thumb.appendChild(badge);
+      }
 
-      if (rotating) {
-        const pickRow = tag(document.createElement('label'), 'rotation.layouts');
-        pickRow.className = 'rotation-pick-row';
-        pickRow.addEventListener('click', e => e.stopPropagation());  // ticking isn't selecting
+      // A small box in the thumbnail's bottom-right corner; greyed while rotation is off
+      {
+        const pick = tag(document.createElement('label'), 'rotation.layouts');
+        pick.className = 'rotation-pick-corner' + (eligible.has(layout.id) ? ' checked' : '');
+        pick.title = `Rotate ${layout.name} daily`;
+        pick.addEventListener('click', e => e.stopPropagation());  // ticking isn't selecting
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.className = 'rotation-pick';
         cb.dataset.id = layout.id;
         cb.checked = eligible.has(layout.id);
+        cb.setAttribute('aria-label', `Rotate ${layout.name} daily`);
         cb.onchange = () => {
           if (!setRotationEligible(layout.id, cb.checked)) { cb.checked = true; return; }
           onRotationChanged();
         };
-        pickRow.append(cb, document.createTextNode('Rotate'));
-        thumb.appendChild(pickRow);
+        pick.appendChild(cb);
+        frame.appendChild(pick);
+        setInactive(pick, rotating ? null : 'Turn on Rotate layout daily to pick layouts.', { at: 'title' });
+      }
+      if (rotating) {
+        // Separate frames or a gallery mat on this layout's days
+        const modeRow = tag(document.createElement('div'), 'rotation.layout_modes');
+        modeRow.className = 'layout-mode-row';
+        modeRow.addEventListener('click', e => e.stopPropagation());  // switching isn't selecting
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'layout-mode-chip';
+        chip.dataset.id = layout.id;
+        chip.textContent = 'Mat';
+        chip.title = gallery ? 'Shown as a gallery mat — click for separate frames' : 'Shown with separate frames — click for a gallery mat';
+        chip.setAttribute('aria-pressed', String(gallery));
+        chip.onclick = () => { setLayoutMode(layout, gallery ? 'slots' : 'gallery'); onLayoutModeChanged(); };
+        modeRow.appendChild(chip);
+        thumb.appendChild(modeRow);
       }
       if (layout.id === todayId) {
         const badge = document.createElement('span');
@@ -1323,6 +2237,8 @@
       thumb.addEventListener('click', () => selectLayout(layout.id));
       container.appendChild(thumb);
     }
+    // Once laid out: drawn at display size and scaled to the thumbnail
+    for (const [grid, layout] of galleryThumbs) renderGalleryThumb(grid, layout);
   }
 
   function selectLayout(id) {
@@ -1332,6 +2248,8 @@
     buildLayoutPicker();
     buildPreview();
     refreshRotationUI();
+    refreshLayoutModeUI();
+    refreshGallerySection();
     renderSlotPanel();
     scheduleAutoSave();
   }
@@ -1341,14 +2259,21 @@
   function buildPreview() {
     const layout = layouts.find(l => l.id === config.layout) || layouts[0];
     const preview = document.getElementById('collage-preview');
+    renderLabelStylePicker();  // its swatches show the current mat and date format
+    if (layoutMode(layout) === 'gallery') { buildGalleryPreview(layout, preview); return; }
+    preview.classList.remove('gallery-preview');
     preview.style.gridTemplateColumns = layout.grid_template_columns;
     preview.style.gridTemplateRows = layout.grid_template_rows;
-    preview.style.gap = '4px';
-    preview.style.padding = '4px';
+    // At the display's proportions: #collage's 12 px gap and padding, the mat and frame, in
+    // preview px (`k` per display px), so a smaller preview is the same picture, smaller
+    const k = preview.clientWidth / 1920 || 0.5;
+    preview.style.gap = `${12 * k}px`;
+    preview.style.padding = `${12 * k}px`;
     preview.style.background = config.wall_color || '#1a1a1a';
     preview.innerHTML = '';
 
     const activeSlots = config.slots.slice(0, layout.slots.length);
+    const cells = [];
     for (let i = 0; i < layout.slots.length; i++) {
       const slotDef = layout.slots[i];
       // Unconfigured slots are padded on the display from slot 1's config — mirror its mode here
@@ -1359,7 +2284,7 @@
       div.className = 'preview-slot' + (slotCfg.id === selectedSlotId ? ' selected' : '');
       div.dataset.slot = div.dataset.dragKey = slotCfg.id ?? slotDef.id;
       div.style.gridArea  = slotDef.grid_area;
-      div.style.padding   = `${frameCfg.mat_width ?? 16}px`;
+      div.style.padding   = `${(Number(frameCfg.mat_width ?? 16) || 0) * k}px`;
       div.style.background = frameCfg.mat_color ?? '#000';
       div.style.position  = 'relative';
 
@@ -1372,7 +2297,7 @@
       }
 
       const inner = document.createElement('div');
-      inner.style.cssText = 'width:100%;height:100%;background:#2e2e2e;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:clamp(10px,2vw,20px);font-weight:600;color:#888;position:relative;overflow:hidden;';
+      inner.style.cssText = 'width:100%;height:100%;background:#2e2e2e;border-radius:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:clamp(10px,2vw,20px);font-weight:600;color:#888;position:relative;overflow:hidden;';
 
       const numSpan = document.createElement('span');
       numSpan.textContent = slotCfg.id ?? slotDef.id;
@@ -1387,18 +2312,122 @@
         inner.appendChild(playBadge);
       }
 
+      const tags = makeSlotTags();
+      inner.appendChild(tags);
+
       div.appendChild(inner);
       div.addEventListener('click', () => selectSlot(slotCfg.id ?? slotDef.id));
       preview.appendChild(div);
-      frameBorderStyle(div, frameCfg);  // after appending: decorative widths fit the cell
-      // Like the display: no pills when the slot has no field on (its Show metadata is off)
-      if (config.show_metadata !== false && slotShowsMetadata(slotCfg)) inner.appendChild(previewPills(slotCfg, div, preview));
+      frameBorderStyle(div, frameCfg, k);  // after appending: decorative widths fit the cell
+      cells.push({ div, inner, tags, slotCfg, frameCfg, padded: !activeSlots[i] });
     }
+
+    const band = buildPreviewPills(preview, cells);
+    // Each photo opening at the 1920x1080 reference: the display's grid, less frame, mat and caption
+    const refCells = PicMeAspect.cells(layout);
+    cells.forEach(({ tags, slotCfg, frameCfg, padded }, i) => {
+      const o = PicMeAspect.framedOpening(refCells[i], frameCfg, { decorative: !!frameAsset(frameCfg.frame_style), band });
+      setSlotTags(tags, o, padded ? config.slots[0] : slotCfg);
+    });
   }
 
-  // Metadata position preview — bars at bottom-left showing where the pills appear and how big
-  // they are, sized as on a 1920 px wide display (as pill-size.js sizes the display's pills)
-  function previewPills(slotCfg, cell, preview) {
+  // Under each preview slot's number: its opening's aspect ratio and whether it fits or fills,
+  // in smaller type ("3:2 · Fill"). `slotCfg` is the config the display uses for the slot.
+  function makeSlotTags() {
+    const el = tag(document.createElement('span'), 'preview.tags');
+    el.className = 'slot-tags';
+    return el;
+  }
+
+  function setSlotTags(el, opening, slotCfg) {
+    const ratio = PicMeAspect.label(opening.w, opening.h);
+    const fill = effectiveFill(slotCfg) === 'cover';
+    const near = PicMeAspect.nearest(opening.w, opening.h);
+    el.dataset.ratio = ratio;
+    el.dataset.fit = fill ? 'fill' : 'fit';
+    el.textContent = `${ratio ? `${ratio} · ` : ''}${fill ? 'Fill' : 'Fit'}`;
+    // A small cell: ratio over Fit / Fill, rather than cutting the line short
+    el.hidden = false;
+    if (ratio && el.isConnected && el.scrollWidth > el.clientWidth + 1) {
+      el.textContent = '';
+      el.append(ratio, document.createElement('br'), fill ? 'Fill' : 'Fit');
+      // Too small even so: leave the cell to its number; the tag's text is the cell's tooltip
+      if (el.scrollWidth > el.clientWidth + 1) el.hidden = true;
+    }
+    if (el.parentElement) el.parentElement.title = el.hidden ? `${ratio} · ${fill ? 'Fill' : 'Fit'}. ${el.title}` : '';
+    el.title = `Photo opening ${Math.round(opening.w)}×${Math.round(opening.h)} px on a 1920×1080 screen` +
+      (near && !near.common ? ` — not a common photo shape (nearest ${near.ratio})` : '') + '. ' +
+      (fill ? 'Fill: photos and videos are cropped to the opening, no black bars.'
+            : 'Fit: whole photos and videos, with bars where their shape differs.') +
+      (slotCfg?.fill_mode === 'cover' || slotCfg?.fill_mode === 'contain' ? ' (This slot\'s own setting.)' : '');
+  }
+
+  // Pills as on the display (applySlotFrames): every slot sized from the shortest pill area,
+  // in display px of a 1920 px wide screen; on the mat, a caption band in each bottom mat.
+  // Returns the band (display px), 0 without one.
+  function buildPreviewPills(preview, cells) {
+    const scale = preview.clientWidth / 1920;
+    if (!(scale > 0) || !window.PicMePills) return 0;
+    const style = labelStyle();
+    const placement = PicMeLabels.placement(style, config.label_position, 'slots');
+    const geo = cells.map(({ div, frameCfg }) => {
+      const w = div.offsetWidth / scale, h = div.offsetHeight / scale;
+      const mat = Number(frameCfg.mat_width ?? 16) || 0;
+      const frameOn = frameCfg.show_frame ?? true;
+      const asset = frameOn ? frameAsset(frameCfg.frame_style ?? 'solid') : null;
+      const width = Number(frameCfg.frame_width ?? 8) || 0;
+      const border = asset ? Math.min(width, Math.max(4, Math.floor(Math.min(w, h) / 6))) : (frameOn ? width : 0);
+      const inset = 10 + (asset ? border : 0);
+      const edge = border + mat;
+      return { slot: { w: w - 2 * inset, h: h - 2 * inset }, photo: { w: Math.max(0, w - 2 * edge), h: Math.max(0, h - 2 * edge) } };
+    });
+    const area = g => (placement === 'mat' ? g.photo : g.slot);
+    const sizes = cells.map(c => (previewShowsPills(c.slotCfg) ? pillSizes(getSlotMeta(c.slotCfg)) : null));
+    const shown = geo.filter((g, i) => sizes[i]);
+    if (shown.length === 0) return 0;
+    const short = PicMePills.sharedShort(shown.map(area));
+    const band = placement === 'mat'
+      ? Math.min(Math.max(...sizes.filter(Boolean).map(sz => PicMeLabels.captionBand(style, sz, short))),
+                 PicMeLabels.maxBand(style, Math.min(...geo.map(g => g.photo.h))))
+      : 0;
+    cells.forEach(({ div, inner, slotCfg, frameCfg }, i) => {
+      if (!sizes[i]) return;
+      if (style !== 'pill') {
+        // The display's renderer: the cell's padding box is the display's mat-frame (the photo at
+        // the mat width from its edges), in preview px
+        const matPx = (Number(frameCfg.mat_width ?? 16) || 0) * scale;
+        if (band > 0) div.style.paddingBottom = `${matPx + band * scale}px`;
+        const overlay = document.createElement('div');
+        overlay.className = 'slot-overlay';
+        div.appendChild(overlay);
+        const g = { edge: matPx, mat: matPx, band: band * scale, w: div.clientWidth, h: div.clientHeight };
+        const area = PicMeLabels.frameArea(g, placement, div, 10 * scale);
+        const fontPx = PicMeLabels.fontPx(style, PicMePills.fontSize(sizes[i], short, short)) * scale;
+        previewLabel(overlay, slotCfg, area && { ...area, where: placement, fontPx, matColor: frameCfg.mat_color ?? '#000000' });
+        return;
+      }
+      if (band > 0) {
+        // The bottom mat grows by the band, and the caption sits in it, centred under the photo
+        const matPx = (Number(frameCfg.mat_width ?? 16) || 0) * scale;
+        div.style.paddingBottom = `${matPx + band * scale}px`;
+        const bar = previewPills(slotCfg, { short, scale, room: geo[i].photo.w, caption: true });
+        Object.assign(bar.style, { position: 'absolute', left: `${matPx}px`, right: `${matPx}px`, bottom: `${matPx}px`,
+                                   height: `${band * scale}px`, justifyContent: 'center', alignItems: 'center' });
+        div.appendChild(bar);
+      } else {
+        const bar = previewPills(slotCfg, { short, scale, room: geo[i].slot.h, caption: false });
+        Object.assign(bar.style, { position: 'absolute', bottom: '4px', left: '4px' });
+        inner.appendChild(bar);
+      }
+    });
+    return band;
+  }
+
+  // Metadata preview — bars showing where the pills appear and how big they are, sized as
+  // pill-size.js sizes the display's: from `short`, the shortest pill area on screen, so every
+  // slot's are the same. `scale`: preview px per display px. `room`: display px the pills may
+  // use — the column's height on the photo, the row's width in a caption on the mat.
+  function previewPills(slotCfg, { short, scale, room, caption }) {
     const slotMeta = getSlotMeta(slotCfg);
     // Video slots only show the date pill
     let pillCount = slotCfg.mode === 'video' ? 1 : META_FIELDS.filter(f => slotMeta[f.key]).length;
@@ -1407,25 +2436,21 @@
     pillCount = Math.min(pillCount, maxPills);
 
     let barH = 4, barW = 14, gap = 2;
-    if (window.PicMePills && preview.clientWidth > 0) {
-      const scale = preview.clientWidth / 1920;
-      // Pills sit 10 px inside the slot, and inside a decorative moulding
-      const decorative = getComputedStyle(cell).borderImageSource !== 'none';
-      const inset = 10 + (decorative ? parseFloat(getComputedStyle(cell).borderTopWidth) / scale : 0);
+    if (window.PicMePills && scale > 0) {
       const sizes = PicMePills.resolve(slotMeta);
-      const font = PicMePills.fontSize(sizes, cell.offsetWidth / scale - 2 * inset, cell.offsetHeight / scale - 2 * inset);
+      const font = PicMePills.fontSize(sizes, short, short);
       const pad = PicMePills.PILL_SIZES[sizes.pill_size];
       barH = Math.max(2, (font * 1.25 + 2 * pad.py * font) * scale);
       barW = Math.max(8, (5 * font + 2 * pad.px * font) * scale);  // a typical pill: about 5em of text
       gap = Math.max(1, pad.gap * font * scale);
-      // Like the display, drop pills that don't fit the slot's height
-      const room = cell.offsetHeight - 2 * inset * scale;
-      pillCount = Math.max(1, Math.min(pillCount, Math.floor((room + gap) / (barH + gap))));
+      // Like the display, drop pills that don't fit: the column's height, or the caption's width
+      const step = caption ? barW : barH;
+      pillCount = Math.max(1, Math.min(pillCount, Math.floor((room * scale + gap) / (step + gap))));
     }
 
     const pillBar = document.createElement('div');
     pillBar.className = 'preview-pills';
-    pillBar.style.cssText = `position:absolute;bottom:4px;left:4px;display:flex;flex-direction:column;gap:${gap}px;pointer-events:none;`;
+    pillBar.style.cssText = `display:flex;flex-direction:${caption ? 'row' : 'column'};gap:${gap}px;pointer-events:none;`;
     for (let p = 0; p < pillCount; p++) {
       const pill = document.createElement('div');
       pill.style.cssText = `height:${barH}px;width:${barW}px;max-width:calc(100% - 4px);background:rgba(255,255,255,0.2);border-radius:${barH / 2}px;`;
@@ -1464,6 +2489,9 @@
     document.getElementById('g-wall-color').value   = g.wall_color    || '#1a1a1a';
     document.getElementById('g-date-format').value  = g.date_format   || 'long';
     document.getElementById('g-max-pills').value    = g.max_metadata_pills ?? 0;
+    const labelSel = document.getElementById('g-label-position');
+    labelSel.value = PicMePills.LABEL_POSITIONS.includes(g.label_position) ? g.label_position : 'auto';
+    labelSel.onchange = e => { config.label_position = e.target.value; buildPreview(); scheduleAutoSave(); };
     const showMeta = document.getElementById('g-show-metadata');
     showMeta.checked = g.show_metadata !== false;
     setCollapsible(document.getElementById('g-meta-body'), showMeta.checked, showMeta, false);
@@ -1478,7 +2506,7 @@
     styleSel.value = frameAsset(fd.frame_style) ? fd.frame_style : 'solid';
     syncGlobalFrameColor();
     document.getElementById('g-video-max-edge').value = String(g.video_max_edge ?? 1920);
-    document.getElementById('g-include-live-photos').checked = g.include_live_photos === true;
+    document.getElementById('g-include-live-photos').checked = g.include_live_photos !== false;
     document.getElementById('g-include-subfolders').checked = g.include_subfolders !== false;
 
     // Global pill and text size
@@ -1520,12 +2548,26 @@
       openFolderBrowser(inp.value, path => { inp.value = path; config.source_path = path; _followGlobalFolder?.(); scheduleAutoSave(); });
     };
     document.getElementById('g-wall-color').oninput    = e => { config.wall_color = e.target.value; buildPreview(); scheduleAutoSave(); };
-    document.getElementById('g-date-format').onchange  = e => { config.date_format = e.target.value; scheduleAutoSave(); };
+    const fillEl = document.getElementById('g-fill-mode');
+    fillEl.checked = globalFill() === 'cover';
+    fillEl.onchange = e => {
+      config.fill_mode = e.target.checked ? 'cover' : 'contain';
+      buildPreview();  // each cell's Fit / Fill tag
+      renderSlotPanel();  // the slot's "Default (global: …)" option
+      scheduleAutoSave();
+    };
+    const tapEl = document.getElementById('g-tap-details');
+    tapEl.checked = config.tap_for_details !== false;
+    tapEl.onchange = e => { config.tap_for_details = e.target.checked; scheduleAutoSave(); };
+    document.getElementById('g-date-format').onchange  = e => { config.date_format = e.target.value; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-max-pills').oninput     = e => {
       const v = parseInt(e.target.value);
       config.max_metadata_pills = v > 0 ? v : null;
+      buildPreview();
       scheduleAutoSave();
     };
+    renderLabelStylePicker();
+    if (labelPickerResize) labelPickerResize.observe(document.getElementById('g-label-style'));
     // The display's kill switch: off hides every pill and keeps the metadata settings as they are
     showMeta.onchange = e => {
       config.show_metadata = e.target.checked;
@@ -1535,6 +2577,8 @@
       scheduleAutoSave();
     };
     document.getElementById('g-rotation-enabled').onchange = e => { ensureRotation(); config.layout_rotation.enabled = e.target.checked; onRotationChanged(); };
+    document.getElementById('rotation-select-all').onclick = selectAllRotation;
+    document.getElementById('rotation-deselect-all').onclick = deselectAllRotation;
     document.getElementById('g-rotation-change-at').onchange = e => {
       if (!e.target.value) return;
       ensureRotation();
@@ -1547,8 +2591,8 @@
     document.getElementById('g-include-subfolders').onchange = e => { config.include_subfolders = e.target.checked; renderSlotPanel(); scheduleAutoSave(); };
     document.getElementById('g-mat-color').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_color   = e.target.value; buildPreview(); scheduleAutoSave(); };
     document.getElementById('g-mat-width').oninput    = e => { ensureFrameDefaults(); config.frame_defaults.mat_width   = parseInt(e.target.value); buildPreview(); scheduleAutoSave(); };
-    document.getElementById('g-show-frame').onchange  = e => { ensureFrameDefaults(); config.frame_defaults.show_frame  = e.target.checked; buildPreview(); scheduleAutoSave(); };
-    // Like a time-of-day template: undo our own wood/gold width bump when going back to solid
+    document.getElementById('g-show-frame').onchange  = e => { ensureFrameDefaults(); config.frame_defaults.show_frame  = e.target.checked; onFrameLookChanged(); };
+    // Like a time-of-day template: undo our own decorative-style width bump when going back to solid
     // (unless the width was changed since), so Basic doesn't leave a hidden frame width behind
     let bumpedWidth = null;
     document.getElementById('g-frame-style').onchange = e => {
@@ -1564,10 +2608,9 @@
       fd.frame_width = bumped;
       document.getElementById('g-frame-width').value = fd.frame_width ?? 8;
       syncGlobalFrameColor();
-      buildPreview();
-      scheduleAutoSave();
+      onFrameLookChanged();
     };
-    document.getElementById('g-frame-color').oninput  = e => { ensureFrameDefaults(); config.frame_defaults.frame_color = e.target.value; buildPreview(); scheduleAutoSave(); };
+    document.getElementById('g-frame-color').oninput  = e => { ensureFrameDefaults(); config.frame_defaults.frame_color = e.target.value; onFrameLookChanged(); };
     document.getElementById('g-frame-width').oninput  = e => {
       ensureFrameDefaults();
       const w = clampFrameWidth(e.target.value);
@@ -1580,17 +2623,24 @@
     todEl.checked = config.time_of_day?.enabled || false;
     todEl.onchange = e => { ensureTod(); config.time_of_day.enabled = e.target.checked; scheduleAutoSave(); };
     document.getElementById('tod-configure-btn').onclick = openTodModal;
+    refreshTodNotes();
   }
 
   function ensureFrameDefaults() {
     if (!config.frame_defaults) config.frame_defaults = {};
   }
 
-  // A decorative default frame ignores frame_color — say so rather than leave a dead control
+  // Frame on/off, style or colour: separate frames, and the gallery's outer frame unless it has
+  // its own — so the gallery preview and thumbnails redraw too
+  function onFrameLookChanged() {
+    buildPreview();
+    buildLayoutPicker();
+    scheduleAutoSave();
+  }
+
+  // A decorative default frame ignores frame_color — grey it out, saying so
   function syncGlobalFrameColor() {
-    const decorative = !!frameAsset(config.frame_defaults?.frame_style);
-    document.getElementById('g-frame-color').disabled = decorative;
-    document.getElementById('g-frame-color-hint').style.display = decorative ? '' : 'none';
+    refreshFrameSection();
   }
 
   // ── Reset all modal ──
@@ -1609,11 +2659,11 @@
     title.textContent = 'Reset all slots to global settings?';
 
     const body = document.createElement('p');
-    body.textContent = 'This removes all per-slot frame and metadata overrides. Every slot will inherit from the global defaults.';
+    body.textContent = 'This removes every slot\'s own folder, frame, metadata and Fit / Fill choices. Every slot will follow the global settings. Other settings are unchanged (to reset everything, use Reset everything to defaults).';
 
     const note = document.createElement('div');
     note.className = 'modal-note';
-    note.innerHTML = '<strong>Always per-slot — not affected:</strong><ul><li>Slot mode (photos / video), video loops and audio</li><li>Cycle timer</li><li>Group assignment</li><li>Fit mode (contain / fill)</li></ul>';
+    note.innerHTML = '<strong>Always per-slot — not affected:</strong><ul><li>Slot mode (photos / video), video loops and audio</li><li>Cycle timer</li><li>Group assignment</li><li>Opening shape (gallery mat)</li></ul>';
 
     const cbRow = document.createElement('label');
     cbRow.className = 'modal-cb-row';
@@ -1633,7 +2683,7 @@
 
     const confirmBtn = document.createElement('button');
     confirmBtn.className = 'btn btn-danger-solid';
-    confirmBtn.textContent = 'Reset All Slots';
+    confirmBtn.textContent = 'Reset all slots';
     confirmBtn.onclick = () => {
       for (const slot of config.slots) {
         if (!slot.use_global) slot.use_global = {};
@@ -1644,6 +2694,7 @@
         slot.metadata    = {};
         slot.source_path = null;
         delete slot.include_subfolders;
+        delete slot.fill_mode;  // follow the global Fill frames
         if (cb.checked) {
           slot.cycle_seconds = 30;
           slot.group = null;
@@ -1652,8 +2703,7 @@
       document.body.removeChild(overlay);
       buildPreview();
       renderSlotPanel();
-      refreshAdvancedHint();
-      setStatus('All slots reset to global settings.', '');
+      scheduleAutoSave('All slots reset to global settings — saved.');
     };
 
     btnRow.append(cancelBtn, confirmBtn);
@@ -1677,6 +2727,7 @@
     const title = document.getElementById('slot-panel-title');
     const body  = document.getElementById('slot-panel-body');
 
+    _refreshSlotInactive = null;
     if (!selectedSlotId) {
       title.textContent = 'Select a slot to configure it';
       body.innerHTML = '';
@@ -1707,7 +2758,7 @@
       buildPreview();
       renderSlotPanel();
       scheduleAutoSave();
-    }, { alwaysEditable: basic });
+    });
     tag(srcSec.adoptRow, 'slot.source_adopt');
     const effectiveSrc = sourceAdopted ? (config.source_path || '') : (slotCfg.source_path || '');
     const srcOverridden = !sourceAdopted && !!slotCfg.source_path && normFolder(slotCfg.source_path) !== normFolder(config.source_path);
@@ -1814,19 +2865,51 @@
     // Schedule — always per-slot (cycle timer and group); not used by video slots
     const schedSection = makeSection('Schedule');
     const schedBody = document.createElement('div');
-    if (isVideo) schedBody.classList.add('section-disabled');
     schedBody.appendChild(tag(makeField('Change every (seconds)', 'number', slotCfg.cycle_seconds || 30, v => { slotCfg.cycle_seconds = parseInt(v); scheduleAutoSave(); }), 'slot.cycle_seconds'));
     schedBody.appendChild(tag(makeField('Group (optional letter, e.g. A)', 'text', slotCfg.group || '', v => { slotCfg.group = v || null; scheduleAutoSave(); }), 'slot.group'));
     schedSection.appendChild(schedBody);
-    if (isVideo) schedSection.appendChild(tag(makeHint('Video slots advance after their loops finish.'), 'slot.cycle_seconds'));
     left.appendChild(schedSection);
 
-    // Fit — always per-slot (applies to photos and videos)
+    // Fit — the global "Fill frames" unless this slot picks its own (photos and videos)
     const fillSection = tag(makeSection('Fit'), 'slot.fill_mode');
-    const fillSelect = makeSelect([['contain', `Fit — full ${isVideo ? 'video' : 'photo'}, letterboxed`], ['cover', 'Fill — crop to fit, no bars']], slotCfg.fill_mode || 'contain');
-    fillSelect.onchange = e => { slotCfg.fill_mode = e.target.value; scheduleAutoSave(); };
+    const ownFill = slotCfg.fill_mode === 'cover' || slotCfg.fill_mode === 'contain' ? slotCfg.fill_mode : '';
+    const fillSelect = makeSelect([['', `Default (global: ${globalFill() === 'cover' ? 'Fill' : 'Fit'})`],
+                                   ['contain', `Fit — full ${isVideo ? 'video' : 'photo'}, letterboxed`],
+                                   ['cover', 'Fill — crop to fit, no bars']], ownFill);
+    fillSelect.id = 'slot-fill-mode';
+    fillSelect.onchange = e => {
+      if (e.target.value) slotCfg.fill_mode = e.target.value; else delete slotCfg.fill_mode;
+      buildPreview();
+      renderSlotPanel();
+      scheduleAutoSave();
+    };
     fillSection.appendChild(fillSelect);
     left.appendChild(fillSection);
+
+    // Opening shape — gallery mat only; stays with the slot position when slots are swapped
+    const base = baseLayout();
+    const baseGallery = layoutMode(base) === 'gallery';
+    const layoutShape = PicMeGallery.slotShape(null, base.slots[slotCfg.id - 1]);
+    const shapeSection = tag(makeSection('Opening shape'), 'slot.opening_shape');
+    const shapeSelect = makeSelect([['', `Layout default (${PicMeShapes.get(layoutShape).label})`],
+                                    ...PicMeShapes.names().map(n => [n, PicMeShapes.get(n).label])],
+                                   PicMeShapes.has(slotCfg.shape) ? slotCfg.shape : '');
+    shapeSelect.id = 'slot-shape';
+    shapeSelect.onchange = e => {
+      if (e.target.value) slotCfg.shape = e.target.value; else delete slotCfg.shape;
+      buildPreview();
+      renderSlotPanel();
+      scheduleAutoSave();
+    };
+    const shapeField = document.createElement('div');
+    shapeField.className = 'field';
+    shapeField.appendChild(shapeSelect);
+    shapeSection.appendChild(shapeField);
+    const shownShape = PicMeGallery.slotShape(slotCfg, base.slots[slotCfg.id - 1]);
+    if (baseGallery && shownShape !== 'rect' && effectiveFill(slotCfg) !== 'cover') {
+      shapeSection.appendChild(makeHint("Fit keeps the whole photo inside the shape's box; the corners outside the shape are hidden. Fill usually looks better in shaped openings."));
+    }
+    left.appendChild(shapeSection);
 
     // Frame — adoptable
     const frameAdopted = slotCfg.use_global.frame !== false;
@@ -1838,11 +2921,13 @@
       scheduleAutoSave();
     });
     const ef = getSlotFrame(slotCfg);
+    // Greyed when no layout on screen has separate frames; with some (rotation), a note
+    if (baseGallery && screenModes().anySeparate) frameSec.el.insertBefore(makeHint(SLOT_FRAME_GALLERY_WHY), frameSec.sectionBody);
     frameSec.sectionBody.appendChild(makeColorField('Mat color', ef.mat_color ?? '#000000', v => { ensureSlotFrame(slotCfg); slotCfg.frame.mat_color = v; buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'mat_color')));
     frameSec.sectionBody.appendChild(makeField('Mat width (px)', 'number', ef.mat_width ?? 16, v => { ensureSlotFrame(slotCfg); slotCfg.frame.mat_width = parseInt(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'mat_width')));
     frameSec.sectionBody.appendChild(makeToggleRow('Show frame border', ef.show_frame ?? true, v => { ensureSlotFrame(slotCfg); slotCfg.frame.show_frame = v; buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'show_frame')));
     const slotDecorative = !!frameAsset(ef.frame_style);
-    frameSec.sectionBody.appendChild(makeSelectField('Frame style', frameStyleOptions(), slotDecorative ? ef.frame_style : 'solid', v => {
+    const styleField = makeSelectField('Frame style', frameStyleOptions(), slotDecorative ? ef.frame_style : 'solid', v => {
       ensureSlotFrame(slotCfg);
       slotCfg.frame.frame_style = v;
       const width = getSlotFrame(slotCfg).frame_width;
@@ -1850,14 +2935,12 @@
       buildPreview();
       renderSlotPanel();  // refresh the width, the color field and the override dots
       scheduleAutoSave();
-    }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_style')));
+    }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_style'));
+    frameSec.sectionBody.appendChild(styleField);
     const frameColorField = makeColorField('Frame color', ef.frame_color ?? '#2c2318', v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_color = v; buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_color'));
-    if (slotDecorative) {
-      frameColorField.querySelector('input').disabled = true;
-      frameColorField.appendChild(makeHint('Color applies to solid frames only.'));
-    }
     frameSec.sectionBody.appendChild(frameColorField);
-    frameSec.sectionBody.appendChild(makeField('Frame width (px)', 'number', ef.frame_width ?? 8, v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_width = clampFrameWidth(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_width')));
+    const frameWidthField = makeField('Frame width (px)', 'number', ef.frame_width ?? 8, v => { ensureSlotFrame(slotCfg); slotCfg.frame.frame_width = clampFrameWidth(v); buildPreview(); scheduleAutoSave(); }, !frameAdopted && isFrameKeyOverridden(slotCfg, 'frame_width'));
+    frameSec.sectionBody.appendChild(frameWidthField);
     left.appendChild(tag(frameSec.el, 'slot.frame'));
 
     // ── Right column — Metadata: "Show metadata" opens the section; its overrides are Advanced ──
@@ -1876,7 +2959,6 @@
     const showInput = showRow.querySelector('input');
     showInput.setAttribute('aria-controls', metaBody.el.id);
     showInput.setAttribute('aria-expanded', String(shown));
-    showInput.disabled = globalOff;
     // Advanced field toggles can turn the last pill off: close the section with them
     function syncShown() {
       if (globalOff || slotShowsMetadata(slotCfg) === showInput.checked) return;
@@ -1884,7 +2966,6 @@
       setCollapsible(metaBody.el, showInput.checked, showInput);
     }
     metaSec.appendChild(showRow);
-    if (globalOff) metaSec.appendChild(makeHint('Metadata is off for every slot — turn on Show metadata in Default Metadata.'));
     fillSlotMetaBody(metaBody.inner, slotCfg, syncShown);
     metaSec.appendChild(metaBody.el);
     if (isVideo) metaSec.appendChild(makeHint('Video slots show the date only (from the clip\'s recording date, when available).'));
@@ -1892,7 +2973,37 @@
 
     grid.append(left, right);
     body.appendChild(grid);
+
+    // What changes nothing for this slot right now (also re-run after every edit)
+    _refreshSlotInactive = () => {
+      if (!grid.isConnected) return;
+      const { anySeparate, anyGallery } = screenModes();
+      const adopted = slotCfg.use_global || {};
+      // Basic has no Use global for the folder: it's always editable there
+      setInactive(srcSec.sectionBody, !basic && adopted.source !== false
+        ? "Using the default media folder (Global Settings). Turn off Use global to set this slot's own." : null, { at: 'start' });
+      setInactive(schedBody, slotCfg.mode === 'video' ? 'Video slots advance after their loops finish.' : null);
+      setInactive(shapeField, anyGallery ? null : 'Shapes show on gallery-mat layouts (set Frames to Gallery mat).');
+      setInactive(frameSec.el, anySeparate ? null : SLOT_FRAME_GALLERY_WHY, { at: 'start' });
+      const frameUsesGlobal = adopted.frame !== false;
+      setInactive(frameSec.sectionBody, frameUsesGlobal
+        ? "Using the Frame section. Turn off Use global to set this slot's own." : null, { at: 'start' });
+      const frames = separateFrames(frameUsesGlobal ? {} : slotCfg.frame || {});
+      const offWhy = frameOffWhy(frames, getSlotFrame(slotCfg).show_frame === false
+        ? 'Show frame border is off.' : 'Time of day turns the frame off all day.');
+      setInactive(styleField, offWhy);
+      setInactive(frameColorField, offWhy || solidOnlyWhy(frames));
+      setInactive(frameWidthField, offWhy);
+      setInactive(showRow, config.show_metadata === false
+        ? 'Metadata is off for every slot — turn on Show metadata in Default Metadata.' : null);
+      setInactive(metaBody.inner.querySelector('.slot-meta-fields'), adopted.metadata !== false
+        ? "Using Default Metadata. Turn off Use global to set this slot's own." : null, { at: 'start' });
+      setInactive(document.getElementById('slot-pill-size')?.closest('.field'), pillSizeWhy(labelStyle()));
+    };
+    _refreshSlotInactive();
   }
+
+  const SLOT_FRAME_GALLERY_WHY = 'This layout uses the Gallery Mat settings. These apply on separate-frame layouts.';
 
   // The slot's metadata body: Basic sums it up; Advanced has "Use global", sizes and fields
   function fillSlotMetaBody(inner, slotCfg, onFieldChange) {
@@ -1917,18 +3028,19 @@
     });
     adopt.row.style.cssText = 'justify-content:flex-end;margin-bottom:8px;';
     const metaFields = document.createElement('div');
-    if (metaAdopted) metaFields.classList.add('section-disabled');
-    adopt.input.addEventListener('change', e => metaFields.classList.toggle('section-disabled', e.target.checked));
+    metaFields.className = 'slot-meta-fields';
 
     const slotSizes = pillSizes(em);
     for (const [key, label, options] of [['text_size', 'Text size', TEXT_SIZE_OPTIONS], ['pill_size', 'Pill size', PILL_SIZE_OPTIONS]]) {
-      metaFields.appendChild(makeSelectField(label, options, slotSizes[key], v => {
+      const sizeField = makeSelectField(label, options, slotSizes[key], v => {
         if (!slotCfg.metadata) slotCfg.metadata = {};
         slotCfg.metadata[key] = v;
         buildPreview();
         renderSlotPanel();
         scheduleAutoSave();
-      }, !metaAdopted && isMetaKeyOverridden(slotCfg, key)));
+      }, !metaAdopted && isMetaKeyOverridden(slotCfg, key));
+      sizeField.querySelector('select').id = `slot-${key.replace('_', '-')}`;
+      metaFields.appendChild(sizeField);
     }
 
     const metaGrid = document.createElement('div');
@@ -2010,9 +3122,12 @@
 
   // ── DOM helpers ──
 
+  // New installs and Reset: day and night change the wall and frame colours only. The mat stays
+  // 'Same as default' (no mat_color key), so the mat colour picked under Frame or Gallery Mat
+  // shows all day; it's chosen to suit the photos, not the room's light. Saved configs keep theirs.
   const TOD_DEFAULTS = {
-    day:   { wall_color: '#f5f0e8', mat_color: '#a8c8e8', mat_width: 20, show_frame: true, frame_color: '#6b4226', frame_width: 8 },
-    night: { wall_color: '#000000', mat_color: '#3a3a3a', mat_width: 20, show_frame: true, frame_color: '#1c1c1c', frame_width: 8 },
+    day:   { wall_color: '#f5f0e8', mat_width: 20, show_frame: true, frame_color: '#6b4226', frame_width: 8 },
+    night: { wall_color: '#000000', mat_width: 20, show_frame: true, frame_color: '#1c1c1c', frame_width: 8 },
   };
 
   function ensureTod() {
@@ -2034,16 +3149,41 @@
     ensureTod();
     const tod = config.time_of_day;
 
-    function makeTodColor(label, val, onChange) {
+    // "Same as default" leaves the key out of the template, so the colour set outside time of
+    // day (`fallback`) shows through. `onSync` runs after the box changes (it may disable more).
+    function makeTodColor(label, tmpl, key, fallback, onSync = () => {}) {
       const wrap = document.createElement('div');
       wrap.className = 'field';
+      wrap.dataset.todKey = key;
       const lbl = document.createElement('label');
       lbl.textContent = label;
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;';
       const inp = document.createElement('input');
       inp.type = 'color';
-      inp.value = val || '#000000';
-      inp.oninput = () => { onChange(inp.value); scheduleAutoSave(); };
-      wrap.append(lbl, inp);
+      // Ticked, the disabled picker previews the colour that shows; unticking brings back the last own colour
+      const def = fallback || '#000000';
+      let own = tmpl[key] || def;
+      inp.value = own;
+      inp.oninput = () => { tmpl[key] = own = inp.value; scheduleAutoSave(); };
+      const sameLbl = document.createElement('label');
+      sameLbl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:12px;margin:0;white-space:nowrap;';
+      const same = document.createElement('input');
+      same.type = 'checkbox';
+      same.className = 'tod-same';
+      same.checked = !tmpl[key];
+      const sync = () => setInactive(inp, same.checked ? 'Same as default is ticked: the default colour shows.' : null, { at: 'title' });
+      same.onchange = () => {
+        if (same.checked) delete tmpl[key]; else tmpl[key] = own;
+        inp.value = same.checked ? def : own;
+        sync();
+        onSync();
+        scheduleAutoSave();
+      };
+      sync();
+      sameLbl.append(same, 'Same as default');
+      row.append(inp, sameLbl);
+      wrap.append(lbl, row);
       return wrap;
     }
 
@@ -2086,21 +3226,23 @@
 
     function buildPeriodCol(emoji, title, tmpl) {
       const col = document.createElement('div');
+      col.dataset.period = title.toLowerCase();
       col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;';
       const hdr = document.createElement('div');
       hdr.style.cssText = 'font-size:13px;font-weight:600;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--border);';
       hdr.textContent = `${emoji} ${title}`;
       col.appendChild(hdr);
-      col.appendChild(makeTodColor('Wall color',   tmpl.wall_color,  v => tmpl.wall_color  = v));
-      col.appendChild(makeTodColor('Mat color',    tmpl.mat_color,   v => tmpl.mat_color   = v));
-      col.appendChild(makeTodNumber('Mat width',   tmpl.mat_width,   v => tmpl.mat_width   = v));
-      col.appendChild(makeTodToggle('Show frame',  tmpl.show_frame,  v => tmpl.show_frame  = v));
+      col.appendChild(makeTodColor('Wall color', tmpl, 'wall_color', config.wall_color || '#1a1a1a'));
+      col.appendChild(makeTodColor('Mat color',  tmpl, 'mat_color',  currentMatColor()));
+      const matWidthField = makeTodNumber('Mat width', tmpl.mat_width, v => tmpl.mat_width = v);
+      col.appendChild(matWidthField);
+      col.appendChild(makeTodToggle('Show frame',  tmpl.show_frame,  v => { tmpl.show_frame = v; syncColor(); }));
       // "Same as default" leaves frame_style unset, so the global (or slot) style shows through
       let bumpedWidth = null;
       const styleField = makeSelectField('Frame style', frameStyleOptions(['', 'Same as default']),
         frameAsset(tmpl.frame_style) || tmpl.frame_style === 'solid' ? tmpl.frame_style : '', v => {
           if (v) tmpl.frame_style = v; else delete tmpl.frame_style;
-          // A template's width applies to every style, so undo our own bump when leaving wood/gold
+          // A template's width applies to every style, so undo our own bump when leaving a decorative style
           // (unless the user has since typed a different width)
           if (!frameAsset(v) && bumpedWidth && tmpl.frame_width === bumpedWidth.to) {
             tmpl.frame_width = bumpedWidth.from;
@@ -2113,14 +3255,23 @@
           syncColor();
           scheduleAutoSave();
         });
-      const colorField = makeTodColor('Frame color',  tmpl.frame_color, v => tmpl.frame_color = v);
-      const colorHint = makeHint('Color applies to solid frames only.');
-      colorField.appendChild(colorHint);
+      const colorField = makeTodColor('Frame color', tmpl, 'frame_color', getGlobalFrame().frame_color || '#2c2318', () => syncColor());
       const widthField = makeTodNumber('Frame width', tmpl.frame_width, v => tmpl.frame_width = v);
+      // This period's frames, as the display draws them: separate frames take the template's
+      // on/off, style and width; the gallery's outer frame only its style and colour
       function syncColor() {
-        const decorative = !!frameAsset(tmpl.frame_style);
-        colorField.querySelector('input').disabled = decorative;
-        colorHint.style.display = decorative ? '' : 'none';
+        const { anySeparate, anyGallery } = screenModes();
+        const fd = getGlobalFrame();
+        const sep = anySeparate && (tmpl.show_frame ?? fd.show_frame ?? true);
+        const gal = anyGallery && PicMeGallery.resolveGallery(config, tmpl);
+        const frames = [...(sep ? [{ on: true, decorative: !!frameAsset(tmpl.frame_style ?? fd.frame_style ?? 'solid') }] : []),
+                        ...(gal ? [{ on: gal.show_frame, decorative: !!frameAsset(gal.frame_style) }] : [])];
+        const separateOnly = anySeparate ? null : 'Separate-frame layouts only.';
+        const offWhy = frameOffWhy(frames, 'No frame shows in this period (Show frame is off).');
+        setInactive(matWidthField, separateOnly);
+        setInactive(styleField, offWhy);
+        setInactive(colorField, offWhy || solidOnlyWhy(frames));
+        setInactive(widthField, separateOnly || (sep ? null : 'No frame shows in this period (Show frame is off).'));
       }
       syncColor();
       col.append(styleField, colorField, widthField);
@@ -2137,8 +3288,16 @@
     const title = document.createElement('h3');
     title.textContent = 'Time-of-Day Templates';
 
+    // On / off here too, so the templates can be switched on where they're edited
+    const enabledRow = makeTodToggle('Enabled', tod.enabled === true, on => {
+      tod.enabled = on;
+      document.getElementById('tod-enabled').checked = on;
+      syncEnabled();
+    });
+    enabledRow.querySelector('input').id = 'tod-modal-enabled';
+
     const desc = document.createElement('p');
-    desc.textContent = 'Wall and frame colors shift automatically at the configured times. Per-slot frame overrides still take priority. Each period\'s frame width also applies to wood and gold frames, so raise it if they look thin.';
+    desc.textContent = 'Wall, mat and frame colors shift automatically at the configured times. Same as default keeps the color set under Global Settings, Frame or Gallery Mat. Per-slot frame overrides still take priority. Each period\'s frame width also applies to decorative frames (wood, gold, black, silver, ...), so raise it if they look thin.';
 
     // Time pickers
     const timeRow = document.createElement('div');
@@ -2162,6 +3321,13 @@
     const cols = document.createElement('div');
     cols.style.cssText = 'display:flex;gap:20px;';
     cols.append(buildPeriodCol('☀️', 'Day', tod.day), buildPeriodCol('🌙', 'Night', tod.night));
+    const templates = document.createElement('div');
+    templates.className = 'tod-templates';
+    templates.style.cssText = 'display:flex;flex-direction:column;gap:14px;';
+    templates.append(timeRow, cols);
+    const syncEnabled = () => setInactive(templates, tod.enabled === true ? null
+      : 'Time of day is off. Turn it on to use these templates.', { at: 'start' });
+    syncEnabled();
 
     const footer = document.createElement('div');
     footer.style.cssText = 'display:flex;justify-content:flex-end;padding-top:8px;border-top:1px solid var(--border);';
@@ -2171,12 +3337,68 @@
     doneBtn.onclick = () => overlay.remove();
     footer.appendChild(doneBtn);
 
-    modal.append(title, desc, timeRow, cols, footer);
+    modal.append(title, enabledRow, desc, templates, footer);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
     overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
     const esc = e => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', esc); } };
     document.addEventListener('keydown', esc);
+  }
+
+  // ── Time-of-day override notes ──
+  // A control whose value the current period's template replaces on the display gets a note under
+  // it, so a mat colour that never shows doesn't read as a bug. The keys each control can lose to a
+  // template; in Basic the frame colour is hidden, so the style's note covers it too.
+  const TOD_NOTE_FIELDS = {
+    'g-wall-color':      () => ['wall_color'],
+    'g-mat-color':       () => ['mat_color'],
+    'g-frame-style':     () => (isBasic() ? ['frame_style', 'frame_color'] : ['frame_style']),
+    'g-frame-color':     () => ['frame_color'],
+    'g-gal-mat-color':   () => ['mat_color'],
+    'g-gal-frame-style': () => (isBasic() ? ['frame_style', 'frame_color'] : ['frame_style']),
+    'g-gal-frame-color': () => ['frame_color'],
+  };
+
+  function todValueText(key, value) {
+    if (key !== 'frame_style') return value;
+    return frameStyleOptions().find(([v]) => v === value)?.[1] ?? value;
+  }
+
+  // The period comes from time-of-day.js, as on the display. Called after every edit (through
+  // scheduleAutoSave), on a mode change and on the editor's 60 s tick (a period boundary).
+  function refreshTodNotes() {
+    if (!config) return;
+    const period = PicMeTimeOfDay.currentPeriod(config, new Date());
+    const tmpl = period?.template;
+    for (const [inputId, keysFor] of Object.entries(TOD_NOTE_FIELDS)) {
+      const field = document.getElementById(inputId)?.closest('.field');
+      if (!field) continue;
+      let note = field.querySelector(':scope > .tod-note');
+      // Same rule as the display: only a non-empty string in the template overrides
+      const keys = tmpl ? keysFor().filter(k => typeof tmpl[k] === 'string' && tmpl[k]) : [];
+      if (!keys.length) { note?.remove(); continue; }
+      if (!note) {
+        note = document.createElement('p');
+        note.className = 'field-hint tod-note';
+        field.appendChild(note);
+      }
+      const name = period.name === 'day' ? 'Day' : 'Night';
+      const shown = keys.map(k => todValueText(k, tmpl[k])).join(', ');
+      const text = document.createElement('span');
+      text.textContent = `${name} time-of-day is showing ${shown} until ${period.until}`;
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'link-btn tod-note-edit';
+      edit.textContent = 'Edit';
+      edit.onclick = openTodModal;
+      const mine = document.createElement('button');
+      mine.type = 'button';
+      mine.className = 'link-btn tod-note-mine';
+      mine.textContent = keys.length === 1 && keys[0] === 'frame_style' ? 'Use my style' : 'Use my colour';
+      // 'Same as default' for these keys in this period's template
+      mine.onclick = () => { for (const k of keys) delete tmpl[k]; scheduleAutoSave(); };
+      note.replaceChildren(text, ' · ', edit, ' · ', mine);
+    }
   }
 
   // `onChange` commits the path (on blur/Enter or a Browse pick); `onInput` is for live hints only
@@ -2340,8 +3562,8 @@
     return { row, input };
   }
 
-  // alwaysEditable: the body isn't greyed out while adopted (Basic's slot folder)
-  function makeSectionWithAdopt(title, adopted, onAdoptChange, { alwaysEditable = false } = {}) {
+  // The body is greyed out while adopted by the panel's rules (renderSlotPanel)
+  function makeSectionWithAdopt(title, adopted, onAdoptChange) {
     const sec = document.createElement('div');
     sec.className = 'panel-section';
 
@@ -2352,15 +3574,8 @@
     const h = document.createElement('h4');
     h.textContent = title;
 
-    // Body — gets .section-disabled when adopted
     const bodyDiv = document.createElement('div');
-    const disable = on => bodyDiv.classList.toggle('section-disabled', on && !alwaysEditable);
-    disable(adopted);
-
-    const adopt = makeAdoptRow(adopted, nowAdopted => {
-      disable(nowAdopted);
-      onAdoptChange(nowAdopted);
-    });
+    const adopt = makeAdoptRow(adopted, onAdoptChange);
     header.append(h, adopt.row);
     sec.append(header, bodyDiv);
 
@@ -2449,7 +3664,15 @@
 
   // ── Save / load ──
 
+  let _saving = null;  // the save in flight, so a reset or preset can wait for it
   async function saveConfig(savedMsg = 'Saved.') {
+    const run = (_saving || Promise.resolve()).then(() => postConfig(savedMsg));
+    _saving = run;
+    await run;
+    if (_saving === run) _saving = null;
+  }
+
+  async function postConfig(savedMsg) {
     try {
       const r = await fetch(`${API}/api/config`, {
         method: 'POST',
@@ -2466,31 +3689,289 @@
   let _saveTimer = null;
   function scheduleAutoSave(savedMsg) {
     refreshAdvancedHint();  // every edit path comes through here
+    refreshTodNotes();
+    refreshInactiveControls();
     clearTimeout(_saveTimer);
-    _saveTimer = setTimeout(() => saveConfig(savedMsg), 500);
+    _saveTimer = setTimeout(() => { _saveTimer = null; saveConfig(savedMsg); }, 500);
+  }
+
+  // Save an edit still waiting for its autosave, and wait for any save in flight, so a reset or
+  // preset works on what's on screen and a late save can't overwrite it
+  async function flushAutoSave() {
+    if (_saveTimer) {
+      clearTimeout(_saveTimer);
+      _saveTimer = null;
+      await saveConfig();
+    }
+    while (_saving) await _saving;
   }
 
   async function reloadConfig() {
     try {
-      config = await fetchJSON(`${API}/api/config`);
-      config.slots = config.slots || [];
-      if (!config.source_path) config.source_path = config.slots[0]?.source_path || 'photos';
-      config.slots.forEach(migrateUseGlobal);
-      ensureTod();
-      migrateRotation();
-      ensureRotation();
-      if (rotationOn()) ensureReachableSlots();
-      selectedSlotId = null;
-      bindGlobalSettings();
-      buildLayoutPicker();
-      buildPreview();
-      refreshRotationUI();
-      renderSlotPanel();
-      refreshAdvancedHint();
-      setStatus('Changes discarded.', '');
+      applyLoadedConfig(await fetchJSON(`${API}/api/config`), 'Changes discarded.');
     } catch (e) {
       setStatus('Could not reload config.', 'error');
     }
+  }
+
+  // Show a config from the server (Discard, Reset, a preset, Undo) as if the editor had just opened
+  function applyLoadedConfig(cfg, msg) {
+    clearTimeout(_saveTimer);
+    _saveTimer = null;
+    config = cfg;
+    config.slots = config.slots || [];
+    if (!config.source_path) config.source_path = config.slots[0]?.source_path || 'photos';
+    config.slots.forEach(migrateUseGlobal);
+    ensureTod();
+    migrateRotation();
+    ensureRotation();
+    if (rotationOn()) ensureReachableSlots();
+    selectedSlotId = null;
+    bindGlobalSettings();
+    bindGallerySettings();
+    buildLayoutPicker();
+    buildPreview();
+    refreshRotationUI();
+    renderSlotPanel();
+    refreshAdvancedHint();
+    refreshInactiveControls();
+    setStatus(msg, msg.endsWith('saved.') ? 'success' : '');
+  }
+
+  // ── Preset (top of Global Settings): one saved preset, reset to defaults, and one step of undo (README → Presets and reset) ──
+  // The server does the work, so Undo and the preset are the same from every device.
+
+  const PRESET_ID = 'my-preset';
+  let _preset = null;
+
+  function formatWhen(iso) {
+    const d = new Date(iso);
+    return isNaN(d) ? '' : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  async function postJSON(url, body) {
+    const r = await fetch(url, { method: url.includes('/api/presets/') && !url.includes('/apply') ? 'PUT' : 'POST',
+                                 headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+    if (!r.ok) throw new Error(`${url} returned ${r.status}`);
+    return r.json();
+  }
+
+  async function refreshProfileUI() {
+    try {
+      const [{ presets }, backup] = await Promise.all([fetchJSON(`${API}/api/presets`), fetchJSON(`${API}/api/config/backup`)]);
+      _preset = presets.find(p => p.id === PRESET_ID) || null;
+      const apply = document.getElementById('preset-apply');
+      apply.disabled = !_preset;
+      apply.title = _preset ? '' : 'No preset saved yet';
+      document.getElementById('preset-status').textContent = _preset
+        ? `My preset: saved ${formatWhen(_preset.updated)}.` : 'No preset saved yet.';
+      document.getElementById('undo-row').hidden = !backup.exists;
+      document.getElementById('undo-text').textContent = backup.exists
+        ? `${backup.reason === 'preset' ? 'Preset applied' : 'Reset to defaults'} ${formatWhen(backup.saved_at)}` : '';
+      document.getElementById('undo-btn').dataset.reason = backup.reason || '';
+      document.getElementById('undo-btn').dataset.savedAt = backup.saved_at || '';
+    } catch (e) { /* the buttons still work; their status lines just aren't current */ }
+  }
+
+  // What a dry run would change, by group: "Frame (3)"
+  function changeGroups(changes) {
+    const counts = new Map();
+    for (const c of changes) counts.set(c.group, (counts.get(c.group) || 0) + 1);
+    return [...counts].map(([g, n]) => (n > 1 ? `${g} (${n})` : g));
+  }
+
+  const KEPT_NOTE = 'Kept: your media folders, each slot\'s folder and photo/video mode, and video settings.';
+
+  // A confirm dialog like Reset slots: title, text, an optional list, Cancel and a confirm button.
+  // onConfirm may be async; the buttons are disabled while it runs, and an error stays in the dialog.
+  function openConfirmModal({ title, body, listTitle, list = [], warnings = [], note, confirmLabel, danger = false, onConfirm, id }) {
+    document.querySelector('.modal-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay confirm-overlay';
+    if (id) overlay.id = id;
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.addEventListener('click', e => e.stopPropagation());
+    const h = document.createElement('h3');
+    h.textContent = title;
+    modal.appendChild(h);
+    for (const text of [].concat(body || [])) {
+      const p = document.createElement('p');
+      p.textContent = text;
+      modal.appendChild(p);
+    }
+    if (list.length || warnings.length) {
+      const box = document.createElement('div');
+      box.className = 'modal-note';
+      if (listTitle) {
+        const strong = document.createElement('strong');
+        strong.textContent = listTitle;
+        box.appendChild(strong);
+      }
+      const ul = document.createElement('ul');
+      for (const item of list) ul.appendChild(Object.assign(document.createElement('li'), { textContent: item }));
+      for (const w of warnings) ul.appendChild(Object.assign(document.createElement('li'), { textContent: w, className: 'warn' }));
+      box.appendChild(ul);
+      modal.appendChild(box);
+    }
+    if (note) {
+      const p = document.createElement('p');
+      p.className = 'modal-kept';
+      p.textContent = note;
+      modal.appendChild(p);
+    }
+    const error = document.createElement('p');
+    error.style.color = '#e74c3c';
+    error.hidden = true;
+    const row = document.createElement('div');
+    row.className = 'modal-btn-row';
+    const close = () => { overlay.remove(); document.removeEventListener('keydown', esc); };
+    const esc = e => { if (e.key === 'Escape' && !cancel.disabled) close(); };
+    const cancel = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn-secondary', textContent: onConfirm ? 'Cancel' : 'Close' });
+    cancel.onclick = close;
+    row.appendChild(cancel);
+    if (onConfirm) {
+      const ok = Object.assign(document.createElement('button'), { type: 'button', className: `btn ${danger ? 'btn-danger-solid' : 'btn-primary'}`, textContent: confirmLabel });
+      ok.onclick = async () => {
+        ok.disabled = cancel.disabled = true;
+        try {
+          await onConfirm();
+          close();
+        } catch (e) {
+          error.textContent = 'That didn\'t work — is the backend running? Nothing was changed.';
+          error.hidden = false;
+          ok.disabled = cancel.disabled = false;
+        }
+      };
+      row.appendChild(ok);
+    }
+    modal.append(error, row);
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', () => { if (!cancel.disabled) close(); });
+    document.addEventListener('keydown', esc);
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  function plural(n, word) { return `${n} ${word}${n === 1 ? '' : 's'}`; }
+
+  async function openResetDefaultsModal() {
+    await flushAutoSave();
+    let dry;
+    try { dry = await postJSON(`${API}/api/config/reset?dry_run=true`); }
+    catch (e) { setStatus('Could not reach the backend.', 'error'); return; }
+    if (dry.count === 0) {
+      openConfirmModal({ id: 'reset-defaults-modal', title: 'Reset everything to defaults?',
+                         body: 'Every setting is already at its default. Nothing to reset.' });
+      return;
+    }
+    openConfirmModal({
+      id: 'reset-defaults-modal',
+      title: 'Reset everything to defaults?',
+      body: `${plural(dry.count, 'setting')} differ${dry.count === 1 ? 's' : ''} from default.`,
+      listTitle: 'Back to defaults:',
+      list: changeGroups(dry.changes),
+      note: `${KEPT_NOTE} You can undo this.`,
+      confirmLabel: 'Reset to defaults',
+      danger: true,
+      onConfirm: async () => {
+        const r = await postJSON(`${API}/api/config/reset`);
+        applyLoadedConfig(r.config, 'Reset to defaults — saved.');
+        await refreshProfileUI();
+        revealUndo();
+      },
+    });
+  }
+
+  // The Undo row is at the top of Global Settings; the Reset button is at the bottom of the sidebar,
+  // so after a reset bring Undo into view (unfolding Global Settings if needed) and flash it
+  function revealUndo() {
+    const row = document.getElementById('undo-row');
+    if (row.hidden) return;
+    const section = row.closest('.sidebar-section');
+    // Unfold through its title, so the open state is saved like a click
+    if (section?.classList.contains('collapsed')) section.querySelector('.section-toggle').click();
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    row.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+    row.classList.remove('flash');
+    void row.offsetWidth;  // restart the animation
+    row.classList.add('flash');
+  }
+
+  async function savePresetNow() {
+    await flushAutoSave();
+    const r = await postJSON(`${API}/api/presets/${PRESET_ID}`, { name: _preset?.name || 'My preset' });
+    _preset = r.preset;
+    await refreshProfileUI();
+    setStatus('Saved as my preset.', 'success');
+  }
+
+  async function openSavePresetModal() {
+    if (!_preset) {
+      try { await savePresetNow(); } catch (e) { setStatus('Could not save the preset.', 'error'); }
+      return;
+    }
+    openConfirmModal({
+      id: 'save-preset-modal',
+      title: 'Replace my preset?',
+      body: [`Your preset from ${formatWhen(_preset.updated)} will be replaced by the current settings.`,
+             'A preset holds the look: layout, rotation, frames, gallery mat, metadata, Fill frames, and each slot\'s frame, metadata, timer and shape. Folders aren\'t saved in it.'],
+      confirmLabel: 'Replace my preset',
+      onConfirm: savePresetNow,
+    });
+  }
+
+  async function openApplyPresetModal() {
+    if (!_preset) return;
+    await flushAutoSave();
+    let dry;
+    try { dry = await postJSON(`${API}/api/presets/${PRESET_ID}/apply?dry_run=true`); }
+    catch (e) { setStatus('Could not reach the backend.', 'error'); return; }
+    openConfirmModal({
+      id: 'apply-preset-modal',
+      title: 'Apply my preset?',
+      body: dry.count ? `${plural(dry.count, 'setting')} will change to your preset from ${formatWhen(_preset.updated)}.`
+                      : 'The current settings already match your preset.',
+      listTitle: dry.count ? 'Changes:' : '',
+      list: changeGroups(dry.changes),
+      warnings: dry.warnings,
+      note: `${KEPT_NOTE} You can undo this.`,
+      confirmLabel: 'Apply my preset',
+      onConfirm: async () => {
+        const r = await postJSON(`${API}/api/presets/${PRESET_ID}/apply`);
+        applyLoadedConfig(r.config, 'Preset applied — saved.');
+        if (r.warnings.length) setStatus(`Preset applied — saved. ${r.warnings.join(' ')}`, '');
+        await refreshProfileUI();
+      },
+    });
+  }
+
+  function openUndoModal() {
+    const btn = document.getElementById('undo-btn');
+    const what = btn.dataset.reason === 'preset' ? 'applying your preset' : 'the reset';
+    openConfirmModal({
+      id: 'undo-modal',
+      title: `Undo ${what}?`,
+      body: [`Every setting goes back to how it was before ${what} (${formatWhen(btn.dataset.savedAt)}).`,
+             'Changes made since then are lost.'],
+      confirmLabel: 'Undo',
+      onConfirm: async () => {
+        await flushAutoSave();
+        const r = await postJSON(`${API}/api/config/undo`);
+        applyLoadedConfig(r.config, 'Undone — saved.');
+        await refreshProfileUI();
+      },
+    });
+  }
+
+  function bindProfileButtons() {
+    document.getElementById('preset-save').onclick = openSavePresetModal;
+    document.getElementById('preset-apply').onclick = openApplyPresetModal;
+    document.getElementById('reset-defaults').onclick = openResetDefaultsModal;
+    document.getElementById('undo-btn').onclick = openUndoModal;
+    refreshProfileUI();
   }
 
   // ── Init ──
@@ -2513,20 +3994,26 @@
     ensureRotation();
     if (rotationOn()) ensureReachableSlots();
     bindGlobalSettings();
+    bindGallerySettings();
     buildLayoutPicker();
     buildPreview();
     refreshRotationUI();
     renderSlotPanel();
     refreshAdvancedHint();
+    bindProfileButtons();
     PicMeSlotDrag.attach([document.getElementById('collage-preview'), document.getElementById('rotation-slot-hint')], {
       onDrop: onSlotDrop,
+      // A gallery opening is drawn at display size inside a scaled stage: drag a plain stand-in
+      ghost: (el, rect) => el.classList.contains('opening') ? openingGhost(el, rect) : PicMeSlotDrag.defaultGhost(el, rect),
       canDrop: (from, to) => from !== to && [from, to].every(k => /^[1-9][0-9]*$/.test(k)),
     });
   }
 
-  // Keep the Today badge and status line current when the editor stays open past change_at
+  // Keep the Today badge and status line current when the editor stays open past change_at,
+  // and the time-of-day notes current past a period boundary
   let _rotationUIKey = null;
   setInterval(() => {
+    refreshTodNotes();
     if (!rotationOn() || document.activeElement?.id === 'g-rotation-change-at' || PicMeSlotDrag.isDragging()) return;
     const now = new Date();
     const key = `${PicMeRotation.resolveLayout(config, layouts, now)?.id}|${now.toDateString()}`;
@@ -2536,12 +4023,180 @@
     refreshRotationUI();
   }, 60000);
 
+  // ── Per-browser view preferences (never in config): the divider and folded sections ──
+  // localStorage throws in some private / embedded browsers: the choice then lasts for this page
+  const _prefFallback = {};
+  function loadPref(key) {
+    try { const v = localStorage.getItem(key); if (v !== null) return v; } catch (e) { /* unavailable */ }
+    return _prefFallback[key] ?? null;
+  }
+  function savePref(key, value) {
+    if (value === null) delete _prefFallback[key]; else _prefFallback[key] = value;
+    try { value === null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch (e) { /* unavailable */ }
+  }
+
+  // The divider between the preview and the slot settings. Its position is the preview's share of
+  // the height they split (0–1), so it suits any window size. The preview keeps the display's
+  // 16:9 inside whatever height it gets, so it stays the display, smaller.
+  const SPLIT_KEY = 'picme.previewSplit';
+  const SPLIT_DEFAULT = 0.6;
+  const SPLIT_MIN_PREVIEW = 160, SPLIT_MIN_PANEL = 120;  // px
+  const SPLIT_STEP = 0.05;  // arrow keys
+
+  function splitRoom() {
+    const main = document.getElementById('main');
+    const cs = getComputedStyle(main);
+    const divider = document.getElementById('pane-divider').offsetHeight;
+    return Math.max(0, main.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - divider);
+  }
+
+  // Tallest useful preview: the full-width 16:9 preview plus the area's title, padding and hint
+  function splitNatural() {
+    const area = document.getElementById('preview-area');
+    const fit = document.getElementById('preview-fit');
+    return area.offsetHeight - fit.offsetHeight + fit.clientWidth * 9 / 16;
+  }
+
+  function storedSplit() {
+    const v = parseFloat(loadPref(SPLIT_KEY));
+    return v > 0 && v < 1 ? v : null;
+  }
+
+  function applySplit(fraction = storedSplit() ?? SPLIT_DEFAULT) {
+    const room = splitRoom();
+    const max = Math.max(SPLIT_MIN_PREVIEW, Math.min(room - SPLIT_MIN_PANEL, splitNatural()));
+    const h = Math.round(Math.min(max, Math.max(SPLIT_MIN_PREVIEW, fraction * room)));
+    document.getElementById('main').style.setProperty('--preview-h', `${h}px`);
+    const divider = document.getElementById('pane-divider');
+    divider.setAttribute('aria-valuenow', String(Math.round((100 * h) / (room || 1))));
+    divider.setAttribute('aria-valuemin', '0');
+    divider.setAttribute('aria-valuemax', '100');
+    fitPreview();
+    return h;
+  }
+
+  // Store where the preview ended up (after clamping), as a share of the room
+  function setSplit(fraction) {
+    const h = applySplit(fraction);
+    savePref(SPLIT_KEY, String(h / (splitRoom() || 1)));
+  }
+
+  // Size the preview to its box at 16:9; a separate-frames preview is re-drawn at the new size
+  // (decorative frame widths and pill sizes follow it; a gallery stage just re-scales)
+  let _fitWidth = 0;
+  function fitPreview() {
+    const fit = document.getElementById('preview-fit');
+    const preview = document.getElementById('collage-preview');
+    const w = Math.floor(Math.min(fit.clientWidth, (fit.clientHeight * 16) / 9));
+    if (!(w > 0) || w === _fitWidth) return;
+    _fitWidth = w;
+    preview.style.width = `${w}px`;
+    preview.style.height = `${(w * 9) / 16}px`;  // exactly 16:9, whatever the cells hold
+    if (config && layouts && !preview.classList.contains('gallery-preview') && !PicMeSlotDrag.isDragging()) buildPreview();
+  }
+
+  function bindPaneDivider() {
+    const divider = document.getElementById('pane-divider');
+    let drag = null;
+    divider.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      try { divider.setPointerCapture(e.pointerId); } catch (err) { /* moves still reach the divider */ }
+      drag = { y: e.clientY, h: document.getElementById('preview-area').offsetHeight, room: splitRoom() };
+      divider.classList.add('dragging');
+      document.body.classList.add('pane-resizing');
+    });
+    divider.addEventListener('pointermove', e => {
+      if (!drag) return;
+      applySplit((drag.h + e.clientY - drag.y) / (drag.room || 1));
+    });
+    const end = e => {
+      if (!drag) return;
+      setSplit((drag.h + e.clientY - drag.y) / (drag.room || 1));
+      drag = null;
+      divider.classList.remove('dragging');
+      document.body.classList.remove('pane-resizing');
+    };
+    divider.addEventListener('pointerup', end);
+    divider.addEventListener('pointercancel', end);
+    divider.addEventListener('dblclick', () => { savePref(SPLIT_KEY, null); applySplit(); });
+    divider.addEventListener('keydown', e => {
+      const now = document.getElementById('preview-area').offsetHeight / (splitRoom() || 1);
+      const to = { ArrowUp: now - SPLIT_STEP, ArrowDown: now + SPLIT_STEP, Home: 0, End: 1 }[e.key];
+      if (to === undefined) return;
+      e.preventDefault();
+      setSplit(to);
+    });
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => applySplit()).observe(document.getElementById('main'));
+      new ResizeObserver(() => fitPreview()).observe(document.getElementById('preview-fit'));
+    } else {
+      window.addEventListener('resize', () => applySplit());
+    }
+    applySplit();
+  }
+
+  // Sidebar sections fold at their title (open by default). The title becomes a button; the
+  // rest of the section goes into a body that's hidden when folded. Links beside the title
+  // (Layout: Select all / Deselect all) are separate controls and don't fold it.
+  const SECTIONS_KEY = 'picme.collapsedSections';
+  // Folded sections that no longer exist (Time-of-Day and My Settings moved into Global Settings)
+  const RETIRED_SECTIONS = ['time_of_day', 'profile'];
+
+  function collapsedSections() {
+    try { const v = JSON.parse(loadPref(SECTIONS_KEY) || '[]'); return new Set(Array.isArray(v) ? v : []); }
+    catch (e) { return new Set(); }
+  }
+
+  function forgetRetiredSections() {
+    const folded = collapsedSections();
+    if (!RETIRED_SECTIONS.filter(k => folded.delete(k)).length) return;
+    savePref(SECTIONS_KEY, folded.size ? JSON.stringify([...folded]) : null);
+  }
+
+  function setSectionOpen(section, open) {
+    section.classList.toggle('collapsed', !open);
+    section.querySelector(':scope > .section-body').hidden = !open;
+    section.querySelector('.section-toggle').setAttribute('aria-expanded', String(open));
+  }
+
+  function bindSidebarSections() {
+    forgetRetiredSections();
+    const folded = collapsedSections();
+    for (const section of document.querySelectorAll('#sidebar .sidebar-section[data-section]')) {
+      const key = section.dataset.section;
+      const h3 = section.querySelector('h3');
+      const header = h3.parentElement === section ? h3 : h3.parentElement;  // the Layout header row
+      const body = document.createElement('div');
+      body.className = 'section-body';
+      body.id = `section-body-${key}`;
+      while (header.nextSibling) body.appendChild(header.nextSibling);
+      section.appendChild(body);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'section-toggle';
+      btn.setAttribute('aria-controls', body.id);
+      btn.append(...h3.childNodes);
+      h3.appendChild(btn);
+      btn.onclick = () => {
+        const open = section.classList.contains('collapsed');
+        setSectionOpen(section, open);
+        const now = collapsedSections();
+        if (open) now.delete(key); else now.add(key);
+        savePref(SECTIONS_KEY, JSON.stringify([...now]));
+      };
+      setSectionOpen(section, !folded.has(key));
+    }
+  }
+
   // Before the first render, so Basic never flashes the advanced controls
   editorMode = loadEditorMode();
   applySettingTiers(document);
   applyEditorMode();
   for (const btn of document.querySelectorAll('#editor-mode button')) btn.onclick = () => setEditorMode(btn.dataset.mode);
   document.getElementById('advanced-hint-show').onclick = () => setEditorMode('advanced');
+  bindSidebarSections();
+  bindPaneDivider();
 
   init();
 </script>

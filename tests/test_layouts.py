@@ -7,6 +7,7 @@ import re
 import pytest
 
 from conftest import LAYOUTS_DIR, REPO_ROOT
+from layouts import KNOWN_SHAPES, validate_layout
 
 LAYOUT_FILES = sorted(LAYOUTS_DIR.glob("*.json"))
 LAYOUT_IDS = [p.stem for p in LAYOUT_FILES]
@@ -91,7 +92,57 @@ def test_slots_tile_grid_without_overlaps_or_gaps(path):
             )
             covered[cell] = slot["id"]
     grid = {(r, c) for r in range(1, rows + 1) for c in range(1, cols + 1)}
-    assert set(covered) == grid, f"gaps at {sorted(grid - set(covered))}"
+    # Gallery layouts may leave cells empty: they show as plain mat
+    if layout.get("gallery") is not True:
+        assert set(covered) == grid, f"gaps at {sorted(grid - set(covered))}"
+
+
+@pytest.mark.parametrize("path", LAYOUT_FILES, ids=LAYOUT_IDS)
+def test_gallery_layout_has_no_slotless_row_or_column(path):
+    """An empty mat row or column would just be a wide strip of mat."""
+    layout = _load(path)
+    rows = _track_count(layout["grid_template_rows"])
+    cols = _track_count(layout["grid_template_columns"])
+    cells = set().union(*(_cells(s["grid_area"]) for s in layout["slots"]))
+    assert {r for r, _ in cells} == set(range(1, rows + 1))
+    assert {c for _, c in cells} == set(range(1, cols + 1))
+
+
+def _shapes_js_names() -> set[str]:
+    """Shape names in frontend/display/shapes.js (its ORDER list)."""
+    text = (REPO_ROOT / "frontend" / "display" / "shapes.js").read_text(encoding="utf-8")
+    order = re.search(r"const ORDER = \[([^\]]*)\]", text).group(1)
+    return set(re.findall(r"'(\w+)'", order))
+
+
+def test_shape_names_match_between_display_and_backend():
+    assert _shapes_js_names() == set(KNOWN_SHAPES)
+
+
+@pytest.mark.parametrize("path", LAYOUT_FILES, ids=LAYOUT_IDS)
+def test_slot_shapes_known(path):
+    for slot in _load(path)["slots"]:
+        if "shape" in slot:
+            assert slot["shape"] in _shapes_js_names(), f"slot {slot['id']}: {slot['shape']}"
+
+
+@pytest.mark.parametrize("path", LAYOUT_FILES, ids=LAYOUT_IDS)
+def test_gallery_flag_is_a_bool(path):
+    layout = _load(path)
+    assert isinstance(layout.get("gallery", False), bool)
+
+
+@pytest.mark.parametrize("path", LAYOUT_FILES, ids=LAYOUT_IDS)
+def test_backend_validator_accepts_every_shipped_layout(path):
+    assert validate_layout(_load(path)) == []
+
+
+def test_gallery_presets_ship():
+    gallery = [p.stem for p in LAYOUT_FILES if _load(p).get("gallery") is True]
+    assert len(gallery) >= 6
+    # Asymmetric: some gallery layout has openings of different sizes
+    assert any(len({len(_cells(s["grid_area"])) for s in _load(LAYOUTS_DIR / f"{g}.json")["slots"]}) > 1
+               for g in gallery)
 
 
 @pytest.mark.parametrize("path", LAYOUT_FILES, ids=LAYOUT_IDS)

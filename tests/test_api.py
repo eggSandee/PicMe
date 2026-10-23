@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 import main
-from conftest import EXIF_DATE_ISO, LAYOUTS_DIR, make_config
+from conftest import EXIF_DATE_ISO, LAYOUTS_DIR, REPO_ROOT, make_config
 
 
 # --- /api/config ---
@@ -27,7 +28,12 @@ def test_config_get_without_file_creates_defaults(client, config_path):
     assert cfg["metadata_defaults"]["text_size"] == "medium"
     assert cfg["metadata_defaults"]["pill_size"] == "medium"
     assert cfg["frame_defaults"]["show_frame"] is True
-    assert cfg["frame_defaults"]["frame_style"] == "solid"  # decorative frames are opt-in
+    # New installs start with wood frames at wood's own default width (frames.js default_width)
+    assert cfg["frame_defaults"]["frame_style"] == "wood"
+    assert cfg["frame_defaults"]["frame_width"] == 28
+    assert cfg["label_position"] == "auto"
+    assert cfg["label_style"] == "pill"  # today's pills (README → Metadata label styles)
+    assert cfg["gallery"]["frame_override"] is False  # the gallery's frame follows frame_defaults
     # Persisted on first run, so the editor and a restart see the same thing
     assert json.loads(config_path.read_text()) == cfg
     assert client.get("/api/config").json() == cfg
@@ -42,6 +48,38 @@ def test_config_get_does_not_overwrite_existing_empty_config(client, config_path
     config_path.write_text("{}")
     assert client.get("/api/config").json() == {}
     assert config_path.read_text() == "{}"
+
+
+def test_existing_config_keeps_its_own_frame_defaults(client, config_path):
+    """The wood default is for new installs: a saved config's solid frame is never rewritten."""
+    saved = make_config("photos")
+    saved["frame_defaults"] = {"mat_color": "#000000", "mat_width": 16, "show_frame": True,
+                               "frame_color": "#2c2318", "frame_width": 8, "frame_style": "solid"}
+    config_path.write_text(json.dumps(saved))
+    assert client.get("/api/config").json() == saved
+    assert json.loads(config_path.read_text()) == saved
+
+
+def test_new_installs_fill_frames_and_existing_configs_keep_fit(client, config_path):
+    """fill_mode is cover in the first-run config; a saved config without it isn't given one
+    (the display reads a missing fill_mode as contain)."""
+    assert client.get("/api/config").json()["fill_mode"] == "cover"
+    saved = make_config("photos")
+    config_path.write_text(json.dumps(saved))
+    assert "fill_mode" not in client.get("/api/config").json()
+    assert "fill_mode" not in json.loads(config_path.read_text())
+
+
+def test_saving_config_leaves_no_temp_file(client, config_path):
+    client.post("/api/config", json=make_config("photos"))
+    assert json.loads(config_path.read_text()) == make_config("photos")
+    assert [p.name for p in config_path.parent.iterdir()] == ["config.json"]
+
+
+def test_wood_default_width_matches_frames_js():
+    frames = (REPO_ROOT / "frontend" / "assets" / "frames" / "frames.js").read_text(encoding="utf-8")
+    wood = re.search(r"wood: \{[^}]*default_width: (\d+)", frames)
+    assert wood and int(wood.group(1)) == main.DEFAULT_CONFIG["frame_defaults"]["frame_width"]
 
 
 def test_config_get_does_not_overwrite_config_without_slots(client, config_path):
@@ -79,6 +117,27 @@ def test_video_folders_include_dormant_slots(tmp_path):
 
 def test_default_config_includes_subfolders():
     assert main.default_config()["include_subfolders"] is True
+
+
+def _gallery_js_defaults() -> dict:
+    """GALLERY_DEFAULTS as written in frontend/display/gallery.js."""
+    text = (REPO_ROOT / "frontend" / "display" / "gallery.js").read_text(encoding="utf-8")
+    body = text.split("const GALLERY_DEFAULTS = {", 1)[1].split("};", 1)[0]
+    values = {}
+    for key, raw in re.findall(r"^\s*(\w+): ([^,]+),", body, re.M):
+        if raw in ("true", "false"):
+            values[key] = raw == "true"
+        else:
+            values[key] = raw.strip("'") if raw.startswith("'") else int(raw)
+    return values
+
+
+def test_default_config_has_gallery_settings_matching_the_renderer():
+    """A first run writes the gallery block the display falls back to for older configs."""
+    cfg = main.default_config()
+    assert cfg["layout_modes"] == {}
+    assert cfg["gallery"] == _gallery_js_defaults()
+    assert cfg["gallery"]["frame_style"] in ("solid", "wood", "gold")
 
 
 @pytest.mark.parametrize("global_value, slot, expected", [
@@ -600,3 +659,12 @@ def test_static_rejects_traversal(client, mount):
 
 def test_unknown_api_route_404(client):
     assert client.get("/api/nope").status_code == 404
+
+
+@pytest.mark.parametrize("url", ["/display/", "/display/aspect.js", "/editor/", "/assets/frames/frames.js"])
+def test_frontend_files_are_revalidated_not_served_stale(client, url):
+    """After an update the browser must not keep running an old cached script (owner hit this)."""
+    r = client.get(url)
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
+    again = client.get(url, headers={"If-None-Match": r.headers["etag"]})
+    assert again.status_code == 304

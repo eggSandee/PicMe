@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from conftest import LANDSCAPE, PORTRAIT, _exif_bytes, _make_image, editor_mode_init_js, make_config
+from conftest import LANDSCAPE, LAYOUTS_DIR, PORTRAIT, _exif_bytes, _make_image, editor_mode_init_js, make_config
 
 pytestmark = pytest.mark.e2e
 
@@ -33,7 +33,14 @@ from test_browser import VIEWPORT, PageWatcher, browser, fresh_install, server  
 
 TZ = "America/New_York"
 TWO = ["classic-4", "classic-6"]
-SLOT_COUNTS = {"classic-4": 4, "classic-6": 6, "hero-center": 5, "hero-left": 5, "landscape-strip": 3}
+# Every layout in /api/layouts order (file name order), with its slot count
+SLOT_COUNTS = {p.stem: len(json.loads(p.read_text())["slots"]) for p in sorted(LAYOUTS_DIR.glob("*.json"))}
+ALL = list(SLOT_COUNTS)
+
+
+def all_on(day: int) -> str:
+    """The layout an "every layout" rotation shows on rotation day `day` (days since 1970-01-01)."""
+    return ALL[day % len(ALL)]
 
 
 def local(y, mo, d, h=12, mi=0, s=0) -> dt.datetime:
@@ -191,9 +198,10 @@ def test_resolver_eligible_list_rules(resolver):
     assert resolver(rot(["classic-6", "classic-4", "classic-6"]), 2026, 10, 13) == "classic-6"
     assert resolver(rot(["classic-6", "classic-4"]), 2026, 10, 14) == "classic-4"
     # Empty list means every layout
-    assert resolver(rot([]), 2026, 10, 12) == "hero-left"        # 20738 % 5 = 3
-    assert resolver(rot([]), 2026, 10, 13) == "landscape-strip"  # 20739 % 5 = 4
-    assert resolver(rot([]), 2026, 10, 14) == "classic-4"        # 20740 % 5 = 0
+    assert resolver(rot([]), 2026, 10, 12) == all_on(20738)
+    assert resolver(rot([]), 2026, 10, 13) == all_on(20739)
+    assert resolver(rot([]), 2026, 10, 14) == all_on(20740)
+    assert len({all_on(d) for d in range(20738, 20738 + len(ALL))}) == len(ALL)  # each layout in turn
     # One eligible layout is shown every day; none valid falls back to the base layout
     assert resolver(rot(["hero-left"]), 2026, 10, 13) == "hero-left"
     assert resolver(rot(["hero-left"]), 2026, 10, 14) == "hero-left"
@@ -214,9 +222,9 @@ def test_resolver_disabled_empty_and_garbage_configs(resolver):
 
 def test_resolver_legacy_flag_rotates_all_layouts_at_midnight(resolver):
     legacy = {"layout": "hero-center", "daily_layout_rotation": True}
-    assert resolver(legacy, 2026, 10, 12, 23, 59) == "hero-left"
-    assert resolver(legacy, 2026, 10, 13, 0, 0) == "landscape-strip"
-    assert resolver(legacy, 2026, 10, 13, 3, 0) == "landscape-strip"
+    assert resolver(legacy, 2026, 10, 12, 23, 59) == all_on(20738)
+    assert resolver(legacy, 2026, 10, 13, 0, 0) == all_on(20739)
+    assert resolver(legacy, 2026, 10, 13, 3, 0) == all_on(20739)
     # layout_rotation wins over the legacy flag when both are present
     both = legacy | {"layout_rotation": {"enabled": False, "layouts": [], "change_at": "04:00"}}
     assert resolver(both, 2026, 10, 13) == "hero-center"
@@ -299,10 +307,10 @@ def test_display_legacy_flag_rotates_all_layouts_at_midnight(server, open_at, ro
     rotation_config(layouts=None, slots=4, daily_layout_rotation=True)
     w = open_at(f"{server}/display/", at=local(2026, 10, 12, 23, 59, 30))
     page = w.page
-    # Hand-written 4-slot config: the 5-slot day pads from slot 1 (old code picked classic-4 by day-of-year)
-    _wait_for_layout(page, "hero-left")
+    # Hand-written 4-slot config: bigger layouts pad from slot 1 (old code picked classic-4 by day-of-year)
+    _wait_for_layout(page, all_on(20738))
     page.clock.run_for(60_000)
-    _wait_for_layout(page, "landscape-strip")
+    _wait_for_layout(page, all_on(20739))
     assert w.errors == []
 
 
@@ -422,6 +430,19 @@ def _saved(path, predicate, timeout=5.0) -> dict:
     raise AssertionError(f"config never matched; last saved: {json.dumps(cfg)[:500]}")
 
 
+# Rotation off: each layout's box and the switch time are greyed and disabled, saying why
+GREYED_PICKS_JS = """() => [...document.querySelectorAll('.rotation-pick-corner')].map(c =>
+  c.classList.contains('field-inactive') && c.querySelector('.rotation-pick').disabled && /Turn on Rotate layout daily/.test(c.title))"""
+
+
+def _assert_rotation_greyed(page):
+    picks = page.evaluate(GREYED_PICKS_JS)
+    assert picks and all(picks), picks
+    assert page.locator("#rotation-options.field-inactive").is_visible()
+    assert page.locator("#g-rotation-change-at").is_disabled()
+    assert page.locator("#rotation-options .inactive-reason").text_content() == "Turn on Rotate layout daily to use these."
+
+
 PICKS_JS = "() => Object.fromEntries([...document.querySelectorAll('.rotation-pick')].map(c => [c.dataset.id, c.checked]))"
 
 
@@ -432,15 +453,14 @@ def test_editor_rotation_controls(server, open_at, rotation_config):
     w = open_at(f"{server}/editor/", at=local(2026, 10, 13, 10, 0))
     page = w.page
     path = rotation_config.path
-    assert page.locator(".rotation-pick").count() == 0
-    assert page.locator("#rotation-options").is_hidden()
+    _assert_rotation_greyed(page)
 
     _click(page, "#g-rotation-enabled")
     assert page.evaluate(PICKS_JS) == {k: True for k in SLOT_COUNTS}
     saved = _saved(path, lambda c: c["layout_rotation"]["enabled"] is True)
     assert saved["layout_rotation"]["layouts"] == []  # all ticked is stored as "all"
-    # Slots 5-6 now exist for the 6-slot layout: photo slots on the global settings
-    assert len(saved["slots"]) == 6
+    # Slots up to the biggest layout now exist: photo slots on the global settings
+    assert len(saved["slots"]) == max(SLOT_COUNTS.values())
     for slot in saved["slots"][4:]:
         assert slot["mode"] == "photos"
         assert slot["use_global"] == {"source": True, "metadata": True, "frame": True}
@@ -448,7 +468,7 @@ def test_editor_rotation_controls(server, open_at, rotation_config):
         assert slot["cycle_seconds"] == 300
     assert saved["slots"][0]["mode"] == "video"
 
-    for lid in ("hero-center", "hero-left", "landscape-strip"):
+    for lid in (l for l in ALL if l not in TWO):
         _click(page, f".rotation-pick[data-id={lid}]")
     saved = _saved(path, lambda c: c["layout_rotation"]["layouts"] == TWO)
     assert saved["layout"] == "classic-4"  # ticking isn't selecting the base layout
@@ -535,14 +555,14 @@ def test_editor_migrates_legacy_flag(server, open_at, rotation_config):
     assert page.locator("#g-rotation-enabled").is_checked()
     assert page.evaluate(PICKS_JS) == {k: True for k in SLOT_COUNTS}
     assert page.locator("#g-rotation-change-at").input_value() == "00:00"
-    assert page.locator(".layout-thumb:has(.today-badge)").get_attribute("data-id") == "landscape-strip"
+    assert page.locator(".layout-thumb:has(.today-badge)").get_attribute("data-id") == all_on(20739)
 
     page.locator("#g-wall-color").evaluate(
         "el => { el.value = '#336699'; el.dispatchEvent(new Event('input', { bubbles: true })); }")
     saved = _saved(path, lambda c: c.get("wall_color") == "#336699")
     assert "daily_layout_rotation" not in saved
     assert saved["layout_rotation"] == {"enabled": True, "layouts": [], "change_at": "00:00"}
-    assert len(saved["slots"]) == 6
+    assert len(saved["slots"]) == max(SLOT_COUNTS.values())
     assert w.errors == []
 
 
@@ -553,7 +573,136 @@ def test_fresh_install_editor_has_rotation_off(fresh_install, open_at):
     page = w.page
     assert page.locator("#g-rotation-enabled").count() == 1
     assert not page.locator("#g-rotation-enabled").is_checked()
-    assert page.locator("#rotation-options").is_hidden()
-    assert page.locator(".rotation-pick").count() == 0
+    _assert_rotation_greyed(page)
     assert json.loads(config.read_text())["layout_rotation"]["enabled"] is False
     assert w.errors == []
+
+
+# --- Corner checkboxes and Select all / Deselect all (Basic and Advanced) ---
+
+RECT_JS = "el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, w: r.width, h: r.height }; }"
+
+
+def _rect(page, selector) -> dict:
+    return page.locator(selector).evaluate(RECT_JS)
+
+
+@pytest.mark.parametrize("editor_mode", ["basic", "advanced"])
+def test_rotation_checkbox_in_each_thumbnail_corner(server, open_at, rotation_config, editor_mode):
+    rotation_config(layouts=[], enabled=False, slots=4)
+    w = open_at(f"{server}/editor/", at=local(2026, 10, 13, 10, 0), editor_mode=editor_mode)
+    page = w.page
+    path = rotation_config.path
+    _assert_rotation_greyed(page)
+    assert page.locator("#rotation-bulk").is_hidden()
+
+    page.click("#g-rotation-enabled + .toggle-track")  # the visible toggle, in either mode
+    _saved(path, lambda c: c["layout_rotation"]["enabled"] is True)
+    assert page.locator(".layout-thumb").count() == len(ALL)
+    for lid in ALL:
+        thumb = f".layout-thumb[data-id='{lid}']"
+        assert page.locator(f"{thumb} .rotation-pick").is_visible(), lid
+        grid, box = _rect(page, f"{thumb} .thumb-grid"), _rect(page, f"{thumb} .rotation-pick")
+        # Small, inside the thumbnail's picture, in its bottom-right quadrant
+        assert box["w"] <= 16 and box["h"] <= 16, box
+        assert grid["x"] + grid["w"] / 2 <= box["x"] and box["right"] <= grid["right"] + 0.5, (lid, grid, box)
+        assert grid["y"] + grid["h"] / 2 <= box["y"] and box["bottom"] <= grid["bottom"] + 0.5, (lid, grid, box)
+        assert page.locator(f"{thumb} .rotation-pick").get_attribute("aria-label") == \
+            f"Rotate {page.locator(f'{thumb} > span').first.text_content()} daily"
+    # The Today badge stays, clear of the checkbox
+    today = page.locator(".layout-thumb:has(.today-badge)").get_attribute("data-id")
+    badge, box = _rect(page, ".today-badge"), _rect(page, f".layout-thumb[data-id='{today}'] .rotation-pick")
+    assert badge["bottom"] <= box["y"] or badge["right"] <= box["x"]
+    # The Mat chip (frames per rotated layout) is Advanced
+    assert page.locator(".layout-thumb[data-id='classic-6'] .layout-mode-chip").is_visible() == (editor_mode == "advanced")
+
+    # A real click on a box ticks it and doesn't pick the layout; a click on the thumbnail does
+    page.click(".rotation-pick[data-id='hero-left']")
+    saved = _saved(path, lambda c: c["layout_rotation"]["layouts"] == [l for l in ALL if l != "hero-left"])
+    assert saved["layout"] == "classic-4"
+    assert page.locator(".layout-thumb.active").get_attribute("data-id") == "classic-4"
+    assert not page.locator(".rotation-pick[data-id='hero-left']").is_checked()
+    page.click(".rotation-pick[data-id='hero-left']")
+    _saved(path, lambda c: c["layout_rotation"]["layouts"] == [])  # all ticked again = "all"
+    page.click(".layout-thumb[data-id='classic-6'] .thumb-grid")
+    _saved(path, lambda c: c["layout"] == "classic-6")
+
+    page.click("#g-rotation-enabled + .toggle-track")
+    _saved(path, lambda c: c["layout_rotation"]["enabled"] is False)
+    _assert_rotation_greyed(page)
+    assert w.errors == []
+
+
+@pytest.mark.parametrize("editor_mode", ["basic", "advanced"])
+def test_select_all_and_deselect_all_on_the_layout_header(server, open_at, rotation_config, editor_mode):
+    rotation_config(layouts=TWO, slots=6)
+    w = open_at(f"{server}/editor/", at=local(2026, 10, 13, 10, 0), editor_mode=editor_mode)
+    page = w.page
+    path = rotation_config.path
+    status = page.locator("#rotation-status")
+    select_all, deselect_all = page.locator("#rotation-select-all"), page.locator("#rotation-deselect-all")
+    assert select_all.is_visible() and deselect_all.is_visible()
+    # Small links on the Layout header row, at its right
+    h3 = page.locator(".sidebar-section h3", has_text="Layout").first
+    title, links = h3.evaluate(RECT_JS), page.locator("#rotation-bulk").evaluate(RECT_JS)
+    assert links["y"] < title["bottom"] and title["y"] < links["bottom"]  # same row
+    assert links["x"] > title["right"]
+    section = page.locator("#layout-picker").evaluate(RECT_JS)
+    assert links["right"] == pytest.approx(section["right"], abs=2)
+    # The links don't make the title taller than another section's
+    other = page.locator(".sidebar-section h3", has_text="Global Settings").evaluate(RECT_JS)
+    assert title["h"] == pytest.approx(other["h"], abs=0.5) and links["h"] <= title["h"] + 1
+
+    select_all.click()
+    _saved(path, lambda c: c["layout_rotation"]["layouts"] == [])
+    assert page.evaluate(PICKS_JS) == {k: True for k in ALL}
+    assert status.text_content().startswith("Today: ")
+    assert select_all.is_disabled() and not deselect_all.is_disabled()
+
+    deselect_all.click()
+    saved = _saved(path, lambda c: c["layout_rotation"]["layouts"] == ["classic-4"])  # the base layout stays
+    assert page.evaluate(PICKS_JS) == {k: k == "classic-4" for k in ALL}
+    assert status.text_content() == "Tick at least 2 layouts to rotate."
+    assert deselect_all.is_disabled() and not select_all.is_disabled()
+    assert saved["layout"] == "classic-4"
+
+    select_all.click()
+    saved = _saved(path, lambda c: c["layout_rotation"]["layouts"] == [])
+    assert status.text_content().startswith("Today: ")
+    assert saved["layout"] == "classic-4"
+    assert page.locator(".layout-thumb.active").get_attribute("data-id") == "classic-4"
+
+    page.click("#g-rotation-enabled + .toggle-track")
+    _saved(path, lambda c: c["layout_rotation"]["enabled"] is False)
+    assert page.locator("#rotation-bulk").is_hidden()
+    assert w.errors == []
+
+
+@pytest.mark.parametrize("editor_mode", ["basic", "advanced"])
+def test_rotation_checkbox_has_a_24px_hit_area_clear_of_the_badges(server, open_at, rotation_config, editor_mode):
+    rotation_config(layouts=[], enabled=True, slots=4)
+    w = open_at(f"{server}/editor/", at=local(2026, 10, 13, 10, 0), editor_mode=editor_mode)
+    page = w.page
+    path = rotation_config.path
+    base = page.evaluate("() => document.querySelector('.layout-thumb.active').dataset.id")
+    for lid in ("hero-left", "gallery-12"):
+        thumb = f".layout-thumb[data-id='{lid}']"
+        hit = _rect(page, f"{thumb} .rotation-pick-corner")
+        grid = _rect(page, f"{thumb} .thumb-grid")
+        assert hit["w"] >= 24 and hit["h"] >= 24, hit
+        assert grid["right"] + 0.5 >= hit["right"] and grid["bottom"] + 0.5 >= hit["bottom"], (grid, hit)
+        for badge in page.locator(f"{thumb} .gallery-badge, {thumb} .today-badge").all():
+            b = badge.evaluate(RECT_JS)
+            assert b["right"] <= hit["x"] or b["x"] >= hit["right"] or b["bottom"] <= hit["y"] or b["y"] >= hit["bottom"], (b, hit)
+
+    # A click in the padding, well outside the 14px box, still toggles it (and doesn't pick the layout).
+    # Mouse clicks are by viewport position, and Layout sits below Global Settings, so scroll to it first
+    page.locator(".layout-thumb[data-id='hero-left']").scroll_into_view_if_needed()
+    hit = _rect(page, ".layout-thumb[data-id='hero-left'] .rotation-pick-corner")
+    page.mouse.click(hit["x"] + 2, hit["y"] + 2)
+    _saved(path, lambda c: "hero-left" not in c["layout_rotation"]["layouts"] and c["layout_rotation"]["layouts"])
+    assert not page.locator(".rotation-pick[data-id='hero-left']").is_checked()
+    assert page.evaluate("() => document.querySelector('.layout-thumb.active').dataset.id") == base
+    page.mouse.click(hit["right"] - 2, hit["bottom"] - 2)
+    _saved(path, lambda c: c["layout_rotation"]["layouts"] == [])
+    assert page.locator(".rotation-pick[data-id='hero-left']").is_checked()
