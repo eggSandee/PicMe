@@ -175,6 +175,7 @@ Templates define the slot grid. Each template has a name, a visual description, 
 
 | Template Name | Slots | Description |
 |---|---|---|
+| `single` | 1 | One photo or video, full screen, like a classic digital photo frame (first in the picker) |
 | `classic-4` | 4 | 2×2 equal grid |
 | `classic-6` | 6 | 3×2 equal grid |
 | `hero-left` | 5 | Large slot left (2/3 width), 4 small slots right |
@@ -584,7 +585,7 @@ Instead of a frame around every slot, a layout can show **one frame around the w
 - **Time of day.** Day and night periods can change the gallery's mat colour, frame colour and frame style; widths stay as set in the Gallery Mat section. See [Time of day](#time-of-day).
 - **Per-slot frames.** A slot's own Frame settings apply on separate-frame layouts and are ignored on gallery-mat days (there is one mat). Fit / Fill applies in both.
 - **Videos in shapes.** Video slots work in any opening. Rectangles are never clipped; a shaped video opening is, which a TV may draw less efficiently — prefer rectangles for video on older TVs. As with any layout, keep the number of video slots small (`gallery-12` has 12 openings).
-- **Custom layouts.** Layout files are checked when the server loads them (fr-only tracks, 1–12 slots numbered in order, no overlaps, every cell covered unless `"gallery": true`, known shapes); a file that fails is skipped with a warning in the server log rather than breaking the display. Custom opening sizes and the `custom` layout are planned for later.
+- **Custom layouts.** Layout files are checked when the server loads them (fr-only tracks, 1–12 slots numbered in order, no overlaps, every cell covered unless `"gallery": true`, known shapes); a file that fails is skipped with a warning in the server log rather than breaking the display. The picker lists layouts by an optional whole-number `"order"` (smaller first; 100 when missing, `single` is 0), then by file name. Custom opening sizes and the `custom` layout are planned for later.
 
 #### Time of day
 

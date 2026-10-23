@@ -429,3 +429,14 @@ def test_video_slot_reloads_once_for_a_folder_with_clips_but_not_for_one_without
     wait_video_slots_playing(page, 1)
     assert "clip_" in page.evaluate(SLOTS_JS)[0]["src"]
     assert w.errors == []
+
+
+def test_single_layout_plays_a_video_full_screen(h264_browser, server, open_page, e2e_config_path, video_lib):
+    write_config(e2e_config_path, video_lib["photos"], video_lib["videos"], video_slots={1}, layout="single")
+    w = open_display(open_page, server)
+    page = w.page
+    wait_video_slots_playing(page, 1)
+    assert page.locator(".slot").count() == 1
+    box = page.locator("#slot-1").bounding_box()
+    assert box["width"] >= 0.9 * 1920 and box["height"] >= 0.9 * 1080, box
+    assert w.errors == []

@@ -570,3 +570,25 @@ def test_no_duplicate_photos_when_a_group_ticks_together(server, open_page, rest
     w, samples = _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms=7_000, group="a")
     _assert_no_duplicates(samples, min_distinct=2)
     assert _unexpected_errors(w) == []
+
+
+# --- Single: one photo or video, full screen ---
+
+@pytest.mark.parametrize("frames", ["slots", "gallery"])
+def test_single_layout_fills_the_screen_with_one_slot(server, open_page, restore_config, frames):
+    photos = json.loads(restore_config.read_text())["slots"][0]["source_path"]
+    extra = {"layout_modes": {"single": "gallery"}} if frames == "gallery" else {}
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, **extra)
+    w = open_page(f"{server}/display/")
+    page = w.page
+    page.wait_for_function("() => document.querySelectorAll('.slot img.visible').length === 1 && "
+                           "document.querySelector('.slot img.visible').naturalWidth > 0", timeout=10_000)
+    assert page.locator(".slot").count() == 1
+    # The one slot (in Gallery mat: the frame around its one opening) takes the whole screen,
+    # less the wall's small margin
+    assert page.locator(".gallery-mat").count() == (1 if frames == "gallery" else 0)
+    box = page.locator(".gallery-frame" if frames == "gallery" else "#slot-1").bounding_box()
+    assert box["width"] >= 0.9 * VIEWPORT["width"] and box["height"] >= 0.9 * VIEWPORT["height"], box
+    # The other slots' settings stay in the config for a bigger layout later
+    assert len(json.loads(restore_config.read_text())["slots"]) == SLOT_COUNT
+    assert w.errors == []

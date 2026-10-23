@@ -235,7 +235,8 @@ def test_layouts_lists_every_layout_file(client):
     layouts = r.json()
     files = sorted(LAYOUTS_DIR.glob("*.json"))
     assert len(layouts) == len(files) > 0
-    assert [l["id"] for l in layouts] == [json.loads(f.read_text())["id"] for f in files]
+    # Single first (its `order` is 0), then the rest in file-name order
+    assert [l["id"] for l in layouts] == ["single"] + [json.loads(f.read_text())["id"] for f in files if f.stem != "single"]
 
 
 def test_layouts_have_expected_shape(client):

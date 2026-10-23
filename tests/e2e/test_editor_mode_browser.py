@@ -617,3 +617,18 @@ def test_tap_for_details_is_basic_and_saves(write_cfg, open_editor):
     page.locator(".toggle-row:has(#g-tap-details) .toggle-track").click()
     _saved(write_cfg, lambda c: c.get("tap_for_details") is True)
     assert w.errors == []
+
+
+@pytest.mark.parametrize("editor_mode", ["basic", "advanced"])
+def test_single_layout_is_first_in_the_picker_and_keeps_the_other_slots(write_cfg, open_editor, editor_mode):
+    write_cfg()
+    w = open_editor(editor_mode=editor_mode)
+    page = w.page
+    first = page.locator("#layout-picker .layout-thumb").first
+    assert first.get_attribute("data-id") == "single" and first.is_visible()
+    assert first.locator(".thumb-cell").count() == 1
+    first.click()
+    cfg = _saved(write_cfg, lambda c: c["layout"] == "single")
+    assert len(cfg["slots"]) == 4  # kept for a bigger layout later
+    assert page.locator(".preview-slot").count() == 1
+    assert w.errors == []
