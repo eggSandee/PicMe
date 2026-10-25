@@ -71,6 +71,16 @@
     return isObject(config) && isObject(config.layout_frames) && config.layout_frames[layout.id] === true;
   }
 
+  // A layout's own Fit / Fill: the owner's choice for it (config.layout_fill_modes), else the
+  // layout's default ("fill_mode" in its JSON: Single fits), else null = follow Fill frames.
+  // A slot's own fill_mode still wins over both (README → Fit and Fill).
+  function layoutFill(config, layout) {
+    const FILLS = ['cover', 'contain'];
+    const own = isObject(config) && isObject(config.layout_fill_modes) && layout ? config.layout_fill_modes[layout.id] : undefined;
+    if (FILLS.includes(own)) return own;
+    return layout && FILLS.includes(layout.fill_mode) ? layout.fill_mode : null;
+  }
+
   // The layout object to show at `now`, or null if there are no layouts at all
   function resolveLayout(config, layouts, now = new Date()) {
     if (!Array.isArray(layouts) || layouts.length === 0) return null;
@@ -97,6 +107,6 @@
 
   window.PicMeRotation = {
     DEFAULT_CHANGE_AT, DEFAULT_LAYOUT, parseChangeAt, rotationSettings, eligibleLayouts, rotationDay,
-    fallbackLayout, framedLayout, resolveLayout, nextChange,
+    fallbackLayout, framedLayout, layoutFill, resolveLayout, nextChange,
   };
 })();

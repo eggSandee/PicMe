@@ -441,3 +441,27 @@ def test_frame_on_single_is_hidden_without_single_on_screen(write_cfg, open_page
     page = open_page(editor_mode="advanced").page
     assert page.locator("#frame-layout-block").is_hidden()
     _assert_active(page, "#g-mat-color")
+
+
+def test_fill_on_single_defaults_off_and_fill_frames_points_to_it(write_cfg, open_page):
+    write_cfg(layout="single", slots=4, fill_mode="cover")
+    w = open_page(editor_mode="basic")
+    page = w.page
+    assert page.locator("#layout-fill-block").is_visible()
+    assert page.locator("#g-layout-fill-label").text_content() == "Fill on Single"
+    assert not page.locator("#g-layout-fill").is_checked()  # Single fits
+    _assert_inactive(page, "#g-fill-mode", "Single has its own: Fill on Single")
+    assert page.evaluate("() => document.querySelector('#collage-preview .slot-tags').dataset.fit") == "fit"
+    _toggle(page, "#g-layout-fill")
+    _saved(write_cfg, lambda c: c.get("layout_fill_modes") == {"single": "cover"})
+    assert page.evaluate("() => document.querySelector('#collage-preview .slot-tags').dataset.fit") == "fill"
+    _toggle(page, "#g-layout-fill")
+    _saved(write_cfg, lambda c: "layout_fill_modes" not in c)
+    assert w.errors == []
+
+
+def test_fill_frames_is_live_with_another_layout_on_screen(write_cfg, open_page):
+    write_cfg(layout="classic-4", fill_mode="cover")
+    page = open_page(editor_mode="basic").page
+    assert page.locator("#layout-fill-block").is_hidden()
+    _assert_active(page, "#g-fill-mode")

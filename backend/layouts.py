@@ -62,6 +62,8 @@ def validate_layout(obj, shapes=KNOWN_SHAPES) -> list[str]:
         errors.append("gallery must be true or false")
     if not isinstance(obj.get("frame", True), bool):
         errors.append("frame must be true or false")
+    if obj.get("fill_mode", "cover") not in ("cover", "contain"):
+        errors.append("fill_mode must be 'cover' or 'contain'")
     order = obj.get("order", DEFAULT_ORDER)
     if not isinstance(order, int) or isinstance(order, bool):
         errors.append("order must be a whole number")

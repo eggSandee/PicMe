@@ -628,3 +628,26 @@ def test_other_layouts_keep_their_frame(server, open_page, restore_config):
     page = open_page(f"{server}/display/").page
     _wait_slot_photo(page)
     assert page.evaluate(FRAME_GEO_JS)["inset"] >= 40
+
+
+OBJECT_FIT_JS = "() => document.querySelector('#slot-1 img.visible').style.objectFit"
+
+
+def test_single_fits_by_default_and_fill_on_single_crops(server, open_page, restore_config):
+    photos = json.loads(restore_config.read_text())["slots"][0]["source_path"]
+    # Fill frames is on for the other layouts; Single still fits
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, fill_mode="cover")
+    w = open_page(f"{server}/display/")
+    page = w.page
+    _wait_slot_photo(page)
+    assert page.evaluate(OBJECT_FIT_JS) == "contain"
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, fill_mode="cover",
+                  layout_fill_modes={"single": "cover"})
+    page.wait_for_function(f"() => ({OBJECT_FIT_JS})() === 'cover'", timeout=8_000)
+    # A slot's own Fit / Fill still wins
+    cfg = _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, fill_mode="cover",
+                        layout_fill_modes={"single": "cover"})
+    cfg["slots"][0]["fill_mode"] = "contain"
+    restore_config.write_text(json.dumps(cfg))
+    page.wait_for_function(f"() => ({OBJECT_FIT_JS})() === 'contain'", timeout=8_000)
+    assert w.errors == []

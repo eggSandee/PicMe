@@ -175,7 +175,7 @@ Templates define the slot grid. Each template has a name, a visual description, 
 
 | Template Name | Slots | Description |
 |---|---|---|
-| `single` | 1 | One photo or video, full screen, like a classic digital photo frame (first in the picker). No frame or mat unless **Frame on Single** is on |
+| `single` | 1 | One photo or video, full screen, like a classic digital photo frame (first in the picker). Fits whole photos and has no frame or mat, unless **Fill on Single** / **Frame on Single** are on |
 | `classic-4` | 4 | 2×2 equal grid |
 | `classic-6` | 6 | 3×2 equal grid |
 | `hero-left` | 5 | Large slot left (2/3 width), 4 small slots right |
@@ -557,6 +557,7 @@ A photo or video rarely has exactly its frame's shape. **Fit** (`"contain"`) sho
 
 - **Fill frames.** The editor's Global Settings has **Fill frames (crop, no black bars)** (`"fill_mode"` at the top level). It applies to photos and videos, to separate frames and gallery mats, and inside shaped openings (a heart is filled edge to edge).
 - **New installs fill.** The first-run config has `"fill_mode": "cover"`. A `config.json` from before this setting has no `fill_mode`, which means Fit, so an existing setup looks the same until you turn Fill frames on.
+- **Single fits.** The Single layout shows whole photos and videos (Fit) whatever Fill frames says, like a photo frame; that's its own default (`"fill_mode": "contain"` in `layouts/single.json`). Turn on **Fill on Single** (under Fill frames, shown while Single is on screen) to crop it instead (`"layout_fill_modes": {"single": "cover"}`). While Single is the only layout on screen, Fill frames is greyed out and points there.
 - **Per slot.** A slot can pick its own in its **Fit** section (Advanced): **Default** follows Fill frames, or choose Fit or Fill for that slot only (`"fill_mode"` in the slot; Default removes it). **Reset slots to global settings** puts every slot back on Default.
 - **In the preview.** Each slot shows **Fit** or **Fill** under its number, next to its size (see [Editor layout](#editor-layout)).
 
@@ -627,7 +628,7 @@ The sidebar runs, top to bottom: Global Settings, Layout, Frame, Gallery Mat, De
 | | Basic | Advanced adds |
 |---|---|---|
 | **Layout** | Layout picker, Frames (Separate / Gallery mat), Rotate layout daily, the rotation checkboxes on the thumbnails, Select all / Deselect all, today's rotation status | Switch layout at, Mat chips (frames per rotated layout) |
-| **Global** | Save as my preset, Apply my preset, Undo, Default media folder, Wall color, Fill frames, Tap a photo for details | Include subfolders, Time-of-day colors (on / off and Configure day / night colors…) |
+| **Global** | Save as my preset, Apply my preset, Undo, Default media folder, Wall color, Fill frames, Fill on Single (while Single is on screen), Tap a photo for details | Include subfolders, Time-of-day colors (on / off and Configure day / night colors…) |
 | **Frame** | Frame on Single (while Single is on screen), Mat color, Frame style, Different gallery mat frame (its style, show gallery frame, colour) | Mat width, Show frame border, Frame color, Frame width |
 | **Gallery Mat** | Mat color (the frame's style is in Frame) | Outer frame width, mat around and between the openings, wall around the frame, bevel |
 | **Metadata** | Show metadata; Text size, Pill size, Label position and the fields (Date, Location, Camera…) | Date format, Max metadata pills |

@@ -529,9 +529,15 @@
     }
 
     // Fit (contain, letterboxed) or Fill (cover, cropped), in either mode: the slot's own
-    // fill_mode, else the global one, else Fit (a config from before the global setting)
+    // fill_mode, else the layout's (Single fits), else the global one, else Fit (a config from
+    // before the global setting)
+    function slotFill(slotCfg) {
+      const fill = slotCfg.fill_mode ?? PicMeRotation.layoutFill(config, activeLayout) ?? config.fill_mode;
+      return fill === 'cover' ? 'cover' : 'contain';
+    }
+
     function applyFit(slotEl, slotCfg) {
-      const fit = (slotCfg.fill_mode ?? config.fill_mode) === 'cover' ? 'cover' : 'contain';
+      const fit = slotFill(slotCfg);
       slotEl.querySelectorAll('.mat-frame img, .mat-frame video').forEach(el => el.style.objectFit = fit);
     }
 
@@ -581,7 +587,7 @@
     // before it has loaded
     function fitMediaSize(slotEl) {
       const slotCfg = activeSlots.find(s => `slot-${s.id}` === slotEl.id);
-      if (!slotCfg || (slotCfg.fill_mode ?? config.fill_mode) === 'cover') return null;
+      if (!slotCfg || slotFill(slotCfg) === 'cover') return null;
       const video = slotEl.classList.contains('video-mode');
       const el = slotEl.querySelector(video ? '.mat-frame video.visible' : '.mat-frame img.visible');
       const w = video ? el?.videoWidth : el?.naturalWidth, h = video ? el?.videoHeight : el?.naturalHeight;
@@ -1588,7 +1594,7 @@
         config.slots = oldSlots;
         // checkRotation() and the gallery read these, so a removed key must not linger
         for (const key of ['layout_rotation', 'daily_layout_rotation', 'gallery', 'layout_modes', 'label_position', 'label_style',
-                           'fill_mode', 'tap_for_details', 'layout_frames']) {
+                           'fill_mode', 'tap_for_details', 'layout_frames', 'layout_fill_modes']) {
           if (!(key in fresh)) delete config[key];
         }
         // Replace each slot's settings, so a key the editor dropped (e.g. after swapping two

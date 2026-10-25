@@ -810,6 +810,17 @@
       </div>
       <p class="field-hint" data-setting="global.fill_mode">Off: whole photos and videos, with bars where their shape differs from the frame. A slot can choose its own (Advanced).</p>
 
+      <div id="layout-fill-block" data-setting="global.layout_fill" hidden>
+        <div class="toggle-row">
+          <label for="g-layout-fill" id="g-layout-fill-label">Fill on Single</label>
+          <label class="toggle">
+            <input type="checkbox" id="g-layout-fill" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <p class="field-hint" id="g-layout-fill-hint">Off: Single shows whole photos and videos, like a photo frame.</p>
+      </div>
+
       <div class="toggle-row" data-setting="global.tap_for_details">
         <label for="g-tap-details">Tap a photo for details</label>
         <label class="toggle">
@@ -1187,8 +1198,10 @@
   // Fit ('contain') or Fill ('cover'): the slot's own choice, else the global one. A config from
   // before the global setting has none, which means Fit (same rule as the display's applyFit).
   function globalFill() { return config.fill_mode === 'cover' ? 'cover' : 'contain'; }
-  function effectiveFill(slotCfg) {
-    return slotCfg?.fill_mode === 'cover' || slotCfg?.fill_mode === 'contain' ? slotCfg.fill_mode : globalFill();
+  // On `layout` (default: the base layout): the slot's own, else the layout's (Single fits), else Fill frames
+  function effectiveFill(slotCfg, layout = baseLayout()) {
+    if (slotCfg?.fill_mode === 'cover' || slotCfg?.fill_mode === 'contain') return slotCfg.fill_mode;
+    return PicMeRotation.layoutFill(config, layout) ?? globalFill();
   }
 
   function hasCustomSettings(slotCfg) {
@@ -1265,6 +1278,8 @@
     'global.tap_for_details': { tier: 'basic', label: 'Tap a photo for details' },
     // Single (a layout with "frame": false) is frameless unless config.layout_frames turns it on
     'frame.layout_frame': { tier: 'basic', label: 'Frame on Single' },
+    // Single fits by default (its JSON's fill_mode); config.layout_fill_modes overrides that
+    'global.layout_fill': { tier: 'basic', label: 'Fill on Single' },
     'frame.mat_color':    { tier: 'basic',    label: 'Mat color' },
     'frame.frame_style':  { tier: 'basic',    label: 'Frame style' },
     'frame.mat_width':    { tier: 'advanced', label: 'Mat width',
@@ -1786,6 +1801,7 @@
     const own = galleryCfg().frame_override;
     document.getElementById('frame-gallery-hint').hidden = !anyGallery || own;
     refreshLayoutFrameToggle(modes);
+    refreshLayoutFill();
     const separateOnly = separateOnlyWhy(modes);
     // The frames this section's look reaches, and why none shows
     const separate = anySeparate ? separateFrames() : [];
@@ -1801,6 +1817,26 @@
     setInactive(fieldOf('g-frame-style'), look || frameOffWhy(frames, offText));
     setInactive(fieldOf('g-frame-color'), look || frameOffWhy(frames, offText) || solidOnlyWhy(frames));
     setInactive(fieldOf('g-frame-width'), separateOnly || frameOffWhy(separate, offText));
+  }
+
+  // "Fill on Single": shown while a layout with its own Fit / Fill default is on screen. Fill frames
+  // then only reaches the other layouts; with none on screen it's greyed, pointing here.
+  function refreshLayoutFill() {
+    const reach = reachableLayouts();
+    const own = reach.filter(l => l.fill_mode === 'cover' || l.fill_mode === 'contain');
+    const layout = own[0];
+    document.getElementById('layout-fill-block').hidden = !layout;
+    if (layout) {
+      const el = document.getElementById('g-layout-fill');
+      el.dataset.layout = layout.id;
+      el.checked = PicMeRotation.layoutFill(config, layout) === 'cover';
+      document.getElementById('g-layout-fill-label').textContent = `Fill on ${layout.name}`;
+      document.getElementById('g-layout-fill-hint').textContent =
+        `Off: ${layout.name} shows whole photos and videos, like a photo frame. On: it crops to fill the screen.`;
+    }
+    const followsGlobal = reach.some(l => PicMeRotation.layoutFill(config, l) == null);
+    setInactive(fieldOf('g-fill-mode'), followsGlobal || !layout ? null
+      : `${layout.name} has its own: Fill on ${layout.name} (below). Fill frames is for the other layouts.`);
   }
 
   // "Frame on Single": shown while a frameless-by-default layout is on screen with separate frames
@@ -2598,6 +2634,17 @@
     document.getElementById('g-wall-color').oninput    = e => { config.wall_color = e.target.value; buildPreview(); scheduleAutoSave(); };
     const fillEl = document.getElementById('g-fill-mode');
     fillEl.checked = globalFill() === 'cover';
+    document.getElementById('g-layout-fill').onchange = e => {
+      const layout = layouts.find(l => l.id === e.target.dataset.layout);
+      if (!layout) return;
+      const fills = { ...(config.layout_fill_modes || {}) };
+      const want = e.target.checked ? 'cover' : 'contain';
+      if (want === layout.fill_mode) delete fills[layout.id]; else fills[layout.id] = want;
+      if (Object.keys(fills).length) config.layout_fill_modes = fills; else delete config.layout_fill_modes;
+      buildPreview();
+      renderSlotPanel();  // the slot's "Default (Single: …)" option
+      scheduleAutoSave();
+    };
     fillEl.onchange = e => {
       config.fill_mode = e.target.checked ? 'cover' : 'contain';
       buildPreview();  // each cell's Fit / Fill tag
@@ -2929,7 +2976,9 @@
     // Fit — the global "Fill frames" unless this slot picks its own (photos and videos)
     const fillSection = tag(makeSection('Fit'), 'slot.fill_mode');
     const ownFill = slotCfg.fill_mode === 'cover' || slotCfg.fill_mode === 'contain' ? slotCfg.fill_mode : '';
-    const fillSelect = makeSelect([['', `Default (global: ${globalFill() === 'cover' ? 'Fill' : 'Fit'})`],
+    const baseFill = PicMeRotation.layoutFill(config, baseLayout());
+    const fillDefault = baseFill ? `${baseLayout().name}: ${baseFill === 'cover' ? 'Fill' : 'Fit'}` : `global: ${globalFill() === 'cover' ? 'Fill' : 'Fit'}`;
+    const fillSelect = makeSelect([['', `Default (${fillDefault})`],
                                    ['contain', `Fit — full ${isVideo ? 'video' : 'photo'}, letterboxed`],
                                    ['cover', 'Fill — crop to fit, no bars']], ownFill);
     fillSelect.id = 'slot-fill-mode';
