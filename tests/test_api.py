@@ -192,7 +192,7 @@ def test_config_get_returns_saved_file(client, written_config):
 def test_config_post_round_trip(client, config_path, sample_config):
     r = client.post("/api/config", json=sample_config)
     assert r.status_code == 200
-    assert r.json() == {"ok": True}
+    assert r.json() == {"ok": True, "dropped": []}
     assert json.loads(config_path.read_text()) == sample_config
     assert client.get("/api/config").json() == sample_config
 
