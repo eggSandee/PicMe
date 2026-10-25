@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 LOOK_KEYS = (
     "layout", "wall_color", "show_metadata", "date_format", "max_metadata_pills", "label_position",
     "label_style", "fill_mode", "frame_defaults", "metadata_defaults", "layout_rotation", "gallery", "layout_modes",
-    "time_of_day", "daily_layout_rotation", "tap_for_details",
+    "time_of_day", "daily_layout_rotation", "tap_for_details", "blur_backdrop",
 )
 # Kept by reset, never in a preset (for the record; anything not in LOOK_KEYS is kept)
 MEDIA_KEYS = ("source_path", "include_subfolders", "video_max_edge", "include_live_photos",
@@ -46,7 +46,7 @@ GROUPS = {
     "frame_defaults": "Frame", "gallery": "Gallery mat", "metadata_defaults": "Metadata",
     "show_metadata": "Metadata", "date_format": "Metadata", "max_metadata_pills": "Metadata",
     "label_position": "Metadata", "label_style": "Metadata", "time_of_day": "Time-of-day",
-    "tap_for_details": "Tap for details",
+    "tap_for_details": "Tap for details", "blur_backdrop": "Blurred backdrop",
 }
 
 

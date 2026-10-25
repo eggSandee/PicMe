@@ -808,7 +808,16 @@
           <span class="toggle-track"></span>
         </label>
       </div>
-      <p class="field-hint" data-setting="global.fill_mode">Off: whole photos and videos, with bars where their shape differs from the frame. A slot can choose its own (Advanced).</p>
+      <p class="field-hint" data-setting="global.fill_mode">Off: whole photos and videos, with space around them where their shape differs from the frame. A slot can choose its own (Advanced).</p>
+
+      <div class="toggle-row" data-setting="global.blur_backdrop">
+        <label for="g-blur-backdrop">Blurred backdrop in Fit</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-blur-backdrop" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <p class="field-hint" data-setting="global.blur_backdrop">The space around a fitted photo or video shows a soft, dimmed copy of it, like a photo frame. Off: the mat colour.</p>
 
       <div class="toggle-row" data-setting="global.tap_for_details">
         <label for="g-tap-details">Tap a photo for details</label>
@@ -1247,6 +1256,7 @@
     'global.wall_color':  { tier: 'basic',    label: 'Wall color' },
     'global.fill_mode':   { tier: 'basic',    label: 'Fill frames' },
     'global.tap_for_details': { tier: 'basic', label: 'Tap a photo for details' },
+    'global.blur_backdrop': { tier: 'basic', label: 'Blurred backdrop in Fit' },
     'frame.mat_color':    { tier: 'basic',    label: 'Mat color' },
     'frame.frame_style':  { tier: 'basic',    label: 'Frame style' },
     'frame.mat_width':    { tier: 'advanced', label: 'Mat width',
@@ -1772,9 +1782,17 @@
   let _refreshSlotInactive = null;  // the open slot panel's
   function refreshInactiveControls() {
     if (!config || !layouts) return;
+    refreshBackdropInactive();
     refreshGalleryInactive();
     refreshFrameSection();
     _refreshSlotInactive?.();
+  }
+
+  // The backdrop shows only around a fitted photo: greyed while every slot on screen fills
+  function refreshBackdropInactive() {
+    const shown = Math.max(0, ...reachableLayouts().map(l => l.slots.length));
+    const anyFit = config.slots.slice(0, shown).some(s => effectiveFill(s) === 'contain');
+    setInactive(fieldOf('g-blur-backdrop'), anyFit ? null : 'Only for Fit: Fill frames is on for every slot.');
   }
 
   function onGalleryChanged() {
@@ -2556,6 +2574,10 @@
       renderSlotPanel();  // the slot's "Default (global: …)" option
       scheduleAutoSave();
     };
+    const backdropEl = document.getElementById('g-blur-backdrop');
+    backdropEl.checked = config.blur_backdrop !== false;
+    backdropEl.onchange = e => { config.blur_backdrop = e.target.checked; scheduleAutoSave(); };
+    if (layouts) refreshBackdropInactive();  // later edits refresh it through scheduleAutoSave
     const tapEl = document.getElementById('g-tap-details');
     tapEl.checked = config.tap_for_details !== false;
     tapEl.onchange = e => { config.tap_for_details = e.target.checked; scheduleAutoSave(); };
