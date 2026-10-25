@@ -592,3 +592,69 @@ def test_single_layout_fills_the_screen_with_one_slot(server, open_page, restore
     # The other slots' settings stay in the config for a bigger layout later
     assert len(json.loads(restore_config.read_text())["slots"]) == SLOT_COUNT
     assert w.errors == []
+
+
+# --- Blurred backdrop in Fit ---
+
+BACKDROP_JS = """() => {
+  const slot = document.getElementById('slot-1');
+  const bd = [...slot.querySelectorAll('canvas.backdrop')].find(c => c.classList.contains('visible'));
+  const style = bd && getComputedStyle(bd);
+  let rgb = null;
+  if (bd && bd.width) { const d = bd.getContext('2d').getImageData(bd.width >> 1, bd.height >> 1, 1, 1).data; rgb = [d[0], d[1], d[2]]; }
+  return { on: slot.classList.contains('backdrop-on'), shown: !!style && style.display !== 'none' && style.opacity === '1',
+           painted: !!bd?.classList.contains('painted'), width: bd?.width ?? 0, rgb,
+           img: slot.querySelector('img.visible')?.getAttribute('src') };
+}"""
+
+
+def _wait_photo(page):
+    page.wait_for_function("() => { const i = document.querySelector('#slot-1 img.visible'); "
+                           "return i && i.complete && i.naturalWidth > 0; }", timeout=10_000)
+
+
+def test_fit_shows_a_blurred_backdrop_and_fill_and_off_hide_it(server, open_page, restore_config):
+    photos = json.loads(restore_config.read_text())["slots"][0]["source_path"]
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, fill_mode="contain")
+    w = open_page(f"{server}/display/")
+    page = w.page
+    _wait_photo(page)
+    page.wait_for_function(f"() => ({BACKDROP_JS})().shown", timeout=5_000)
+    bd = page.evaluate(BACKDROP_JS)
+    # Small (cheap) and a dimmed copy of the photo: not black, not the photo's full brightness
+    assert bd["on"] and bd["painted"] and bd["width"] == 48, bd
+    assert 10 < max(bd["rgb"]) < 200, bd
+
+    # Fill: no space around the photo, so no backdrop. The display patches it in place (no reload).
+    page.evaluate("() => { window.__noReload = true; }")
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, fill_mode="cover")
+    page.wait_for_function(f"() => !({BACKDROP_JS})().on", timeout=8_000)
+    assert not page.evaluate(BACKDROP_JS)["shown"]
+
+    # Fit again, with the setting off: the mat shows, as before
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, fill_mode="contain", blur_backdrop=False)
+    page.wait_for_function("() => document.querySelector('#slot-1 img.visible').style.objectFit === 'contain'", timeout=8_000)
+    assert not page.evaluate(BACKDROP_JS)["on"]
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, fill_mode="contain")
+    page.wait_for_function(f"() => ({BACKDROP_JS})().shown", timeout=8_000)
+    assert page.evaluate("() => window.__noReload") is True
+    assert w.errors == []
+
+
+def test_backdrop_follows_each_new_photo(server, open_page, restore_config):
+    photos = json.loads(restore_config.read_text())["slots"][0]["source_path"]
+    _write_config(restore_config, photos, cycle_seconds=2, layout="single", slots=SLOT_COUNT, fill_mode="contain")
+    w = open_page(f"{server}/display/")
+    page = w.page
+    _wait_photo(page)
+    page.wait_for_function(f"() => ({BACKDROP_JS})().shown", timeout=5_000)
+    first = page.evaluate(BACKDROP_JS)
+    page.wait_for_function(f"src => ({BACKDROP_JS})().img !== src", arg=first["img"], timeout=10_000)
+    page.wait_for_function(f"() => ({BACKDROP_JS})().shown", timeout=5_000)
+    second = page.evaluate(BACKDROP_JS)
+    # Each fixture photo has its own colour, so the backdrop changed with it
+    assert second["rgb"] != first["rgb"], (first, second)
+    # Only the visible pair's backdrop shows
+    assert page.evaluate("() => [...document.querySelectorAll('#slot-1 canvas.backdrop')]"
+                         ".filter(c => getComputedStyle(c).opacity === '1').length") == 1
+    assert w.errors == []

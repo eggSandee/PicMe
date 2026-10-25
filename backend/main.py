@@ -75,6 +75,8 @@ DEFAULT_CONFIG = {
     # Click, tap or press Enter on a photo on the display to see it larger with all its
     # metadata; off for kiosk screens (README → Photo details)
     "tap_for_details": True,
+    # In Fit, a blurred, dimmed copy of the photo or video fills the space around it (README → Fit and Fill)
+    "blur_backdrop": True,
     # Also the outer frame of gallery mats, unless gallery.frame_override (README → Gallery mat).
     # New installs start with wood; existing config.json files keep their own frame_defaults.
     "frame_defaults": {

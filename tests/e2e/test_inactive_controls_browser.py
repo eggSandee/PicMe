@@ -411,3 +411,23 @@ def test_a_time_of_day_note_stays_usable_under_a_greyed_colour(write_cfg, open_p
     note.locator(".tod-note-mine").click()  # Use my colour: Same as default for the current period
     _saved(write_cfg, lambda c: any("frame_color" not in c["time_of_day"][p] for p in ("day", "night")))
     assert w.errors == []
+
+
+def test_blurred_backdrop_is_greyed_while_every_slot_fills(write_cfg, open_page):
+    write_cfg(fill_mode="cover")
+    w = open_page(editor_mode="basic")
+    page = w.page
+    assert page.locator("#g-blur-backdrop").is_checked()  # on by default
+    _assert_inactive(page, "#g-blur-backdrop", "Only for Fit")
+    _toggle(page, "#g-fill-mode")  # Fill frames off: everything fits
+    _saved(write_cfg, lambda c: c["fill_mode"] == "contain")
+    _assert_active(page, "#g-blur-backdrop")
+    _toggle(page, "#g-blur-backdrop")
+    _saved(write_cfg, lambda c: c.get("blur_backdrop") is False)
+    assert w.errors == []
+
+    # One slot on Fit is enough
+    write_cfg(fill_mode="cover", slot_overrides={2: {"fill_mode": "contain"}})
+    page = open_page(editor_mode="basic").page
+    _assert_active(page, "#g-blur-backdrop")
+
