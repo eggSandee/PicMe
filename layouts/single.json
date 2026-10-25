@@ -3,6 +3,7 @@
   "name": "Single",
   "description": "One photo or video, full screen",
   "order": 0,
+  "frame": false,
   "slots": [
     { "id": 1, "grid_area": "1 / 1 / 2 / 2" }
   ],

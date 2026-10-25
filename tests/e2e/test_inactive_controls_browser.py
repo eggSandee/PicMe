@@ -411,3 +411,33 @@ def test_a_time_of_day_note_stays_usable_under_a_greyed_colour(write_cfg, open_p
     note.locator(".tod-note-mine").click()  # Use my colour: Same as default for the current period
     _saved(write_cfg, lambda c: any("frame_color" not in c["time_of_day"][p] for p in ("day", "night")))
     assert w.errors == []
+
+
+def test_single_is_frameless_until_frame_on_single(write_cfg, open_page):
+    write_cfg(layout="single", slots=4, frame_defaults={"frame_style": "solid", "mat_width": 30, "show_frame": True})
+    w = open_page(editor_mode="basic")
+    page = w.page
+    toggle = page.locator("#g-layout-frame")
+    assert page.locator("#frame-layout-block").is_visible() and not toggle.is_checked()
+    assert page.locator("#g-layout-frame-label").text_content() == "Frame on Single"
+    # The Frame section does nothing on a frameless Single, and says how to change that
+    _assert_inactive(page, "#g-mat-color", "Single shows no frame. Turn on Frame on Single")
+    _assert_inactive(page, "#g-frame-style", "Single shows no frame")
+    # The preview is edge to edge too
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.preview-slot')).paddingTop") == "0px"
+
+    _toggle(page, "#g-layout-frame")
+    _saved(write_cfg, lambda c: c.get("layout_frames") == {"single": True})
+    _assert_active(page, "#g-mat-color")
+    _assert_active(page, "#g-frame-style")
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.preview-slot')).paddingTop") != "0px"
+    _toggle(page, "#g-layout-frame")
+    _saved(write_cfg, lambda c: "layout_frames" not in c)
+    assert w.errors == []
+
+
+def test_frame_on_single_is_hidden_without_single_on_screen(write_cfg, open_page):
+    write_cfg(layout="classic-4")
+    page = open_page(editor_mode="advanced").page
+    assert page.locator("#frame-layout-block").is_hidden()
+    _assert_active(page, "#g-mat-color")

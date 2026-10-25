@@ -473,6 +473,8 @@
       const todFrame = {};
       if (tod) for (const key of TOD_FRAME_KEYS) if (tod[key] !== undefined) todFrame[key] = tod[key];
       const frameCfg = { ...(config.frame_defaults || {}), ...todFrame, ...(slotCfg.frame || {}) };
+      // Single shows the photo edge to edge unless its frame is turned on (Frame on Single)
+      if (!PicMeRotation.framedLayout(config, activeLayout)) Object.assign(frameCfg, { show_frame: false, mat_width: 0 });
 
       const matWidth  = Number(frameCfg.mat_width ?? 16) || 0;
       const matColor  = frameCfg.mat_color  ?? '#000000';
@@ -1586,7 +1588,7 @@
         config.slots = oldSlots;
         // checkRotation() and the gallery read these, so a removed key must not linger
         for (const key of ['layout_rotation', 'daily_layout_rotation', 'gallery', 'layout_modes', 'label_position', 'label_style',
-                           'fill_mode', 'tap_for_details']) {
+                           'fill_mode', 'tap_for_details', 'layout_frames']) {
           if (!(key in fresh)) delete config[key];
         }
         // Replace each slot's settings, so a key the editor dropped (e.g. after swapping two

@@ -64,6 +64,13 @@
     return layouts.find(l => l.id === id) || fallbackLayout(layouts);
   }
 
+  // A layout with "frame": false (Single) shows no frame or mat on separate frames, unless
+  // config.layout_frames[its id] is true (README → Single). Gallery mats always have their frame.
+  function framedLayout(config, layout) {
+    if (!layout || layout.frame !== false) return true;
+    return isObject(config) && isObject(config.layout_frames) && config.layout_frames[layout.id] === true;
+  }
+
   // The layout object to show at `now`, or null if there are no layouts at all
   function resolveLayout(config, layouts, now = new Date()) {
     if (!Array.isArray(layouts) || layouts.length === 0) return null;
@@ -90,6 +97,6 @@
 
   window.PicMeRotation = {
     DEFAULT_CHANGE_AT, DEFAULT_LAYOUT, parseChangeAt, rotationSettings, eligibleLayouts, rotationDay,
-    fallbackLayout, resolveLayout, nextChange,
+    fallbackLayout, framedLayout, resolveLayout, nextChange,
   };
 })();

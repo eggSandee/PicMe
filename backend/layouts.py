@@ -60,6 +60,8 @@ def validate_layout(obj, shapes=KNOWN_SHAPES) -> list[str]:
     gallery = obj.get("gallery", False)
     if not isinstance(gallery, bool):
         errors.append("gallery must be true or false")
+    if not isinstance(obj.get("frame", True), bool):
+        errors.append("frame must be true or false")
     order = obj.get("order", DEFAULT_ORDER)
     if not isinstance(order, int) or isinstance(order, bool):
         errors.append("order must be a whole number")

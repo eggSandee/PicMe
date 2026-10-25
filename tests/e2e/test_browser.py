@@ -592,3 +592,39 @@ def test_single_layout_fills_the_screen_with_one_slot(server, open_page, restore
     # The other slots' settings stay in the config for a bigger layout later
     assert len(json.loads(restore_config.read_text())["slots"]) == SLOT_COUNT
     assert w.errors == []
+
+
+# --- Single: no frame by default ---
+
+def _wait_slot_photo(page):
+    page.wait_for_function("() => { const i = document.querySelector('#slot-1 img.visible'); "
+                           "return i && i.complete && i.naturalWidth > 0; }", timeout=10_000)
+
+
+FRAME_GEO_JS = """() => { const s = document.getElementById('slot-1'), i = s.querySelector('img.visible');
+  const a = s.getBoundingClientRect(), b = i.getBoundingClientRect();
+  return { inset: Math.round(b.left - a.left), border: getComputedStyle(s.querySelector('.mat-frame')).borderTopWidth }; }"""
+
+
+def test_single_has_no_frame_or_mat_unless_turned_on(server, open_page, restore_config):
+    photos = json.loads(restore_config.read_text())["slots"][0]["source_path"]
+    frame = {"mat_color": "#000000", "mat_width": 40, "show_frame": True, "frame_width": 20, "frame_style": "solid"}
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, frame_defaults=frame)
+    w = open_page(f"{server}/display/")
+    page = w.page
+    _wait_slot_photo(page)
+    assert page.evaluate(FRAME_GEO_JS)["inset"] == 0  # edge to edge
+    # Frame on Single: the frame and mat are back, live
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, frame_defaults=frame,
+                  layout_frames={"single": True})
+    page.wait_for_function(f"() => ({FRAME_GEO_JS})().inset >= 40", timeout=8_000)
+    assert w.errors == []
+
+
+def test_other_layouts_keep_their_frame(server, open_page, restore_config):
+    photos = json.loads(restore_config.read_text())["slots"][0]["source_path"]
+    frame = {"mat_color": "#000000", "mat_width": 40, "show_frame": True, "frame_width": 20, "frame_style": "solid"}
+    _write_config(restore_config, photos, layout="classic-4", slots=SLOT_COUNT, frame_defaults=frame)
+    page = open_page(f"{server}/display/").page
+    _wait_slot_photo(page)
+    assert page.evaluate(FRAME_GEO_JS)["inset"] >= 40

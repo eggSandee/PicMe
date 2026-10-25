@@ -175,7 +175,7 @@ Templates define the slot grid. Each template has a name, a visual description, 
 
 | Template Name | Slots | Description |
 |---|---|---|
-| `single` | 1 | One photo or video, full screen, like a classic digital photo frame (first in the picker) |
+| `single` | 1 | One photo or video, full screen, like a classic digital photo frame (first in the picker). No frame or mat unless **Frame on Single** is on |
 | `classic-4` | 4 | 2×2 equal grid |
 | `classic-6` | 6 | 3×2 equal grid |
 | `hero-left` | 5 | Large slot left (2/3 width), 4 small slots right |
@@ -370,6 +370,7 @@ Top-level settings:
   "label_position": "auto",      // "auto" | "photo" | "mat" — pills on the photo or in a caption on the mat (see Metadata pills below)
   "label_style": "pill",         // "pill" | "caption" | "placard" | "whisper" — how the metadata looks (see Metadata label styles below)
   "fill_mode": "cover",          // "cover" = Fill (crop, no black bars) | "contain" = Fit (whole photo, bars); missing = contain (see Fit and Fill below)
+  "layout_frames": {"single": true}, // optional: give a frameless layout (Single) the frame and mat; missing = Single has none
   "tap_for_details": true,       // click, tap or Enter on a photo shows it larger with its metadata; false for kiosk screens; missing = true (see Photo details below)
   "frame_defaults": {            // mat and frame style applied to every slot; per-slot frame: {} overrides.
                                  // show_frame, frame_style and frame_color also style the gallery's outer frame
@@ -585,7 +586,7 @@ Instead of a frame around every slot, a layout can show **one frame around the w
 - **Time of day.** Day and night periods can change the gallery's mat colour, frame colour and frame style; widths stay as set in the Gallery Mat section. See [Time of day](#time-of-day).
 - **Per-slot frames.** A slot's own Frame settings apply on separate-frame layouts and are ignored on gallery-mat days (there is one mat). Fit / Fill applies in both.
 - **Videos in shapes.** Video slots work in any opening. Rectangles are never clipped; a shaped video opening is, which a TV may draw less efficiently — prefer rectangles for video on older TVs. As with any layout, keep the number of video slots small (`gallery-12` has 12 openings).
-- **Custom layouts.** Layout files are checked when the server loads them (fr-only tracks, 1–12 slots numbered in order, no overlaps, every cell covered unless `"gallery": true`, known shapes); a file that fails is skipped with a warning in the server log rather than breaking the display. The picker lists layouts by an optional whole-number `"order"` (smaller first; 100 when missing, `single` is 0), then by file name. Custom opening sizes and the `custom` layout are planned for later.
+- **Custom layouts.** Layout files are checked when the server loads them (fr-only tracks, 1–12 slots numbered in order, no overlaps, every cell covered unless `"gallery": true`, known shapes); a file that fails is skipped with a warning in the server log rather than breaking the display. A layout with `"frame": false` (Single) shows no frame and no mat on separate frames, edge to edge like a photo frame, until **Frame on Single** (Frame section, shown while it's on screen) turns them on (`"layout_frames": {"single": true}`); its Frame settings are greyed out meanwhile. A gallery mat always has its frame. The picker lists layouts by an optional whole-number `"order"` (smaller first; 100 when missing, `single` is 0), then by file name. Custom opening sizes and the `custom` layout are planned for later.
 
 #### Time of day
 
@@ -627,7 +628,7 @@ The sidebar runs, top to bottom: Global Settings, Layout, Frame, Gallery Mat, De
 |---|---|---|
 | **Layout** | Layout picker, Frames (Separate / Gallery mat), Rotate layout daily, the rotation checkboxes on the thumbnails, Select all / Deselect all, today's rotation status | Switch layout at, Mat chips (frames per rotated layout) |
 | **Global** | Save as my preset, Apply my preset, Undo, Default media folder, Wall color, Fill frames, Tap a photo for details | Include subfolders, Time-of-day colors (on / off and Configure day / night colors…) |
-| **Frame** | Mat color, Frame style, Different gallery mat frame (its style, show gallery frame, colour) | Mat width, Show frame border, Frame color, Frame width |
+| **Frame** | Frame on Single (while Single is on screen), Mat color, Frame style, Different gallery mat frame (its style, show gallery frame, colour) | Mat width, Show frame border, Frame color, Frame width |
 | **Gallery Mat** | Mat color (the frame's style is in Frame) | Outer frame width, mat around and between the openings, wall around the frame, bevel |
 | **Metadata** | Show metadata; Text size, Pill size, Label position and the fields (Date, Location, Camera…) | Date format, Max metadata pills |
 | **Videos** | — | The whole section (max video size, Live Photo clips) |
@@ -645,7 +646,7 @@ A setting that changes nothing in the current state is greyed out, both in Basic
 |---|---|
 | Frame color (Frame section, a slot's Frame, the gallery's own frame, each time-of-day period) | Every frame it would colour is decorative (wood, gold, black, silver, white, barnwood) |
 | Frame style, color and width (Frame section, a slot's Frame, the gallery's own frame) | No frame shows: **Show frame border** (or the gallery's **Show frame**) is off. A time-of-day period that turns the frame on counts, so these stay live then |
-| Frame section: Mat color, Mat width, Frame width | No separate-frame layout is on screen (base layout, plus rotated ones) |
+| Frame section: Mat color, Mat width, Frame width | No separate-frame layout is on screen (base layout, plus rotated ones), or only a frameless Single |
 | Frame section: Show frame border, Frame style, Frame color | The screen is gallery-only and the gallery uses its own frame |
 | Gallery Mat (the whole section), and Different gallery mat frame with its settings (Frame section) | No gallery-mat layout is on screen; the reason says how to get one |
 | Bevel width, Bevel color | **Bevelled openings** is off |
