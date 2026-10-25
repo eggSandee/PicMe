@@ -110,3 +110,13 @@ def test_api_layouts_skips_an_invalid_file(client, tmp_path, monkeypatch, caplog
     ids = [l["id"] for l in r.json()]
     assert sorted(ids) == sorted(f.stem for f in LAYOUTS_DIR.glob("*.json")) and ids[0] == "single"
     assert "zz-typo.json" in caplog.text
+
+
+def test_frame_flag_must_be_true_or_false():
+    assert validate_layout(variant(frame=False)) == []
+    assert validate_layout(variant(frame="no")) == ["frame must be true or false"]
+
+
+def test_single_is_frameless_by_default():
+    single = json.loads((LAYOUTS_DIR / "single.json").read_text())
+    assert single["frame"] is False and validate_layout(single) == []
