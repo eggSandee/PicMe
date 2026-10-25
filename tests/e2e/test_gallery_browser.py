@@ -356,7 +356,8 @@ def test_bevel_reads_as_an_even_line_on_a_white_mat(write_cfg, open_display):
 
 
 def test_contain_in_an_ellipse_letterboxes_inside_the_shape(write_cfg, open_display):
-    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"},
+    # blur_backdrop off: the bars show the backing (with it on they show the blurred photo)
+    write_cfg(layout="classic-4", slots=4, layout_modes={"classic-4": "gallery"}, blur_backdrop=False,
               slot_overrides={1: {"shape": "ellipse", "fill_mode": "contain"}}, folders={1: "portrait"})
     w = open_display()
     page = w.page
