@@ -371,6 +371,7 @@ Top-level settings:
   "label_style": "pill",         // "pill" | "caption" | "placard" | "whisper" — how the metadata looks (see Metadata label styles below)
   "fill_mode": "cover",          // "cover" = Fill (crop, no black bars) | "contain" = Fit (whole photo, bars); missing = contain (see Fit and Fill below)
   "layout_frames": {"single": true}, // optional: give a frameless layout (Single) the frame and mat; missing = Single has none
+  "blur_backdrop": true,         // in Fit, a blurred copy of the photo fills the space around it; false = the mat colour; missing = true
   "tap_for_details": true,       // click, tap or Enter on a photo shows it larger with its metadata; false for kiosk screens; missing = true (see Photo details below)
   "frame_defaults": {            // mat and frame style applied to every slot; per-slot frame: {} overrides.
                                  // show_frame, frame_style and frame_color also style the gallery's outer frame
@@ -553,12 +554,13 @@ New installs start with wood frames (`frame_style: "wood"`, `frame_width: 28`). 
 
 #### Fit and Fill
 
-A photo or video rarely has exactly its frame's shape. **Fit** (`"contain"`) shows all of it, with bars of the mat backing where the shapes differ. **Fill** (`"cover"`) fills the frame and crops what doesn't fit, so there are no black bars. This helps most with layouts whose frames have unusual shapes (a wide strip, say).
+A photo or video rarely has exactly its frame's shape. **Fit** (`"contain"`) shows all of it; where the shapes differ, the space around it shows a blurred backdrop (below) or the mat backing. **Fill** (`"cover"`) fills the frame and crops what doesn't fit, so there are no black bars. This helps most with layouts whose frames have unusual shapes (a wide strip, say).
 
 - **Fill frames.** The editor's Global Settings has **Fill frames (crop, no black bars)** (`"fill_mode"` at the top level). It applies to photos and videos, to separate frames and gallery mats, and inside shaped openings (a heart is filled edge to edge).
 - **New installs fill.** The first-run config has `"fill_mode": "cover"`. A `config.json` from before this setting has no `fill_mode`, which means Fit, so an existing setup looks the same until you turn Fill frames on.
 - **Single fits.** The Single layout shows whole photos and videos (Fit) whatever Fill frames says, like a photo frame; that's its own default (`"fill_mode": "contain"` in `layouts/single.json`). Turn on **Fill on Single** (under Fill frames, shown while Single is on screen) to crop it instead (`"layout_fill_modes": {"single": "cover"}`). While Single is the only layout on screen, Fill frames is greyed out and points there.
 - **Per slot.** A slot can pick its own in its **Fit** section (Advanced): **Default** follows Fill frames, or choose Fit or Fill for that slot only (`"fill_mode"` in the slot; Default removes it). **Reset slots to global settings** puts every slot back on Default.
+- **Blurred backdrop.** In Fit, the space around a photo or video shows a soft, dimmed copy of it instead of plain bars, as photo-frame software does. It is most noticeable with portrait photos on a landscape screen (the **Single** layout). Turn off **Blurred backdrop in Fit** in Global Settings (`"blur_backdrop": false`; missing = on) to show the mat colour instead. A video's backdrop is its first frame. The copy is drawn at 48 px wide and scaled up, so it costs a TV almost nothing. It is greyed out while every slot on screen fills.
 - **In the preview.** Each slot shows **Fit** or **Fill** under its number, next to its size (see [Editor layout](#editor-layout)).
 
 #### Photo details
@@ -628,7 +630,7 @@ The sidebar runs, top to bottom: Global Settings, Layout, Frame, Gallery Mat, De
 | | Basic | Advanced adds |
 |---|---|---|
 | **Layout** | Layout picker, Frames (Separate / Gallery mat), Rotate layout daily, the rotation checkboxes on the thumbnails, Select all / Deselect all, today's rotation status | Switch layout at, Mat chips (frames per rotated layout) |
-| **Global** | Save as my preset, Apply my preset, Undo, Default media folder, Wall color, Fill frames, Fill on Single (while Single is on screen), Tap a photo for details | Include subfolders, Time-of-day colors (on / off and Configure day / night colors…) |
+| **Global** | Save as my preset, Apply my preset, Undo, Default media folder, Wall color, Fill frames, Fill on Single (while Single is on screen), Blurred backdrop in Fit, Tap a photo for details | Include subfolders, Time-of-day colors (on / off and Configure day / night colors…) |
 | **Frame** | Frame on Single (while Single is on screen), Mat color, Frame style, Different gallery mat frame (its style, show gallery frame, colour) | Mat width, Show frame border, Frame color, Frame width |
 | **Gallery Mat** | Mat color (the frame's style is in Frame) | Outer frame width, mat around and between the openings, wall around the frame, bevel |
 | **Metadata** | Show metadata; Text size, Pill size, Label position and the fields (Date, Location, Camera…) | Date format, Max metadata pills |
@@ -645,6 +647,7 @@ A setting that changes nothing in the current state is greyed out, both in Basic
 
 | Setting | Greyed when |
 |---|---|
+| Blurred backdrop in Fit | Every slot on screen fills (**Fill frames** on, and no slot set to Fit) |
 | Frame color (Frame section, a slot's Frame, the gallery's own frame, each time-of-day period) | Every frame it would colour is decorative (wood, gold, black, silver, white, barnwood) |
 | Frame style, color and width (Frame section, a slot's Frame, the gallery's own frame) | No frame shows: **Show frame border** (or the gallery's **Show frame**) is off. A time-of-day period that turns the frame on counts, so these stay live then |
 | Frame section: Mat color, Mat width, Frame width | No separate-frame layout is on screen (base layout, plus rotated ones), or only a frameless Single |

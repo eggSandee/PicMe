@@ -440,3 +440,17 @@ def test_single_layout_plays_a_video_full_screen(h264_browser, server, open_page
     box = page.locator("#slot-1").bounding_box()
     assert box["width"] >= 0.9 * 1920 and box["height"] >= 0.9 * 1080, box
     assert w.errors == []
+
+
+def test_a_fitted_video_gets_a_blurred_backdrop_of_its_frame(h264_browser, server, open_page, e2e_config_path, video_lib):
+    write_config(e2e_config_path, video_lib["photos"], video_lib["videos"], video_slots={1}, layout="single",
+                 fill_mode="contain")
+    w = open_display(open_page, server)
+    page = w.page
+    wait_video_slots_playing(page, 1)
+    page.wait_for_function("""() => { const s = document.getElementById('slot-1');
+        const bd = [...s.querySelectorAll('canvas.backdrop')].find(c => c.classList.contains('visible'));
+        return s.classList.contains('backdrop-on') && bd && bd.classList.contains('painted') &&
+               getComputedStyle(bd).opacity === '1'; }""", timeout=5_000)
+    assert w.errors == []
+

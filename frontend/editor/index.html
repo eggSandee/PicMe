@@ -808,7 +808,7 @@
           <span class="toggle-track"></span>
         </label>
       </div>
-      <p class="field-hint" data-setting="global.fill_mode">Off: whole photos and videos, with bars where their shape differs from the frame. A slot can choose its own (Advanced).</p>
+      <p class="field-hint" data-setting="global.fill_mode">Off: whole photos and videos, with space around them where their shape differs from the frame. A slot can choose its own (Advanced).</p>
 
       <div id="layout-fill-block" data-setting="global.layout_fill" hidden>
         <div class="toggle-row">
@@ -820,6 +820,15 @@
         </div>
         <p class="field-hint" id="g-layout-fill-hint">Off: Single shows whole photos and videos, like a photo frame.</p>
       </div>
+
+      <div class="toggle-row" data-setting="global.blur_backdrop">
+        <label for="g-blur-backdrop">Blurred backdrop in Fit</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-blur-backdrop" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <p class="field-hint" data-setting="global.blur_backdrop">The space around a fitted photo or video shows a soft, dimmed copy of it, like a photo frame. Off: the mat colour.</p>
 
       <div class="toggle-row" data-setting="global.tap_for_details">
         <label for="g-tap-details">Tap a photo for details</label>
@@ -1276,6 +1285,7 @@
     'global.wall_color':  { tier: 'basic',    label: 'Wall color' },
     'global.fill_mode':   { tier: 'basic',    label: 'Fill frames' },
     'global.tap_for_details': { tier: 'basic', label: 'Tap a photo for details' },
+    'global.blur_backdrop': { tier: 'basic', label: 'Blurred backdrop in Fit' },
     // Single (a layout with "frame": false) is frameless unless config.layout_frames turns it on
     'frame.layout_frame': { tier: 'basic', label: 'Frame on Single' },
     // Single fits by default (its JSON's fill_mode); config.layout_fill_modes overrides that
@@ -1856,9 +1866,17 @@
   let _refreshSlotInactive = null;  // the open slot panel's
   function refreshInactiveControls() {
     if (!config || !layouts) return;
+    refreshBackdropInactive();
     refreshGalleryInactive();
     refreshFrameSection();
     _refreshSlotInactive?.();
+  }
+
+  // The backdrop shows only around a fitted photo: greyed while every slot on screen fills
+  function refreshBackdropInactive() {
+    // Per layout on screen: a layout's own Fit / Fill (Single fits) counts, as on the display
+    const anyFit = reachableLayouts().some(l => config.slots.slice(0, l.slots.length).some(s => effectiveFill(s, l) === 'contain'));
+    setInactive(fieldOf('g-blur-backdrop'), anyFit ? null : 'Only for Fit: every slot on screen fills.');
   }
 
   function onGalleryChanged() {
@@ -2651,6 +2669,10 @@
       renderSlotPanel();  // the slot's "Default (global: …)" option
       scheduleAutoSave();
     };
+    const backdropEl = document.getElementById('g-blur-backdrop');
+    backdropEl.checked = config.blur_backdrop !== false;
+    backdropEl.onchange = e => { config.blur_backdrop = e.target.checked; scheduleAutoSave(); };
+    if (layouts) refreshBackdropInactive();  // later edits refresh it through scheduleAutoSave
     document.getElementById('g-layout-frame').onchange = e => {
       const id = e.target.dataset.layout;
       const frames = { ...(config.layout_frames || {}) };
