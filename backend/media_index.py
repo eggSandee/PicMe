@@ -213,7 +213,7 @@ def _warn_once(root: str, cap: str, msg: str, *args) -> None:
 def walk(root: str | Path, recursive: bool = True, *, extensions, max_depth: int | None = None,
          max_files: int | None = None) -> Walk:
     """Media files (by extension) in ``root`` and, if ``recursive``, its subfolders."""
-    root = str(Path(root))   # "photos/" and "./photos" list as photos/a.jpg, as before
+    root = str(Path(root).expanduser())   # "photos/" and "./photos" list as photos/a.jpg, as before; ~ is home
     max_depth = _limits["max_depth"] if max_depth is None else max_depth
     max_files = _limits["max_files"] if max_files is None else max_files
     extensions = frozenset(e.lower() for e in extensions)

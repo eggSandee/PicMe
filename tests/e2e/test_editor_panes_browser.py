@@ -471,3 +471,25 @@ def test_preview_stays_16_9_at_the_dividers_minimum(write_cfg, laptop, layout):
     f = _box(page, "#preview-fit")
     assert p["height"] <= f["height"] + 1 and p["width"] <= f["width"] + 1
 
+
+# --- Polish ---
+
+def test_apply_my_preset_is_greyed_until_a_preset_exists(write_cfg, open_editor):
+    write_cfg()
+    page = open_editor(editor_mode="basic").page
+    apply = page.locator("#preset-apply")
+    _until(page, "() => document.getElementById('preset-apply').classList.contains('field-inactive')")
+    assert apply.is_disabled() and apply.get_attribute("title") == "Save a preset first."
+    page.locator("#preset-save").click()
+    _until(page, "() => !document.getElementById('preset-apply').classList.contains('field-inactive')")
+    assert apply.is_enabled() and not apply.get_attribute("title")
+
+
+def test_an_adopted_slot_folder_box_cannot_be_edited_by_keyboard(write_cfg, open_editor):
+    """QA a4d84956: in Advanced, a slot following the default folder had a greyed box that the
+    keyboard could still edit, saving a stale source_path."""
+    write_cfg()
+    page = open_editor(editor_mode="advanced").page
+    page.locator(".preview-slot").nth(1).click()
+    box = page.locator("#slot-panel input[type=text]").first
+    assert box.is_disabled()

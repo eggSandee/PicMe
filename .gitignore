@@ -25,6 +25,7 @@ photos/
 *.png
 # ...except the generated decorative frame assets
 !frontend/assets/frames/*.png
+!frontend/assets/favicon.png
 *.gif
 *.heic
 *.heif
