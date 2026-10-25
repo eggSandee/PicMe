@@ -356,7 +356,7 @@ Example: if that returns `192.168.68.50`, open `http://192.168.68.50:8000/displa
 
 ### Configuration
 
-The file `config.json` in the project root controls which layout is used and how each slot behaves. It is created automatically with defaults on first run — the first time the display or editor is opened — using the classic-4 layout with every slot showing the `photos` folder. You can edit it directly: open displays re-read it every 3 seconds and apply changes on their own. If you change a video slot's folder by hand, restart the server (or open the folder in the editor) so its iPhone clips get converted.
+The file `config.json` in the project root controls which layout is used and how each slot behaves. It is created automatically with defaults on first run — the first time the display or editor is opened — using the classic-4 layout with every slot showing the `photos` folder. When the editor saves, a value PicMe doesn't recognise for `label_style`, `label_position`, `fill_mode` or a `text_size` / `pill_size` (globally or in a slot) is dropped, so that setting goes back to its default; the server log names it. You can edit it directly: open displays re-read it every 3 seconds and apply changes on their own. If you change a video slot's folder by hand, restart the server (or open the folder in the editor) so its iPhone clips get converted.
 
 Top-level settings:
 
@@ -508,7 +508,7 @@ When a slot is too small for all its pills:
 - **Font.** Caption and placard use [Source Serif 4](https://github.com/adobe-fonts/source-serif), bundled in `frontend/assets/fonts` (SIL Open Font License, `SourceSerif4-OFL.txt`), because TV browsers have no Georgia. Whisper uses the TV's sans-serif.
 - **One style for the whole screen.** There is no per-slot style: a screen's labels share one caption band and one size, so mixing styles on one screen would break that.
 
-To use a different photo folder (e.g. a folder elsewhere on your PC), set `source_path` to the full path:
+To use a different photo folder (e.g. a folder elsewhere on your PC), set `source_path` to the full path. A leading `~` means your home folder, so `~/Pictures` works too:
 
 ```json
 "source_path": "C:/Users/yourname/Pictures/Vacations"
