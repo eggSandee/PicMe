@@ -522,7 +522,7 @@ def _slow_images(route):
     route.continue_()
 
 
-def _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms, **extra):
+def _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms, min_distinct=0, **extra):
     for i in range(10):
         _make_image(tmp_path / f"p{i}.jpg", fmt="JPEG", color=(25 * i, 255 - 25 * i, 120))
     cfg = _write_config(restore_config, tmp_path, cycle_seconds=3, layout="classic-6", slots=6)
@@ -540,6 +540,13 @@ def _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms, **ext
         timeout=10_000)
     page.evaluate("window.__samples = []")
     page.wait_for_timeout(run_ms)
+    # A busy machine (the whole suite running) can slow the 3 s ticks: give every slot time to
+    # show `min_distinct` photos rather than failing on a fixed window. Duplicates are still
+    # checked over every sample.
+    if min_distinct:
+        page.wait_for_function(
+            """n => [0, 1, 2, 3, 4, 5].every(i => new Set(window.__samples.map(s => s.visible[i]).filter(Boolean)).size >= n)""",
+            arg=min_distinct, timeout=20_000)
     samples = page.evaluate("window.__samples")
     assert len(samples) > run_ms / 100
     return w, samples
@@ -561,13 +568,13 @@ def test_no_duplicate_photos_when_all_slots_tick_together(server, open_page, res
 
     Six slots ticking at once with only 4 free photos left the last two slots to repeat a
     photo another slot was showing or switching to."""
-    w, samples = _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms=13_000)
+    w, samples = _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms=13_000, min_distinct=3)
     _assert_no_duplicates(samples, min_distinct=3)
     assert _unexpected_errors(w) == []
 
 
 def test_no_duplicate_photos_when_a_group_ticks_together(server, open_page, restore_config, tmp_path):
-    w, samples = _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms=7_000, group="a")
+    w, samples = _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms=7_000, min_distinct=2, group="a")
     _assert_no_duplicates(samples, min_distinct=2)
     assert _unexpected_errors(w) == []
 
@@ -720,3 +727,17 @@ def test_single_fits_by_default_and_fill_on_single_crops(server, open_page, rest
     restore_config.write_text(json.dumps(cfg))
     page.wait_for_function(f"() => ({OBJECT_FIT_JS})() === 'contain'", timeout=8_000)
     assert w.errors == []
+
+
+# --- No failed requests on load (the favicon used to 404 on every page) ---
+
+@pytest.mark.parametrize("page_path", ["/display/", "/editor/"])
+def test_pages_load_without_failed_requests(server, browser, page_path):
+    ctx = browser.new_context(viewport=VIEWPORT)
+    page = ctx.new_page()
+    failed = []
+    page.on("response", lambda r: r.status >= 400 and failed.append(f"{r.status} {r.url}"))
+    page.goto(f"{server}{page_path}", wait_until="networkidle")
+    page.wait_for_timeout(1500)
+    ctx.close()
+    assert failed == []

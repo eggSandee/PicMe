@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import main
-from conftest import EXIF_DATE_ISO, LAYOUTS_DIR, REPO_ROOT, make_config
+from conftest import EXIF_DATE_ISO, LAYOUTS_DIR, REPO_ROOT, _make_image, make_config
 
 
 # --- /api/config ---
@@ -669,3 +669,55 @@ def test_frontend_files_are_revalidated_not_served_stale(client, url):
     assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
     again = client.get(url, headers={"If-None-Match": r.headers["etag"]})
     assert again.status_code == 304
+
+
+# --- Saving normalises choice settings ---
+
+def test_saving_drops_unknown_choice_values_and_keeps_good_ones(client, config_path):
+    cfg = make_config("photos")
+    cfg |= {"label_style": "neon", "label_position": "mat", "fill_mode": "stretch"}
+    cfg["metadata_defaults"] = {"show_date": True, "text_size": "huge", "pill_size": 30}
+    cfg["slots"][1]["fill_mode"] = "contain"
+    cfg["slots"][2]["fill_mode"] = None
+    cfg["slots"][2]["metadata"] = {"text_size": "x-large", "pill_size": "giant"}
+    r = client.post("/api/config", json=cfg)
+    assert r.status_code == 200
+    assert sorted(r.json()["dropped"]) == sorted([
+        "label_style", "fill_mode", "metadata_defaults.text_size", "metadata_defaults.pill_size",
+        "slots[2].fill_mode", "slots[2].metadata.pill_size"])
+    saved = json.loads(config_path.read_text())
+    assert "label_style" not in saved and "fill_mode" not in saved      # back to their defaults
+    assert saved["label_position"] == "mat" and saved["slots"][1]["fill_mode"] == "contain"
+    assert saved["metadata_defaults"] == {"show_date": True}
+    assert saved["slots"][2]["metadata"] == {"text_size": "x-large"}
+
+
+def test_saving_a_valid_config_drops_nothing(client, config_path):
+    cfg = client.get("/api/config").json()   # the first-run defaults
+    r = client.post("/api/config", json=cfg)
+    assert r.json() == {"ok": True, "dropped": []}
+    assert json.loads(config_path.read_text()) == cfg
+
+
+# --- ~ in folder paths ---
+
+def test_tilde_folders_list_from_home(client, tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    (home / "Pictures" / "trip").mkdir(parents=True)
+    _make_image(home / "Pictures" / "a.jpg", fmt="JPEG")
+    _make_image(home / "Pictures" / "trip" / "b.jpg", fmt="JPEG")
+    monkeypatch.setenv("HOME", str(home))
+    r = client.get("/api/images/list", params={"folder": "~/Pictures"}).json()
+    assert sorted(r["images"]) == sorted([str(home / "Pictures" / "a.jpg"), str(home / "Pictures" / "trip" / "b.jpg")])
+    assert client.get("/api/images/random", params={"folder": "~/Pictures"}).status_code == 200
+    browse = client.get("/api/browse", params={"path": "~/Pictures"}).json()
+    assert browse["path"] == str((home / "Pictures").resolve())
+
+
+# --- Favicon ---
+
+def test_favicon_is_served(client):
+    r = client.get("/favicon.ico")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/x-icon"
+    assert r.content[:4] == b"\x00\x00\x01\x00"   # an ICO file
+

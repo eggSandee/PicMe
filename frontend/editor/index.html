@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PicMe Editor</title>
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/favicon.png" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -3892,8 +3894,8 @@
       const [{ presets }, backup] = await Promise.all([fetchJSON(`${API}/api/presets`), fetchJSON(`${API}/api/config/backup`)]);
       _preset = presets.find(p => p.id === PRESET_ID) || null;
       const apply = document.getElementById('preset-apply');
-      apply.disabled = !_preset;
-      apply.title = _preset ? '' : 'No preset saved yet';
+      // Greyed like any setting that can't do anything yet, with the reason as its tooltip
+      setInactive(apply, _preset ? null : 'Save a preset first.', { at: 'title' });
       document.getElementById('preset-status').textContent = _preset
         ? `My preset: saved ${formatWhen(_preset.updated)}.` : 'No preset saved yet.';
       document.getElementById('undo-row').hidden = !backup.exists;
