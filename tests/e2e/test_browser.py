@@ -609,11 +609,6 @@ BACKDROP_JS = """() => {
 
 
 def _wait_photo(page):
-
-
-# --- Single: no frame by default ---
-
-def _wait_slot_photo(page):
     page.wait_for_function("() => { const i = document.querySelector('#slot-1 img.visible'); "
                            "return i && i.complete && i.naturalWidth > 0; }", timeout=10_000)
 
@@ -662,6 +657,14 @@ def test_backdrop_follows_each_new_photo(server, open_page, restore_config):
     # Only the visible pair's backdrop shows
     assert page.evaluate("() => [...document.querySelectorAll('#slot-1 canvas.backdrop')]"
                          ".filter(c => getComputedStyle(c).opacity === '1').length") == 1
+    assert w.errors == []
+
+
+# --- Single: no frame by default ---
+
+def _wait_slot_photo(page):
+    page.wait_for_function("() => { const i = document.querySelector('#slot-1 img.visible'); "
+                           "return i && i.complete && i.naturalWidth > 0; }", timeout=10_000)
 
 
 FRAME_GEO_JS = """() => { const s = document.getElementById('slot-1'), i = s.querySelector('img.visible');
