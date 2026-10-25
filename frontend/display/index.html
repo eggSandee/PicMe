@@ -21,6 +21,8 @@
       padding: 12px;
       background: #1a1a1a;
     }
+    /* A frameless layout (Single, Frame on Single off) is full bleed: no wall border either */
+    #collage.full-bleed { padding: 0; gap: 0; }
 
     .slot {
       position: relative;
@@ -422,6 +424,7 @@
       const tod = getTimeOfDayTemplate();
       const collage = document.getElementById('collage');
       collage.style.background = tod?.wall_color ?? config.wall_color ?? '#1a1a1a';
+      collage.classList.toggle('full-bleed', activeMode !== 'gallery' && !PicMeRotation.framedLayout(config, activeLayout));
       const placement = labelPlacement();
       const style = labelStyle();
       collage.dataset.labels = placement;

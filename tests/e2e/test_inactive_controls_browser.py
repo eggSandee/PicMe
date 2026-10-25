@@ -442,8 +442,9 @@ def test_single_is_frameless_until_frame_on_single(write_cfg, open_page):
     # The Frame section does nothing on a frameless Single, and says how to change that
     _assert_inactive(page, "#g-mat-color", "Single shows no frame. Turn on Frame on Single")
     _assert_inactive(page, "#g-frame-style", "Single shows no frame")
-    # The preview is edge to edge too
+    # The preview is edge to edge too, with no wall border
     assert page.evaluate("() => getComputedStyle(document.querySelector('.preview-slot')).paddingTop") == "0px"
+    assert page.evaluate("() => getComputedStyle(document.getElementById('collage-preview')).paddingTop") == "0px"
 
     _toggle(page, "#g-layout-frame")
     _saved(write_cfg, lambda c: c.get("layout_frames") == {"single": True})

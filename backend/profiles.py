@@ -46,8 +46,8 @@ GROUPS = {
     "frame_defaults": "Frame", "gallery": "Gallery mat", "metadata_defaults": "Metadata",
     "show_metadata": "Metadata", "date_format": "Metadata", "max_metadata_pills": "Metadata",
     "label_position": "Metadata", "label_style": "Metadata", "time_of_day": "Time-of-day",
-    "tap_for_details": "Tap for details", "blur_backdrop": "Blurred backdrop", "layout_frames": "Frame",
-    "layout_fill_modes": "Fill frames",
+    "tap_for_details": "Tap for details", "blur_backdrop": "Blurred backdrop", "layout_frames": "Frame on Single",
+    "layout_fill_modes": "Fill on Single",
 }
 
 

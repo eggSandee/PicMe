@@ -680,10 +680,13 @@ def test_single_has_no_frame_or_mat_unless_turned_on(server, open_page, restore_
     page = w.page
     _wait_slot_photo(page)
     assert page.evaluate(FRAME_GEO_JS)["inset"] == 0  # edge to edge
+    # Full bleed: no wall border around the one slot either
+    assert page.locator("#slot-1").bounding_box() == {"x": 0, "y": 0, "width": VIEWPORT["width"], "height": VIEWPORT["height"]}
     # Frame on Single: the frame and mat are back, live
     _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, frame_defaults=frame,
                   layout_frames={"single": True})
     page.wait_for_function(f"() => ({FRAME_GEO_JS})().inset >= 40", timeout=8_000)
+    assert page.locator("#slot-1").bounding_box()["x"] == 12  # the wall border is back with the frame
     assert w.errors == []
 
 

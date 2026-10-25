@@ -2369,8 +2369,10 @@
     // At the display's proportions: #collage's 12 px gap and padding, the mat and frame, in
     // preview px (`k` per display px), so a smaller preview is the same picture, smaller
     const k = preview.clientWidth / 1920 || 0.5;
-    preview.style.gap = `${12 * k}px`;
-    preview.style.padding = `${12 * k}px`;
+    // A frameless Single is full bleed, as on the display: no wall border
+    const wall = PicMeRotation.framedLayout(config, layout) ? 12 * k : 0;
+    preview.style.gap = `${wall}px`;
+    preview.style.padding = `${wall}px`;
     preview.style.background = config.wall_color || '#1a1a1a';
     preview.innerHTML = '';
 
@@ -2426,7 +2428,7 @@
 
     const band = buildPreviewPills(preview, cells);
     // Each photo opening at the 1920x1080 reference: the display's grid, less frame, mat and caption
-    const refCells = PicMeAspect.cells(layout);
+    const refCells = PicMeAspect.cells(layout, PicMeRotation.framedLayout(config, layout) ? {} : { padding: 0, gap: 0 });
     cells.forEach(({ tags, slotCfg, frameCfg, padded }, i) => {
       const o = PicMeAspect.framedOpening(refCells[i], frameCfg, { decorative: !!frameAsset(frameCfg.frame_style), band });
       setSlotTags(tags, o, padded ? config.slots[0] : slotCfg);
