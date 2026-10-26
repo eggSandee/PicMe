@@ -816,11 +816,13 @@
       .toggle-sm .toggle-track::after { width: 14px; height: 14px; }
       .toggle-sm input:checked + .toggle-track::after { transform: translateX(20px); }
       .layout-thumb { min-height: 40px; }
-      .layout-thumb .rotation-pick-corner { width: 32px; height: 32px; }
-      .layout-thumb .rotation-pick { width: 18px; height: 18px; }
+      .layout-thumb .rotation-pick-corner { width: 40px; height: 40px; }
+      .layout-thumb .rotation-pick { width: 20px; height: 20px; }
       .layout-thumb .layout-mode-chip { min-height: 40px; padding: 0 14px; font-size: 12px; border-radius: 20px; }
       .folder-item { min-height: 44px; }
       .modal-cb-row input[type="checkbox"] { width: 20px; height: 20px; margin-top: 0; }
+      .tod-same-label { min-height: 40px; padding: 0 6px; }
+      .tod-same-label input[type="checkbox"] { width: 20px; height: 20px; }
     }
     @media (max-width: 560px) {
       #slot-panel .panel-grid { grid-template-columns: 1fr; }
@@ -3378,6 +3380,7 @@
       inp.value = own;
       inp.oninput = () => { tmpl[key] = own = inp.value; scheduleAutoSave(); };
       const sameLbl = document.createElement('label');
+      sameLbl.className = 'tod-same-label';  // the whole label is the tap target (40 px tall on a phone)
       sameLbl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:12px;margin:0;white-space:nowrap;';
       const same = document.createElement('input');
       same.type = 'checkbox';

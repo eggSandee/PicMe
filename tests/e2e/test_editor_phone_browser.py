@@ -265,6 +265,9 @@ def test_dialogs_fit_the_screen(write_cfg, device, screen):
 
     page.locator("#tod-configure-btn").tap()
     _modal_fits(page, ".tod-modal-overlay .modal", screen)
+    # Its "Same as default" labels are 40 px tap targets too (QA #41)
+    same = page.evaluate("() => [...document.querySelectorAll('.tod-modal-overlay .tod-same-label')].map(l => l.getBoundingClientRect().height)")
+    assert same and min(same) >= 40
     page.keyboard.press("Escape")
     page.evaluate("() => document.querySelectorAll('.modal-overlay').forEach(o => o.remove())")
 
@@ -353,10 +356,10 @@ def test_tap_targets_are_at_least_40px(write_cfg, device, screen):
     assert len(controls) > 40  # sampled from both tabs
     small = [c for c in controls if c["h"] < 40 or c["w"] < 40]
     assert small == []
-    # The rotation box in each thumbnail's corner keeps a 24 px target or more
+    # The rotation box in each thumbnail's corner has a 40 px target too (QA #41)
     corners = page.evaluate("""() => [...document.querySelectorAll('.rotation-pick-corner')]
         .map(el => { const b = el.getBoundingClientRect(); return Math.min(b.width, b.height); })""")
-    assert corners and min(corners) >= 24
+    assert corners and min(corners) >= 40
     assert w.errors == []
 
 
