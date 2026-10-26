@@ -1139,9 +1139,12 @@
         el.innerHTML = '<span>Tap to play videos</span>';
         el.addEventListener('click', e => {
           e.stopPropagation();
+          // The stopped video slots, before play() below marks every element as not paused; one
+          // already playing keeps its clip
+          const stopped = activeSlots.filter(s => s.mode === 'video' && slotState[s.id] && (videoEls(s)?.current.paused ?? true));
           for (const v of document.querySelectorAll('video')) v.play()?.catch(() => {});
           el.hidden = true;
-          for (const s of activeSlots) if (s.mode === 'video' && slotState[s.id]) loadNextVideo(s);
+          for (const s of stopped) loadNextVideo(s);
         });
         document.body.appendChild(el);
       }
@@ -1185,7 +1188,13 @@
         if (nextPath === state.currentPath && current.getAttribute('src')) {
           state.playCount = 0;
           current.currentTime = 0;
-          await playVideo(current, slotCfg);
+          try {
+            await playVideo(current, slotCfg);
+          } catch (e) {
+            // Autoplay blocked mid-session (Low Power Mode turned on): ask, don't spin on retries
+            if (e?.name === 'NotAllowedError') { askTapToPlay(); return; }
+            throw e;
+          }
           armWatchdog(slotCfg, current);
           return;
         }

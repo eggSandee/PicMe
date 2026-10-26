@@ -8,6 +8,7 @@ Skipped if ffmpeg is missing or the browser can't play H.264 (bundled Chromium).
 from __future__ import annotations
 
 import json
+import shutil
 import time
 
 import pytest
@@ -497,5 +498,31 @@ def test_blocked_autoplay_asks_for_one_tap_then_plays(h264_browser, server, open
     assert page.locator("#tap-to-play").is_hidden()
     wait_video_slots_playing(page, 1)
     assert page.locator("#detail").is_hidden()  # the tap didn't open the photo details
+    assert w.errors == []
+
+
+# Autoplay that gets blocked later (Low Power Mode turned on mid-session); counts refusals
+BLOCK_LATER = """(() => { const play = HTMLMediaElement.prototype.play; window.__block = false; window.__refused = 0;
+  document.addEventListener('click', () => { window.__block = false; }, true);
+  HTMLMediaElement.prototype.play = function () {
+    if (window.__block) { window.__refused++; return Promise.reject(new DOMException('blocked', 'NotAllowedError')); }
+    return play.call(this); }; })();"""
+
+
+def test_a_one_clip_folder_asks_for_a_tap_rather_than_spinning(h264_browser, server, open_page, e2e_config_path, video_lib, tmp_path):
+    """QA #44: blocked autoplay on a folder of one clip retried thousands of times a second."""
+    one = tmp_path / "one"
+    one.mkdir()
+    shutil.copy(next(video_lib["four"].glob("*.mp4")), one / "only.mp4")
+    write_config(e2e_config_path, video_lib["photos"], one, video_slots={1}, loops=1)
+    w = _open_display_with(open_page, server, BLOCK_LATER)
+    page = w.page
+    wait_video_slots_playing(page, 1)
+    page.evaluate("() => { window.__block = true; }")  # the clip ends and restarts in place
+    page.wait_for_selector("#tap-to-play:not([hidden])", timeout=15_000)
+    page.wait_for_timeout(1000)
+    assert page.evaluate("window.__refused") <= 3
+    page.locator("#tap-to-play").click()
+    wait_video_slots_playing(page, 1)
     assert w.errors == []
 
