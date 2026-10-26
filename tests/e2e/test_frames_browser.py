@@ -338,19 +338,22 @@ def test_barnwood_does_not_repeat_along_a_gallery_edge(write_cfg, open_display, 
 
 @pytest.mark.parametrize("style", ["gold", *NEW_STYLES])
 def test_small_slots_cap_the_moulding_and_keep_corners_square(write_cfg, open_display, style):
-    write_cfg({"frame_style": style, "frame_width": 36, "mat_color": "#ff00ff", "mat_width": 6},
+    # 1280 x 720: everything at s = 2/3 (README → Screen sizes), so 120 px is 80; the small
+    # slots are a whole 310 x 348 px, so their corners sit on the pixel grid
+    write_cfg({"frame_style": style, "frame_width": 120, "mat_color": "#ff00ff", "mat_width": 6},
               layout="hero-left", slots=5, wall_color="#00ffff")
-    w = open_display(viewport={"width": 800, "height": 450})
+    w = open_display(viewport={"width": 1280, "height": 720})
+    scaled = 80
     widths = {}
     for slot_id in slot_ids(w.page):
         f = frame(w.page, slot_id)
         assert f"/assets/frames/{style}.png" in f["image"]
         assert len(set(f["widths"])) == 1
         widths[slot_id] = f["widths"][0]
-        # Capped at a sixth of the slot's short side, never above the configured width
-        assert widths[slot_id] == min(36, f["short"] // 6), (slot_id, f)
-    assert widths[1] == 36          # the big slot keeps the configured width...
-    assert widths[2] < 36           # ...the small ones (185 x 207) are capped
+        # Capped at a sixth of the slot's short side, never above the (scaled) configured width
+        assert widths[slot_id] == min(scaled, f["short"] // 6), (slot_id, f)
+    assert widths[1] == scaled      # the big slot keeps the configured width...
+    assert widths[2] < scaled       # ...the small ones are capped
     shot = slot_shot(w.page, 2)
     assert max(corner_mads(shot, asset(style), int(widths[2]))) <= 14
     # The moulding is opaque: no wall color shows through anywhere inside the slot
@@ -362,8 +365,11 @@ def test_frame_refits_when_the_window_is_resized(write_cfg, open_display):
     write_cfg({"frame_style": "wood", "frame_width": 80})
     w = open_display()
     assert frame(w.page, 1)["widths"][0] == 80  # 942 x 522 slot: cap 87
-    w.page.set_viewport_size({"width": 960, "height": 540})  # 462 x 252 slots: cap 42
-    _until(w.page, "() => parseFloat(getComputedStyle(document.querySelector('#slot-1 .mat-frame')).borderTopWidth) === 42")
+    # s = 0.5 (README → Screen sizes): 40 px, under the 43 px cap of the ~468 x 258 slots
+    w.page.set_viewport_size({"width": 960, "height": 540})
+    _until(w.page, "() => parseFloat(getComputedStyle(document.querySelector('#slot-1 .mat-frame')).borderTopWidth) === 40")
+    f = frame(w.page, 1)
+    assert f["widths"][0] < f["short"] // 6
 
 
 # --- The mat shows around the photo ---
