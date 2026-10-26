@@ -371,8 +371,9 @@ def test_frame_refits_when_the_window_is_resized(write_cfg, open_display):
 @pytest.mark.parametrize("fill_mode, folder", [("cover", "photos"), ("contain", "portrait")])
 def test_mat_insets_the_photo(write_cfg, open_display, fill_mode, folder):
     """QA regression: the photo covered the mat — mat_width only ever showed as letterbox bars."""
+    # blur_backdrop off: Fit's bars show the mat (with it on they show the blurred photo)
     write_cfg({"frame_style": "wood", "frame_width": 28, "mat_color": "#ff00ff", "mat_width": 30},
-              folder=folder, slot_overrides={i: {"fill_mode": fill_mode} for i in range(1, 5)})
+              folder=folder, slot_overrides={i: {"fill_mode": fill_mode} for i in range(1, 5)}, blur_backdrop=False)
     w = open_display()
     inset = 28 + 30
     slot = rect(w.page, "#slot-1")

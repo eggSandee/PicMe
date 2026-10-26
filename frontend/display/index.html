@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PicMe</title>
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/favicon.png" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -21,6 +23,8 @@
       padding: 12px;
       background: #1a1a1a;
     }
+    /* A frameless layout (Single, Frame on Single off) is full bleed: no wall border either */
+    #collage.full-bleed { padding: 0; gap: 0; }
 
     .slot {
       position: relative;
@@ -58,6 +62,23 @@
     }
 
     .mat-frame img.hidden, .mat-frame video.hidden { opacity: 0; }
+
+    /* Blurred backdrop (README → Fit and Fill): in Fit, a blurred, dimmed copy of the photo or
+       video fills the space around it. One small canvas per media pair, under the media, painted
+       at low resolution and scaled up (cheap on a TV), crossfaded like the media. */
+    .mat-frame canvas.backdrop {
+      display: none;
+      position: absolute;
+      top: var(--mat, 0px); left: var(--mat, 0px);
+      width: calc(100% - 2 * var(--mat, 0px));
+      height: calc(100% - var(--mat, 0px) - var(--mat-bottom, var(--mat, 0px)));
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 0.8s ease;
+      pointer-events: none;
+    }
+    .slot.backdrop-on .mat-frame canvas.backdrop { display: block; }
+    .mat-frame canvas.backdrop.visible.painted { opacity: 1; }
     .mat-frame img.visible, .mat-frame video.visible { opacity: 1; }
 
     /* A slot shows either its img pair or its video pair, never both */
@@ -297,6 +318,13 @@
       const matFrame = document.createElement('div');
       matFrame.className = 'mat-frame';
 
+      // Blurred backdrops for Fit, under the media: A goes with imgA / vidA, B with imgB / vidB
+      const bdA = document.createElement('canvas');
+      const bdB = document.createElement('canvas');
+      bdA.className = 'backdrop visible';
+      bdB.className = 'backdrop hidden';
+      matFrame.append(bdA, bdB);
+
       // Two img elements for crossfade, inside the mat
       const imgA = document.createElement('img');
       const imgB = document.createElement('img');
@@ -398,6 +426,7 @@
       const tod = getTimeOfDayTemplate();
       const collage = document.getElementById('collage');
       collage.style.background = tod?.wall_color ?? config.wall_color ?? '#1a1a1a';
+      collage.classList.toggle('full-bleed', activeMode !== 'gallery' && !PicMeRotation.framedLayout(config, activeLayout));
       const placement = labelPlacement();
       const style = labelStyle();
       collage.dataset.labels = placement;
@@ -473,6 +502,8 @@
       const todFrame = {};
       if (tod) for (const key of TOD_FRAME_KEYS) if (tod[key] !== undefined) todFrame[key] = tod[key];
       const frameCfg = { ...(config.frame_defaults || {}), ...todFrame, ...(slotCfg.frame || {}) };
+      // Single shows the photo edge to edge unless its frame is turned on (Frame on Single)
+      if (!PicMeRotation.framedLayout(config, activeLayout)) Object.assign(frameCfg, { show_frame: false, mat_width: 0 });
 
       const matWidth  = Number(frameCfg.mat_width ?? 16) || 0;
       const matColor  = frameCfg.mat_color  ?? '#000000';
@@ -527,10 +558,47 @@
     }
 
     // Fit (contain, letterboxed) or Fill (cover, cropped), in either mode: the slot's own
-    // fill_mode, else the global one, else Fit (a config from before the global setting)
+    // fill_mode, else the layout's (Single fits), else the global one, else Fit (a config from
+    // before the global setting)
+    function slotFill(slotCfg) {
+      const fill = slotCfg.fill_mode ?? PicMeRotation.layoutFill(config, activeLayout) ?? config.fill_mode;
+      return fill === 'cover' ? 'cover' : 'contain';
+    }
+
     function applyFit(slotEl, slotCfg) {
-      const fit = (slotCfg.fill_mode ?? config.fill_mode) === 'cover' ? 'cover' : 'contain';
+      const fit = slotFill(slotCfg);
       slotEl.querySelectorAll('.mat-frame img, .mat-frame video').forEach(el => el.style.objectFit = fit);
+      // Backdrops are painted either way, so turning this on (Fit, or the setting) shows them at once
+      slotEl.classList.toggle('backdrop-on', fit === 'contain' && config.blur_backdrop !== false);
+    }
+
+    // Paint `media`'s blurred, dimmed copy into the slot's backdrop for pair `which` ('A' / 'B')
+    // and crossfade to it. Small and blurred here, so scaling it up is all the browser does.
+    const BACKDROP_WIDTH = 48;
+    function showBackdrop(slotEl, which, media) {
+      const [bdA, bdB] = slotEl.querySelectorAll('.mat-frame canvas.backdrop');
+      if (!bdA) return;
+      const next = which === 'A' ? bdA : bdB;
+      const other = which === 'A' ? bdB : bdA;
+      const w = media.naturalWidth || media.videoWidth;
+      const h = media.naturalHeight || media.videoHeight;
+      next.classList.remove('painted');
+      if (w && h) {
+        next.width = BACKDROP_WIDTH;
+        next.height = Math.max(1, Math.round(BACKDROP_WIDTH * h / w));
+        const ctx = next.getContext('2d');
+        try {
+          ctx.filter = 'blur(2px)';
+          // A little larger than the canvas, so the blur doesn't fade the edges to transparent
+          ctx.drawImage(media, -3, -3, next.width + 6, next.height + 6);
+          ctx.filter = 'none';
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+          ctx.fillRect(0, 0, next.width, next.height);
+          next.classList.add('painted');
+        } catch (e) { /* not drawable yet: the mat shows, as before */ }
+      }
+      next.classList.replace('hidden', 'visible');
+      other.classList.replace('visible', 'hidden');
     }
 
     // ── Metadata pill size (README → Metadata pills) ──
@@ -579,7 +647,7 @@
     // before it has loaded
     function fitMediaSize(slotEl) {
       const slotCfg = activeSlots.find(s => `slot-${s.id}` === slotEl.id);
-      if (!slotCfg || (slotCfg.fill_mode ?? config.fill_mode) === 'cover') return null;
+      if (!slotCfg || slotFill(slotCfg) === 'cover') return null;
       const video = slotEl.classList.contains('video-mode');
       const el = slotEl.querySelector(video ? '.mat-frame video.visible' : '.mat-frame img.visible');
       const w = video ? el?.videoWidth : el?.naturalWidth, h = video ? el?.videoHeight : el?.naturalHeight;
@@ -861,6 +929,7 @@
       next.className = 'visible';
       current.className = 'hidden';
       state.activeImg = state.activeImg === 'A' ? 'B' : 'A';
+      showBackdrop(slotEl, state.activeImg, next);
 
       updateOverlay(slotCfg, path);
       return true;
@@ -1087,6 +1156,8 @@
         next.className = 'visible';
         current.className = 'hidden';
         state.activeVid = state.activeVid === 'A' ? 'B' : 'A';
+        const vidSlotEl = document.getElementById(`slot-${slotCfg.id}`);
+        if (vidSlotEl) showBackdrop(vidSlotEl, state.activeVid, next);  // its first frame: it's playing
 
         // Freeze the outgoing video, then free its decoder once the 0.8s crossfade is done
         current.pause();
@@ -1586,7 +1657,7 @@
         config.slots = oldSlots;
         // checkRotation() and the gallery read these, so a removed key must not linger
         for (const key of ['layout_rotation', 'daily_layout_rotation', 'gallery', 'layout_modes', 'label_position', 'label_style',
-                           'fill_mode', 'tap_for_details']) {
+                           'fill_mode', 'tap_for_details', 'blur_backdrop', 'layout_frames', 'layout_fill_modes']) {
           if (!(key in fresh)) delete config[key];
         }
         // Replace each slot's settings, so a key the editor dropped (e.g. after swapping two

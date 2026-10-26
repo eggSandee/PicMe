@@ -52,9 +52,33 @@
     return now.getHours() * 60 + now.getMinutes() < changeAtMins ? day - 1 : day;
   }
 
+  // A config without a known layout gets the first-run default, not whichever layout sorts
+  // first in the picker (Single)
+  const DEFAULT_LAYOUT = 'classic-4';
+  function fallbackLayout(layouts) {
+    return layouts.find(l => l.id === DEFAULT_LAYOUT) || layouts[0];
+  }
+
   function baseLayout(config, layouts) {
     const id = isObject(config) ? config.layout : undefined;
-    return layouts.find(l => l.id === id) || layouts[0];
+    return layouts.find(l => l.id === id) || fallbackLayout(layouts);
+  }
+
+  // A layout with "frame": false (Single) shows no frame or mat on separate frames, unless
+  // config.layout_frames[its id] is true (README → Single). Gallery mats always have their frame.
+  function framedLayout(config, layout) {
+    if (!layout || layout.frame !== false) return true;
+    return isObject(config) && isObject(config.layout_frames) && config.layout_frames[layout.id] === true;
+  }
+
+  // A layout's own Fit / Fill: the owner's choice for it (config.layout_fill_modes), else the
+  // layout's default ("fill_mode" in its JSON: Single fits), else null = follow Fill frames.
+  // A slot's own fill_mode still wins over both (README → Fit and Fill).
+  function layoutFill(config, layout) {
+    const FILLS = ['cover', 'contain'];
+    const own = isObject(config) && isObject(config.layout_fill_modes) && layout ? config.layout_fill_modes[layout.id] : undefined;
+    if (FILLS.includes(own)) return own;
+    return layout && FILLS.includes(layout.fill_mode) ? layout.fill_mode : null;
   }
 
   // The layout object to show at `now`, or null if there are no layouts at all
@@ -82,7 +106,7 @@
   }
 
   window.PicMeRotation = {
-    DEFAULT_CHANGE_AT, parseChangeAt, rotationSettings, eligibleLayouts, rotationDay,
-    resolveLayout, nextChange,
+    DEFAULT_CHANGE_AT, DEFAULT_LAYOUT, parseChangeAt, rotationSettings, eligibleLayouts, rotationDay,
+    fallbackLayout, framedLayout, layoutFill, resolveLayout, nextChange,
   };
 })();

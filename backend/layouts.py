@@ -39,6 +39,10 @@ def _area(value) -> tuple[int, int, int, int] | None:
     return tuple(int(p) for p in parts)  # type: ignore[return-value]
 
 
+# Picker position: layouts without an `order` come after the ones that set a smaller one (Single is 0)
+DEFAULT_ORDER = 100
+
+
 def validate_layout(obj, shapes=KNOWN_SHAPES) -> list[str]:
     """Everything wrong with a layout object; an empty list means it is valid."""
     if not isinstance(obj, dict):
@@ -56,6 +60,13 @@ def validate_layout(obj, shapes=KNOWN_SHAPES) -> list[str]:
     gallery = obj.get("gallery", False)
     if not isinstance(gallery, bool):
         errors.append("gallery must be true or false")
+    if not isinstance(obj.get("frame", True), bool):
+        errors.append("frame must be true or false")
+    if obj.get("fill_mode", "cover") not in ("cover", "contain"):
+        errors.append("fill_mode must be 'cover' or 'contain'")
+    order = obj.get("order", DEFAULT_ORDER)
+    if not isinstance(order, int) or isinstance(order, bool):
+        errors.append("order must be a whole number")
 
     slots = obj.get("slots")
     if not isinstance(slots, list) or not 1 <= len(slots) <= MAX_SLOTS:
@@ -93,8 +104,8 @@ def validate_layout(obj, shapes=KNOWN_SHAPES) -> list[str]:
 
 
 def load_layouts(path: Path) -> list[dict]:
-    """Every valid ``*.json`` layout in ``path``, in file-name order. Invalid or unreadable
-    files are logged and skipped."""
+    """Every valid ``*.json`` layout in ``path``: by ``order`` (smallest first, default
+    DEFAULT_ORDER), then file name. Invalid or unreadable files are logged and skipped."""
     layouts = []
     for f in sorted(Path(path).glob("*.json")):
         try:
@@ -107,6 +118,7 @@ def load_layouts(path: Path) -> list[dict]:
             log.warning("Skipping layout %s: %s", f.name, "; ".join(errors))
             continue
         layouts.append(obj)
+    layouts.sort(key=lambda l: l.get("order", DEFAULT_ORDER))  # stable: file-name order within an order
     # Custom layouts (README → `custom`) would be validated the same way and appended here,
     # e.g. from config.get("custom_layouts"); the renderer accepts any layout that passes.
     return layouts

@@ -522,7 +522,7 @@ def _slow_images(route):
     route.continue_()
 
 
-def _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms, **extra):
+def _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms, min_distinct=0, **extra):
     for i in range(10):
         _make_image(tmp_path / f"p{i}.jpg", fmt="JPEG", color=(25 * i, 255 - 25 * i, 120))
     cfg = _write_config(restore_config, tmp_path, cycle_seconds=3, layout="classic-6", slots=6)
@@ -540,6 +540,13 @@ def _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms, **ext
         timeout=10_000)
     page.evaluate("window.__samples = []")
     page.wait_for_timeout(run_ms)
+    # A busy machine (the whole suite running) can slow the 3 s ticks: give every slot time to
+    # show `min_distinct` photos rather than failing on a fixed window. Duplicates are still
+    # checked over every sample.
+    if min_distinct:
+        page.wait_for_function(
+            """n => [0, 1, 2, 3, 4, 5].every(i => new Set(window.__samples.map(s => s.visible[i]).filter(Boolean)).size >= n)""",
+            arg=min_distinct, timeout=20_000)
     samples = page.evaluate("window.__samples")
     assert len(samples) > run_ms / 100
     return w, samples
@@ -561,12 +568,176 @@ def test_no_duplicate_photos_when_all_slots_tick_together(server, open_page, res
 
     Six slots ticking at once with only 4 free photos left the last two slots to repeat a
     photo another slot was showing or switching to."""
-    w, samples = _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms=13_000)
+    w, samples = _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms=13_000, min_distinct=3)
     _assert_no_duplicates(samples, min_distinct=3)
     assert _unexpected_errors(w) == []
 
 
 def test_no_duplicate_photos_when_a_group_ticks_together(server, open_page, restore_config, tmp_path):
-    w, samples = _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms=7_000, group="a")
+    w, samples = _lockstep_dup_run(open_page, server, restore_config, tmp_path, run_ms=7_000, min_distinct=2, group="a")
     _assert_no_duplicates(samples, min_distinct=2)
     assert _unexpected_errors(w) == []
+
+
+# --- Single: one photo or video, full screen ---
+
+@pytest.mark.parametrize("frames", ["slots", "gallery"])
+def test_single_layout_fills_the_screen_with_one_slot(server, open_page, restore_config, frames):
+    photos = json.loads(restore_config.read_text())["slots"][0]["source_path"]
+    extra = {"layout_modes": {"single": "gallery"}} if frames == "gallery" else {}
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, **extra)
+    w = open_page(f"{server}/display/")
+    page = w.page
+    page.wait_for_function("() => document.querySelectorAll('.slot img.visible').length === 1 && "
+                           "document.querySelector('.slot img.visible').naturalWidth > 0", timeout=10_000)
+    assert page.locator(".slot").count() == 1
+    # The one slot (in Gallery mat: the frame around its one opening) takes the whole screen,
+    # less the wall's small margin
+    assert page.locator(".gallery-mat").count() == (1 if frames == "gallery" else 0)
+    box = page.locator(".gallery-frame" if frames == "gallery" else "#slot-1").bounding_box()
+    assert box["width"] >= 0.9 * VIEWPORT["width"] and box["height"] >= 0.9 * VIEWPORT["height"], box
+    # The other slots' settings stay in the config for a bigger layout later
+    assert len(json.loads(restore_config.read_text())["slots"]) == SLOT_COUNT
+    assert w.errors == []
+
+
+# --- Blurred backdrop in Fit ---
+
+BACKDROP_JS = """() => {
+  const slot = document.getElementById('slot-1');
+  const bd = [...slot.querySelectorAll('canvas.backdrop')].find(c => c.classList.contains('visible'));
+  const style = bd && getComputedStyle(bd);
+  let rgb = null;
+  if (bd && bd.width) { const d = bd.getContext('2d').getImageData(bd.width >> 1, bd.height >> 1, 1, 1).data; rgb = [d[0], d[1], d[2]]; }
+  return { on: slot.classList.contains('backdrop-on'), shown: !!style && style.display !== 'none' && style.opacity === '1',
+           painted: !!bd?.classList.contains('painted'), width: bd?.width ?? 0, rgb,
+           img: slot.querySelector('img.visible')?.getAttribute('src') };
+}"""
+
+
+def _wait_photo(page):
+    page.wait_for_function("() => { const i = document.querySelector('#slot-1 img.visible'); "
+                           "return i && i.complete && i.naturalWidth > 0; }", timeout=10_000)
+
+
+def test_fit_shows_a_blurred_backdrop_and_fill_and_off_hide_it(server, open_page, restore_config):
+    photos = json.loads(restore_config.read_text())["slots"][0]["source_path"]
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, fill_mode="contain")
+    w = open_page(f"{server}/display/")
+    page = w.page
+    _wait_photo(page)
+    page.wait_for_function(f"() => ({BACKDROP_JS})().shown", timeout=5_000)
+    bd = page.evaluate(BACKDROP_JS)
+    # Small (cheap) and a dimmed copy of the photo: not black, not the photo's full brightness
+    assert bd["on"] and bd["painted"] and bd["width"] == 48, bd
+    assert 10 < max(bd["rgb"]) < 200, bd
+
+    # Fill: no space around the photo, so no backdrop. The display patches it in place (no reload).
+    page.evaluate("() => { window.__noReload = true; }")
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, layout_fill_modes={"single": "cover"})
+    page.wait_for_function(f"() => !({BACKDROP_JS})().on", timeout=8_000)
+    assert not page.evaluate(BACKDROP_JS)["shown"]
+
+    # Fit again, with the setting off: the mat shows, as before
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, fill_mode="contain", blur_backdrop=False)
+    page.wait_for_function("() => document.querySelector('#slot-1 img.visible').style.objectFit === 'contain'", timeout=8_000)
+    assert not page.evaluate(BACKDROP_JS)["on"]
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, fill_mode="contain")
+    page.wait_for_function(f"() => ({BACKDROP_JS})().shown", timeout=8_000)
+    assert page.evaluate("() => window.__noReload") is True
+    assert w.errors == []
+
+
+def test_backdrop_follows_each_new_photo(server, open_page, restore_config):
+    photos = json.loads(restore_config.read_text())["slots"][0]["source_path"]
+    _write_config(restore_config, photos, cycle_seconds=2, layout="single", slots=SLOT_COUNT, fill_mode="contain")
+    w = open_page(f"{server}/display/")
+    page = w.page
+    _wait_photo(page)
+    page.wait_for_function(f"() => ({BACKDROP_JS})().shown", timeout=5_000)
+    first = page.evaluate(BACKDROP_JS)
+    page.wait_for_function(f"src => ({BACKDROP_JS})().img !== src", arg=first["img"], timeout=10_000)
+    page.wait_for_function(f"() => ({BACKDROP_JS})().shown", timeout=5_000)
+    second = page.evaluate(BACKDROP_JS)
+    # Each fixture photo has its own colour, so the backdrop changed with it
+    assert second["rgb"] != first["rgb"], (first, second)
+    # Only the visible pair's backdrop shows
+    assert page.evaluate("() => [...document.querySelectorAll('#slot-1 canvas.backdrop')]"
+                         ".filter(c => getComputedStyle(c).opacity === '1').length") == 1
+    assert w.errors == []
+
+
+# --- Single: no frame by default ---
+
+def _wait_slot_photo(page):
+    page.wait_for_function("() => { const i = document.querySelector('#slot-1 img.visible'); "
+                           "return i && i.complete && i.naturalWidth > 0; }", timeout=10_000)
+
+
+FRAME_GEO_JS = """() => { const s = document.getElementById('slot-1'), i = s.querySelector('img.visible');
+  const a = s.getBoundingClientRect(), b = i.getBoundingClientRect();
+  return { inset: Math.round(b.left - a.left), border: getComputedStyle(s.querySelector('.mat-frame')).borderTopWidth }; }"""
+
+
+def test_single_has_no_frame_or_mat_unless_turned_on(server, open_page, restore_config):
+    photos = json.loads(restore_config.read_text())["slots"][0]["source_path"]
+    frame = {"mat_color": "#000000", "mat_width": 40, "show_frame": True, "frame_width": 20, "frame_style": "solid"}
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, frame_defaults=frame)
+    w = open_page(f"{server}/display/")
+    page = w.page
+    _wait_slot_photo(page)
+    assert page.evaluate(FRAME_GEO_JS)["inset"] == 0  # edge to edge
+    # Full bleed: no wall border around the one slot either
+    assert page.locator("#slot-1").bounding_box() == {"x": 0, "y": 0, "width": VIEWPORT["width"], "height": VIEWPORT["height"]}
+    # Frame on Single: the frame and mat are back, live
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, frame_defaults=frame,
+                  layout_frames={"single": True})
+    page.wait_for_function(f"() => ({FRAME_GEO_JS})().inset >= 40", timeout=8_000)
+    assert page.locator("#slot-1").bounding_box()["x"] == 12  # the wall border is back with the frame
+    assert w.errors == []
+
+
+def test_other_layouts_keep_their_frame(server, open_page, restore_config):
+    photos = json.loads(restore_config.read_text())["slots"][0]["source_path"]
+    frame = {"mat_color": "#000000", "mat_width": 40, "show_frame": True, "frame_width": 20, "frame_style": "solid"}
+    _write_config(restore_config, photos, layout="classic-4", slots=SLOT_COUNT, frame_defaults=frame)
+    page = open_page(f"{server}/display/").page
+    _wait_slot_photo(page)
+    assert page.evaluate(FRAME_GEO_JS)["inset"] >= 40
+
+
+OBJECT_FIT_JS = "() => document.querySelector('#slot-1 img.visible').style.objectFit"
+
+
+def test_single_fits_by_default_and_fill_on_single_crops(server, open_page, restore_config):
+    photos = json.loads(restore_config.read_text())["slots"][0]["source_path"]
+    # Fill frames is on for the other layouts; Single still fits
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, fill_mode="cover")
+    w = open_page(f"{server}/display/")
+    page = w.page
+    _wait_slot_photo(page)
+    assert page.evaluate(OBJECT_FIT_JS) == "contain"
+    _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, fill_mode="cover",
+                  layout_fill_modes={"single": "cover"})
+    page.wait_for_function(f"() => ({OBJECT_FIT_JS})() === 'cover'", timeout=8_000)
+    # A slot's own Fit / Fill still wins
+    cfg = _write_config(restore_config, photos, layout="single", slots=SLOT_COUNT, fill_mode="cover",
+                        layout_fill_modes={"single": "cover"})
+    cfg["slots"][0]["fill_mode"] = "contain"
+    restore_config.write_text(json.dumps(cfg))
+    page.wait_for_function(f"() => ({OBJECT_FIT_JS})() === 'contain'", timeout=8_000)
+    assert w.errors == []
+
+
+# --- No failed requests on load (the favicon used to 404 on every page) ---
+
+@pytest.mark.parametrize("page_path", ["/display/", "/editor/"])
+def test_pages_load_without_failed_requests(server, browser, page_path):
+    ctx = browser.new_context(viewport=VIEWPORT)
+    page = ctx.new_page()
+    failed = []
+    page.on("response", lambda r: r.status >= 400 and failed.append(f"{r.status} {r.url}"))
+    page.goto(f"{server}{page_path}", wait_until="networkidle")
+    page.wait_for_timeout(1500)
+    ctx.close()
+    assert failed == []

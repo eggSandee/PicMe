@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PicMe Editor</title>
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/favicon.png" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -808,7 +810,27 @@
           <span class="toggle-track"></span>
         </label>
       </div>
-      <p class="field-hint" data-setting="global.fill_mode">Off: whole photos and videos, with bars where their shape differs from the frame. A slot can choose its own (Advanced).</p>
+      <p class="field-hint" data-setting="global.fill_mode">Off: whole photos and videos, with space around them where their shape differs from the frame. A slot can choose its own (Advanced).</p>
+
+      <div id="layout-fill-block" data-setting="global.layout_fill" hidden>
+        <div class="toggle-row">
+          <label for="g-layout-fill" id="g-layout-fill-label">Fill on Single</label>
+          <label class="toggle">
+            <input type="checkbox" id="g-layout-fill" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <p class="field-hint" id="g-layout-fill-hint">Off: Single shows whole photos and videos, like a photo frame.</p>
+      </div>
+
+      <div class="toggle-row" data-setting="global.blur_backdrop">
+        <label for="g-blur-backdrop">Blurred backdrop in Fit</label>
+        <label class="toggle">
+          <input type="checkbox" id="g-blur-backdrop" />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <p class="field-hint" data-setting="global.blur_backdrop">The space around a fitted photo or video shows a soft, dimmed copy of it, like a photo frame. Off: the mat colour.</p>
 
       <div class="toggle-row" data-setting="global.tap_for_details">
         <label for="g-tap-details">Tap a photo for details</label>
@@ -871,6 +893,17 @@
     <div class="sidebar-section" data-section="frame">
       <h3>Frame</h3>
       <p id="frame-gallery-hint" class="scope-hint" style="margin-top:-6px" data-setting="frame.frame_style" hidden>Also the outer frame of gallery-mat layouts.</p>
+
+      <div id="frame-layout-block" data-setting="frame.layout_frame" hidden>
+        <div class="toggle-row">
+          <label for="g-layout-frame" id="g-layout-frame-label">Frame on Single</label>
+          <label class="toggle">
+            <input type="checkbox" id="g-layout-frame" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <p class="field-hint" id="g-layout-frame-hint">Off: the photo fills the screen edge to edge, like a photo frame.</p>
+      </div>
 
       <div class="field" data-setting="frame.mat_color">
         <label>Mat color</label>
@@ -1163,6 +1196,11 @@
     return { ...getGlobalFrame(), ...(slotCfg.frame || {}) };
   }
 
+  // A slot's frame on `layout`: none and no mat on a frameless layout (Single) unless its frame is on
+  function layoutFrame(layout, frameCfg) {
+    return PicMeRotation.framedLayout(config, layout) ? frameCfg : { ...frameCfg, show_frame: false, mat_width: 0 };
+  }
+
   function getSlotMeta(slotCfg) {
     if (slotCfg.use_global?.metadata !== false) return getGlobalMeta();
     return { ...getGlobalMeta(), ...(slotCfg.metadata || {}) };
@@ -1171,8 +1209,10 @@
   // Fit ('contain') or Fill ('cover'): the slot's own choice, else the global one. A config from
   // before the global setting has none, which means Fit (same rule as the display's applyFit).
   function globalFill() { return config.fill_mode === 'cover' ? 'cover' : 'contain'; }
-  function effectiveFill(slotCfg) {
-    return slotCfg?.fill_mode === 'cover' || slotCfg?.fill_mode === 'contain' ? slotCfg.fill_mode : globalFill();
+  // On `layout` (default: the base layout): the slot's own, else the layout's (Single fits), else Fill frames
+  function effectiveFill(slotCfg, layout = baseLayout()) {
+    if (slotCfg?.fill_mode === 'cover' || slotCfg?.fill_mode === 'contain') return slotCfg.fill_mode;
+    return PicMeRotation.layoutFill(config, layout) ?? globalFill();
   }
 
   function hasCustomSettings(slotCfg) {
@@ -1247,6 +1287,11 @@
     'global.wall_color':  { tier: 'basic',    label: 'Wall color' },
     'global.fill_mode':   { tier: 'basic',    label: 'Fill frames' },
     'global.tap_for_details': { tier: 'basic', label: 'Tap a photo for details' },
+    'global.blur_backdrop': { tier: 'basic', label: 'Blurred backdrop in Fit' },
+    // Single (a layout with "frame": false) is frameless unless config.layout_frames turns it on
+    'frame.layout_frame': { tier: 'basic', label: 'Frame on Single' },
+    // Single fits by default (its JSON's fill_mode); config.layout_fill_modes overrides that
+    'global.layout_fill': { tier: 'basic', label: 'Fill on Single' },
     'frame.mat_color':    { tier: 'basic',    label: 'Mat color' },
     'frame.frame_style':  { tier: 'basic',    label: 'Frame style' },
     'frame.mat_width':    { tier: 'advanced', label: 'Mat width',
@@ -1493,7 +1538,7 @@
 
   // The mat the labels sit on now: the gallery mat on a gallery layout, else the Frame section's
   function currentMatColor() {
-    const layout = layouts?.find(l => l.id === config.layout) || layouts?.[0];
+    const layout = layouts?.find(l => l.id === config.layout) || (layouts && PicMeRotation.fallbackLayout(layouts));
     return layout && layoutMode(layout) === 'gallery' ? galleryCfg().mat_color : (getGlobalFrame().mat_color || '#000000');
   }
 
@@ -1647,7 +1692,7 @@
 
   function layoutMode(layout) { return PicMeGallery.effectiveMode(config, layout); }
 
-  function baseLayout() { return layouts.find(l => l.id === config.layout) || layouts[0]; }
+  function baseLayout() { return layouts.find(l => l.id === config.layout) || PicMeRotation.fallbackLayout(layouts); }
 
   // Store a layout's mode; its own default is stored as no entry, so the layout file decides
   function setLayoutMode(layout, mode) {
@@ -1717,7 +1762,12 @@
   // Whether the layouts the display can show use separate frames, a gallery mat, or both
   function screenModes() {
     const reach = reachableLayouts();
-    return { anySeparate: reach.some(l => layoutMode(l) !== 'gallery'), anyGallery: reach.some(l => layoutMode(l) === 'gallery') };
+    const separate = reach.filter(l => layoutMode(l) !== 'gallery');
+    // A frameless layout (Single, with its frame off) shows no frame: it doesn't count as one
+    const framed = separate.filter(l => PicMeRotation.framedLayout(config, l));
+    return { anySeparate: framed.length > 0, anyGallery: reach.some(l => layoutMode(l) === 'gallery'),
+             frameless: separate.filter(l => !framed.includes(l)),
+             framelessDefault: separate.filter(l => l.frame === false) };
   }
 
   // What a frame setting can show in: the day and night templates while time of day is on (they
@@ -1742,6 +1792,13 @@
     return todStates().map(t => { const g = PicMeGallery.resolveGallery(config, t); return { on: g.show_frame, decorative: !!frameAsset(g.frame_style) }; });
   }
 
+  // Why the separate-frame settings do nothing: no separate-frame layout, or only frameless ones
+  function separateOnlyWhy({ anySeparate, frameless }) {
+    if (anySeparate) return null;
+    return frameless.length ? `${frameless[0].name} shows no frame. Turn on Frame on ${frameless[0].name} (Frame section).`
+                            : 'Separate-frame layouts only.';
+  }
+
   // No frame ever shows: its style, colour and width change nothing
   function frameOffWhy(frames, why) { return frames.some(f => f.on) ? null : why; }
   // Every frame that shows is decorative: the colour changes nothing
@@ -1751,30 +1808,77 @@
   // at the bottom of this section), the look (on/off, style, colour) of the gallery's outer frame.
   // Mat and widths are separate-frame only.
   function refreshFrameSection() {
-    const { anySeparate, anyGallery } = screenModes();
+    const modes = screenModes();
+    const { anySeparate, anyGallery } = modes;
     const own = galleryCfg().frame_override;
     document.getElementById('frame-gallery-hint').hidden = !anyGallery || own;
-    const separateOnly = anySeparate ? null : 'Separate-frame layouts only.';
+    refreshLayoutFrameToggle(modes);
+    refreshLayoutFill();
+    const separateOnly = separateOnlyWhy(modes);
     // The frames this section's look reaches, and why none shows
     const separate = anySeparate ? separateFrames() : [];
     const frames = [...separate, ...(anyGallery && !own ? galleryFrames() : [])];
     const offText = getGlobalFrame().show_frame === false ? 'Show frame border is off.' : 'Time of day turns the frame off all day.';
     setInactive(fieldOf('g-mat-color'), separateOnly);
     setInactive(fieldOf('g-mat-width'), separateOnly);
-    const look = anySeparate || !own ? null : 'Separate-frame layouts only. Gallery mats use their own frame (below).';
+    // The look also reaches the gallery's outer frame, unless that has its own
+    const look = anySeparate ? null
+      : anyGallery ? (own ? 'Separate-frame layouts only. Gallery mats use their own frame (below).' : null)
+      : separateOnly;  // only a frameless Single on screen
     setInactive(fieldOf('g-show-frame'), look);
     setInactive(fieldOf('g-frame-style'), look || frameOffWhy(frames, offText));
     setInactive(fieldOf('g-frame-color'), look || frameOffWhy(frames, offText) || solidOnlyWhy(frames));
     setInactive(fieldOf('g-frame-width'), separateOnly || frameOffWhy(separate, offText));
   }
 
+  // "Fill on Single": shown while a layout with its own Fit / Fill default is on screen. Fill frames
+  // then only reaches the other layouts; with none on screen it's greyed, pointing here.
+  function refreshLayoutFill() {
+    const reach = reachableLayouts();
+    const own = reach.filter(l => l.fill_mode === 'cover' || l.fill_mode === 'contain');
+    const layout = own[0];
+    document.getElementById('layout-fill-block').hidden = !layout;
+    if (layout) {
+      const el = document.getElementById('g-layout-fill');
+      el.dataset.layout = layout.id;
+      el.checked = PicMeRotation.layoutFill(config, layout) === 'cover';
+      document.getElementById('g-layout-fill-label').textContent = `Fill on ${layout.name}`;
+      document.getElementById('g-layout-fill-hint').textContent =
+        `Off: ${layout.name} shows whole photos and videos, like a photo frame. On: it crops to fill the screen.`;
+    }
+    const followsGlobal = reach.some(l => PicMeRotation.layoutFill(config, l) == null);
+    setInactive(fieldOf('g-fill-mode'), followsGlobal || !layout ? null
+      : `${layout.name} has its own: Fill on ${layout.name} (below). Fill frames is for the other layouts.`);
+  }
+
+  // "Frame on Single": shown while a frameless-by-default layout is on screen with separate frames
+  function refreshLayoutFrameToggle({ framelessDefault }) {
+    const layout = framelessDefault[0];
+    document.getElementById('frame-layout-block').hidden = !layout;
+    if (!layout) return;
+    const el = document.getElementById('g-layout-frame');
+    el.dataset.layout = layout.id;
+    el.checked = PicMeRotation.framedLayout(config, layout);
+    document.getElementById('g-layout-frame-label').textContent = `Frame on ${layout.name}`;
+    document.getElementById('g-layout-frame-hint').textContent =
+      `Off: the photo fills the screen edge to edge, like a photo frame. On: ${layout.name} uses the frame and mat below.`;
+  }
+
   // Every rule that depends on more than its own section; edits come through scheduleAutoSave
   let _refreshSlotInactive = null;  // the open slot panel's
   function refreshInactiveControls() {
     if (!config || !layouts) return;
+    refreshBackdropInactive();
     refreshGalleryInactive();
     refreshFrameSection();
     _refreshSlotInactive?.();
+  }
+
+  // The backdrop shows only around a fitted photo: greyed while every slot on screen fills
+  function refreshBackdropInactive() {
+    // Per layout on screen: a layout's own Fit / Fill (Single fits) counts, as on the display
+    const anyFit = reachableLayouts().some(l => config.slots.slice(0, l.slots.length).some(s => effectiveFill(s, l) === 'contain'));
+    setInactive(fieldOf('g-blur-backdrop'), anyFit ? null : 'Only for Fit: every slot on screen fills.');
   }
 
   function onGalleryChanged() {
@@ -1984,7 +2088,7 @@
 
   // Layouts that can appear on the display: the base layout, plus the eligible ones when rotating
   function reachableLayouts() {
-    const base = layouts.find(l => l.id === config.layout) || layouts[0];
+    const base = layouts.find(l => l.id === config.layout) || PicMeRotation.fallbackLayout(layouts);
     const set = new Set(base ? [base] : []);
     if (rotationOn()) PicMeRotation.eligibleLayouts(config, layouts).forEach(l => set.add(l));
     return [...set];
@@ -2073,7 +2177,7 @@
   function buildRotationSlotHint() {
     const hint = document.getElementById('rotation-slot-hint');
     hint.innerHTML = '';
-    const base = layouts.find(l => l.id === config.layout) || layouts[0];
+    const base = layouts.find(l => l.id === config.layout) || PicMeRotation.fallbackLayout(layouts);
     const eligible = rotationOn() ? PicMeRotation.eligibleLayouts(config, layouts) : [];
     if (!base || eligible.length < 2) { hint.hidden = true; return; }
 
@@ -2257,7 +2361,7 @@
   // ── Collage preview ──
 
   function buildPreview() {
-    const layout = layouts.find(l => l.id === config.layout) || layouts[0];
+    const layout = layouts.find(l => l.id === config.layout) || PicMeRotation.fallbackLayout(layouts);
     const preview = document.getElementById('collage-preview');
     renderLabelStylePicker();  // its swatches show the current mat and date format
     if (layoutMode(layout) === 'gallery') { buildGalleryPreview(layout, preview); return; }
@@ -2267,8 +2371,10 @@
     // At the display's proportions: #collage's 12 px gap and padding, the mat and frame, in
     // preview px (`k` per display px), so a smaller preview is the same picture, smaller
     const k = preview.clientWidth / 1920 || 0.5;
-    preview.style.gap = `${12 * k}px`;
-    preview.style.padding = `${12 * k}px`;
+    // A frameless Single is full bleed, as on the display: no wall border
+    const wall = PicMeRotation.framedLayout(config, layout) ? 12 * k : 0;
+    preview.style.gap = `${wall}px`;
+    preview.style.padding = `${wall}px`;
     preview.style.background = config.wall_color || '#1a1a1a';
     preview.innerHTML = '';
 
@@ -2278,7 +2384,7 @@
       const slotDef = layout.slots[i];
       // Unconfigured slots are padded on the display from slot 1's config — mirror its mode here
       const slotCfg = activeSlots[i] || { id: slotDef.id, mode: config.slots[0]?.mode };
-      const frameCfg = getSlotFrame(slotCfg);
+      const frameCfg = layoutFrame(layout, getSlotFrame(slotCfg));
 
       const div = document.createElement('div');
       div.className = 'preview-slot' + (slotCfg.id === selectedSlotId ? ' selected' : '');
@@ -2324,7 +2430,7 @@
 
     const band = buildPreviewPills(preview, cells);
     // Each photo opening at the 1920x1080 reference: the display's grid, less frame, mat and caption
-    const refCells = PicMeAspect.cells(layout);
+    const refCells = PicMeAspect.cells(layout, PicMeRotation.framedLayout(config, layout) ? {} : { padding: 0, gap: 0 });
     cells.forEach(({ tags, slotCfg, frameCfg, padded }, i) => {
       const o = PicMeAspect.framedOpening(refCells[i], frameCfg, { decorative: !!frameAsset(frameCfg.frame_style), band });
       setSlotTags(tags, o, padded ? config.slots[0] : slotCfg);
@@ -2550,10 +2656,33 @@
     document.getElementById('g-wall-color').oninput    = e => { config.wall_color = e.target.value; buildPreview(); scheduleAutoSave(); };
     const fillEl = document.getElementById('g-fill-mode');
     fillEl.checked = globalFill() === 'cover';
+    document.getElementById('g-layout-fill').onchange = e => {
+      const layout = layouts.find(l => l.id === e.target.dataset.layout);
+      if (!layout) return;
+      const fills = { ...(config.layout_fill_modes || {}) };
+      const want = e.target.checked ? 'cover' : 'contain';
+      if (want === layout.fill_mode) delete fills[layout.id]; else fills[layout.id] = want;
+      if (Object.keys(fills).length) config.layout_fill_modes = fills; else delete config.layout_fill_modes;
+      buildPreview();
+      renderSlotPanel();  // the slot's "Default (Single: …)" option
+      scheduleAutoSave();
+    };
     fillEl.onchange = e => {
       config.fill_mode = e.target.checked ? 'cover' : 'contain';
       buildPreview();  // each cell's Fit / Fill tag
       renderSlotPanel();  // the slot's "Default (global: …)" option
+      scheduleAutoSave();
+    };
+    const backdropEl = document.getElementById('g-blur-backdrop');
+    backdropEl.checked = config.blur_backdrop !== false;
+    backdropEl.onchange = e => { config.blur_backdrop = e.target.checked; scheduleAutoSave(); };
+    if (layouts) refreshBackdropInactive();  // later edits refresh it through scheduleAutoSave
+    document.getElementById('g-layout-frame').onchange = e => {
+      const id = e.target.dataset.layout;
+      const frames = { ...(config.layout_frames || {}) };
+      if (e.target.checked) frames[id] = true; else delete frames[id];
+      if (Object.keys(frames).length) config.layout_frames = frames; else delete config.layout_frames;
+      buildPreview();
       scheduleAutoSave();
     };
     const tapEl = document.getElementById('g-tap-details');
@@ -2873,7 +3002,9 @@
     // Fit — the global "Fill frames" unless this slot picks its own (photos and videos)
     const fillSection = tag(makeSection('Fit'), 'slot.fill_mode');
     const ownFill = slotCfg.fill_mode === 'cover' || slotCfg.fill_mode === 'contain' ? slotCfg.fill_mode : '';
-    const fillSelect = makeSelect([['', `Default (global: ${globalFill() === 'cover' ? 'Fill' : 'Fit'})`],
+    const baseFill = PicMeRotation.layoutFill(config, baseLayout());
+    const fillDefault = baseFill ? `${baseLayout().name}: ${baseFill === 'cover' ? 'Fill' : 'Fit'}` : `global: ${globalFill() === 'cover' ? 'Fill' : 'Fit'}`;
+    const fillSelect = makeSelect([['', `Default (${fillDefault})`],
                                    ['contain', `Fit — full ${isVideo ? 'video' : 'photo'}, letterboxed`],
                                    ['cover', 'Fill — crop to fit, no bars']], ownFill);
     fillSelect.id = 'slot-fill-mode';
@@ -2977,14 +3108,15 @@
     // What changes nothing for this slot right now (also re-run after every edit)
     _refreshSlotInactive = () => {
       if (!grid.isConnected) return;
-      const { anySeparate, anyGallery } = screenModes();
+      const modes = screenModes();
+      const { anySeparate, anyGallery } = modes;
       const adopted = slotCfg.use_global || {};
       // Basic has no Use global for the folder: it's always editable there
       setInactive(srcSec.sectionBody, !basic && adopted.source !== false
         ? "Using the default media folder (Global Settings). Turn off Use global to set this slot's own." : null, { at: 'start' });
       setInactive(schedBody, slotCfg.mode === 'video' ? 'Video slots advance after their loops finish.' : null);
       setInactive(shapeField, anyGallery ? null : 'Shapes show on gallery-mat layouts (set Frames to Gallery mat).');
-      setInactive(frameSec.el, anySeparate ? null : SLOT_FRAME_GALLERY_WHY, { at: 'start' });
+      setInactive(frameSec.el, anySeparate ? null : modes.frameless.length ? separateOnlyWhy(modes) : SLOT_FRAME_GALLERY_WHY, { at: 'start' });
       const frameUsesGlobal = adopted.frame !== false;
       setInactive(frameSec.sectionBody, frameUsesGlobal
         ? "Using the Frame section. Turn off Use global to set this slot's own." : null, { at: 'start' });
@@ -3260,13 +3392,14 @@
       // This period's frames, as the display draws them: separate frames take the template's
       // on/off, style and width; the gallery's outer frame only its style and colour
       function syncColor() {
-        const { anySeparate, anyGallery } = screenModes();
+        const modes = screenModes();
+        const { anySeparate, anyGallery } = modes;
         const fd = getGlobalFrame();
         const sep = anySeparate && (tmpl.show_frame ?? fd.show_frame ?? true);
         const gal = anyGallery && PicMeGallery.resolveGallery(config, tmpl);
         const frames = [...(sep ? [{ on: true, decorative: !!frameAsset(tmpl.frame_style ?? fd.frame_style ?? 'solid') }] : []),
                         ...(gal ? [{ on: gal.show_frame, decorative: !!frameAsset(gal.frame_style) }] : [])];
-        const separateOnly = anySeparate ? null : 'Separate-frame layouts only.';
+        const separateOnly = separateOnlyWhy(modes);
         const offWhy = frameOffWhy(frames, 'No frame shows in this period (Show frame is off).');
         setInactive(matWidthField, separateOnly);
         setInactive(styleField, offWhy);
@@ -3761,8 +3894,8 @@
       const [{ presets }, backup] = await Promise.all([fetchJSON(`${API}/api/presets`), fetchJSON(`${API}/api/config/backup`)]);
       _preset = presets.find(p => p.id === PRESET_ID) || null;
       const apply = document.getElementById('preset-apply');
-      apply.disabled = !_preset;
-      apply.title = _preset ? '' : 'No preset saved yet';
+      // Greyed like any setting that can't do anything yet, with the reason as its tooltip
+      setInactive(apply, _preset ? null : 'Save a preset first.', { at: 'title' });
       document.getElementById('preset-status').textContent = _preset
         ? `My preset: saved ${formatWhen(_preset.updated)}.` : 'No preset saved yet.';
       document.getElementById('undo-row').hidden = !backup.exists;

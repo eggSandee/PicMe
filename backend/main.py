@@ -75,6 +75,8 @@ DEFAULT_CONFIG = {
     # Click, tap or press Enter on a photo on the display to see it larger with all its
     # metadata; off for kiosk screens (README → Photo details)
     "tap_for_details": True,
+    # In Fit, a blurred, dimmed copy of the photo or video fills the space around it (README → Fit and Fill)
+    "blur_backdrop": True,
     # Also the outer frame of gallery mats, unless gallery.frame_override (README → Gallery mat).
     # New installs start with wood; existing config.json files keep their own frame_defaults.
     "frame_defaults": {
@@ -189,7 +191,7 @@ def list_media(folder: str, kind: str = "photos", recursive: bool = True) -> lis
     extensions = MEDIA_KINDS.get(kind)
     if extensions is None:
         raise HTTPException(status_code=400, detail=f"Unknown kind: {kind}")
-    path = Path(folder)
+    path = Path(folder).expanduser()
     if not path.exists() or not path.is_dir():
         return []
     if kind == "video":
@@ -225,12 +227,50 @@ def get_config():
     return config
 
 
+# Values the display and editor understand (pill-size.js, label-styles.js); anything else is
+# dropped on save, so the key falls back to its default rather than storing junk
+CONFIG_CHOICES = {
+    "label_style": ("pill", "caption", "placard", "whisper"),
+    "label_position": ("auto", "photo", "mat"),
+    "fill_mode": ("cover", "contain"),
+}
+META_CHOICES = {
+    "text_size": ("small", "medium", "large", "x-large"),
+    "pill_size": ("small", "medium", "large"),
+}
+
+
+def normalize_config(config: dict) -> list[str]:
+    """Drop unknown values of the choice settings above (top level, metadata defaults, each
+    slot's fill_mode and metadata). Returns what was dropped, e.g. ["slots[2].metadata.pill_size"]."""
+    dropped = []
+
+    def check(obj, choices, where):
+        if not isinstance(obj, dict):
+            return
+        for key, allowed in choices.items():
+            if key in obj and obj[key] not in allowed:
+                del obj[key]
+                dropped.append(f"{where}{key}")
+
+    check(config, CONFIG_CHOICES, "")
+    check(config.get("metadata_defaults"), META_CHOICES, "metadata_defaults.")
+    for i, slot in enumerate(config.get("slots") or []):
+        if isinstance(slot, dict):
+            check(slot, {"fill_mode": CONFIG_CHOICES["fill_mode"]}, f"slots[{i}].")
+            check(slot.get("metadata"), META_CHOICES, f"slots[{i}].metadata.")
+    return dropped
+
+
 @app.post("/api/config")
 def set_config(config: dict):
+    dropped = normalize_config(config)
+    if dropped:
+        logging.getLogger(__name__).warning("Config save: dropped unknown values for %s", ", ".join(dropped))
     save_config(config)
     media_index.invalidate()  # a just-added folder or a toggled include_subfolders lists afresh
     refresh_transcoder(config)
-    return {"ok": True}
+    return {"ok": True, "dropped": dropped}
 
 
 # --- Reset to defaults, saved presets and one-step undo (README → Presets and reset) ---
@@ -324,7 +364,7 @@ def apply_preset(preset_id: str, dry_run: bool = False):
 
 @app.get("/api/browse")
 def browse_directory(path: str = ""):
-    start = Path(path).resolve() if path else Path.home()
+    start = Path(path).expanduser().resolve() if path else Path.home()
     while not start.is_dir() and start.parent != start:
         start = start.parent
     entries = []
@@ -367,7 +407,7 @@ def image_metadata(path: str):
 def list_images_api(folder: str, kind: str = "photos", peek: bool = False, recursive: bool = True):
     """``truncated``: only part of the folder is listed — it holds more than media_max_files, or
     has folders nested deeper than media_max_depth."""
-    path = Path(folder)
+    path = Path(folder).expanduser()
     if kind != "video":
         images = list_media(folder, kind, recursive)
         walk = media_index.walk(path, recursive, extensions=SUPPORTED_EXTENSIONS)
@@ -444,6 +484,12 @@ class RevalidatingStaticFiles(StaticFiles):
 
 
 # Serve the display and editor frontends
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Browsers ask for /favicon.ico on every page; drawn by tools/favicon/make_favicon.py."""
+    return FileResponse(str(FRONTEND_ASSETS / "favicon.ico"), media_type="image/x-icon")
+
+
 app.mount("/display", RevalidatingStaticFiles(directory=str(FRONTEND_DISPLAY), html=True), name="display")
 app.mount("/editor",  RevalidatingStaticFiles(directory=str(FRONTEND_EDITOR),  html=True), name="editor")
 app.mount("/assets",  RevalidatingStaticFiles(directory=str(FRONTEND_ASSETS)), name="assets")

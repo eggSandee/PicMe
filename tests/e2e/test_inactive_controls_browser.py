@@ -411,3 +411,77 @@ def test_a_time_of_day_note_stays_usable_under_a_greyed_colour(write_cfg, open_p
     note.locator(".tod-note-mine").click()  # Use my colour: Same as default for the current period
     _saved(write_cfg, lambda c: any("frame_color" not in c["time_of_day"][p] for p in ("day", "night")))
     assert w.errors == []
+
+
+def test_blurred_backdrop_is_greyed_while_every_slot_fills(write_cfg, open_page):
+    write_cfg(fill_mode="cover")
+    w = open_page(editor_mode="basic")
+    page = w.page
+    assert page.locator("#g-blur-backdrop").is_checked()  # on by default
+    _assert_inactive(page, "#g-blur-backdrop", "Only for Fit")
+    _toggle(page, "#g-fill-mode")  # Fill frames off: everything fits
+    _saved(write_cfg, lambda c: c["fill_mode"] == "contain")
+    _assert_active(page, "#g-blur-backdrop")
+    _toggle(page, "#g-blur-backdrop")
+    _saved(write_cfg, lambda c: c.get("blur_backdrop") is False)
+    assert w.errors == []
+
+    # One slot on Fit is enough
+    write_cfg(fill_mode="cover", slot_overrides={2: {"fill_mode": "contain"}})
+    page = open_page(editor_mode="basic").page
+    _assert_active(page, "#g-blur-backdrop")
+
+
+def test_single_is_frameless_until_frame_on_single(write_cfg, open_page):
+    write_cfg(layout="single", slots=4, frame_defaults={"frame_style": "solid", "mat_width": 30, "show_frame": True})
+    w = open_page(editor_mode="basic")
+    page = w.page
+    toggle = page.locator("#g-layout-frame")
+    assert page.locator("#frame-layout-block").is_visible() and not toggle.is_checked()
+    assert page.locator("#g-layout-frame-label").text_content() == "Frame on Single"
+    # The Frame section does nothing on a frameless Single, and says how to change that
+    _assert_inactive(page, "#g-mat-color", "Single shows no frame. Turn on Frame on Single")
+    _assert_inactive(page, "#g-frame-style", "Single shows no frame")
+    # The preview is edge to edge too, with no wall border
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.preview-slot')).paddingTop") == "0px"
+    assert page.evaluate("() => getComputedStyle(document.getElementById('collage-preview')).paddingTop") == "0px"
+
+    _toggle(page, "#g-layout-frame")
+    _saved(write_cfg, lambda c: c.get("layout_frames") == {"single": True})
+    _assert_active(page, "#g-mat-color")
+    _assert_active(page, "#g-frame-style")
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.preview-slot')).paddingTop") != "0px"
+    _toggle(page, "#g-layout-frame")
+    _saved(write_cfg, lambda c: "layout_frames" not in c)
+    assert w.errors == []
+
+
+def test_frame_on_single_is_hidden_without_single_on_screen(write_cfg, open_page):
+    write_cfg(layout="classic-4")
+    page = open_page(editor_mode="advanced").page
+    assert page.locator("#frame-layout-block").is_hidden()
+    _assert_active(page, "#g-mat-color")
+
+
+def test_fill_on_single_defaults_off_and_fill_frames_points_to_it(write_cfg, open_page):
+    write_cfg(layout="single", slots=4, fill_mode="cover")
+    w = open_page(editor_mode="basic")
+    page = w.page
+    assert page.locator("#layout-fill-block").is_visible()
+    assert page.locator("#g-layout-fill-label").text_content() == "Fill on Single"
+    assert not page.locator("#g-layout-fill").is_checked()  # Single fits
+    _assert_inactive(page, "#g-fill-mode", "Single has its own: Fill on Single")
+    assert page.evaluate("() => document.querySelector('#collage-preview .slot-tags').dataset.fit") == "fit"
+    _toggle(page, "#g-layout-fill")
+    _saved(write_cfg, lambda c: c.get("layout_fill_modes") == {"single": "cover"})
+    assert page.evaluate("() => document.querySelector('#collage-preview .slot-tags').dataset.fit") == "fill"
+    _toggle(page, "#g-layout-fill")
+    _saved(write_cfg, lambda c: "layout_fill_modes" not in c)
+    assert w.errors == []
+
+
+def test_fill_frames_is_live_with_another_layout_on_screen(write_cfg, open_page):
+    write_cfg(layout="classic-4", fill_mode="cover")
+    page = open_page(editor_mode="basic").page
+    assert page.locator("#layout-fill-block").is_hidden()
+    _assert_active(page, "#g-fill-mode")
