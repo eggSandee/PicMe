@@ -48,6 +48,13 @@
   const LABEL_POSITIONS = ['auto', 'photo', 'mat'];
 
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  // The limits above are px at the 1920x1080 reference: on another screen they follow
+  // PicMeScale (scale.js), the floors never below its legible size. 1 without it (and in the editor).
+  const S = () => window.PicMeScale;
+  const scaledMin = v => (S() ? S().floor(v) : v);
+  const scaledMax = (v, min) => Math.max(min, S() ? S().px(v) : v);
+  // FONT_MIN on this screen: the smallest pill text, e.g. a date that alone doesn't fit
+  function fontMin() { return scaledMin(FONT_MIN); }
   const has = (obj, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key);
 
   // { text_size, pill_size } from a metadata object; missing or unknown values are medium
@@ -63,8 +70,9 @@
   function fontSize(sizes, boxW, boxH) {
     const { text_size } = resolve(sizes);
     const short = Math.max(0, Math.min(Number(boxW) || 0, Number(boxH) || 0));
-    const base = clamp(BASE_RATIO * short, BASE_MIN, BASE_MAX);
-    return Math.round(clamp(base * TEXT_SIZES[text_size], FONT_MIN, FONT_MAX));
+    const baseMin = scaledMin(BASE_MIN), fontLo = fontMin();
+    const base = clamp(BASE_RATIO * short, baseMin, scaledMax(BASE_MAX, baseMin));
+    return Math.round(clamp(base * TEXT_SIZES[text_size], fontLo, scaledMax(FONT_MAX, fontLo)));
   }
 
   function tokens(sizes, boxW, boxH) {
@@ -129,6 +137,6 @@
   window.PicMePills = {
     TEXT_SIZES, PILL_SIZES, FONT_MIN, FONT_MAX, MARQUEE_SPEED, MARQUEE_PAUSE, MARQUEE_MAX_SPEED,
     CAPTION_GAP_EM, CAPTION_MAX_FRACTION, CAPTION_PILL_MIN_EM, LABEL_POSITIONS,
-    resolve, fontSize, tokens, marquee, sharedShort, captionBand, labelPlacement,
+    resolve, fontSize, fontMin, tokens, marquee, sharedShort, captionBand, labelPlacement,
   };
 })();
