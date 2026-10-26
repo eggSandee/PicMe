@@ -675,6 +675,15 @@ Settings that only exist for one kind of slot are hidden rather than greyed: a p
 - **Remembered per browser.** The divider position and folded sections are saved in the browser (`localStorage`), like the editor mode, never in `config.json`.
 - **Slot sizes.** Under each slot's number the preview shows its photo opening's aspect ratio and whether it fits or fills, in smaller type: **3:2 · Fill**. It is the opening on a 1920×1080 screen after the frame, mat, caption band, gallery margins, shape and bevel, written width:height (so portrait reads **2:3**, like a 4×6 print held upright). Openings within about 12% of a common photo shape (1:1, 4:3, 3:2, 16:9, 5:4 and 7:5, either way round) show that shape's name, so a slot a little wider than 4:5 still reads **4:5**; anything else shows its own ratio, such as **2.4:1**. The tags are plain grey text, like the slot number. Hover a slot's tag for its size in px. Opening shapes are measured by their box. Small slots show the ratio above Fit / Fill.
 
+#### Editing from a phone
+
+On a phone or a portrait tablet (a window 820 px wide or less) the sidebar gives way to two tabs at the top of the page, **Layout** and **Settings**; they stay at the top as the page scrolls. A wider window keeps the sidebar and the resizable preview as above.
+
+- **Layout** shows the preview at the full width of the screen, in the display's 16:9 shape, with the selected slot's settings below it. Tap a slot to bring its settings into view; press and hold a slot, then drag, to swap two slots.
+- **Settings** shows the sidebar's sections at full width, in the same order, with the Basic / Advanced switch at the top. Sections fold as usual. After a reset the editor switches to Settings and scrolls to **Undo**.
+- **Remembered per browser.** The last tab is saved in the browser (`localStorage`), like the editor mode. A browser that has never chosen opens on Layout.
+- Buttons, switches, boxes and layout thumbnails are at least 40 px tall for fingers, and dialogs fit the screen and scroll inside.
+
 #### Presets and reset
 
 The preset buttons at the top of **Global Settings**, the first section in the sidebar, save and restore your settings; the two resets sit in the **Reset** section at the bottom:
