@@ -12,8 +12,8 @@
 // frame_override: true.
 // config.layout_modes = { "<layout id>": "gallery" | "slots" } — overrides a layout's own mode
 (function () {
-  // Widths are px at the 1920x1080 reference. A resolution scale factor would multiply these
-  // (and the limits) in resolveGallery — the one place gallery sizes are read.
+  // Widths are px at the 1920x1080 reference. The display's scale factor (scale.js) multiplies
+  // them, after the limits, in resolveGallery — the one place gallery sizes are read.
   const GALLERY_DEFAULTS = {
     mat_color: '#f4f1ea',
     outer_margin: 64,
@@ -68,7 +68,9 @@
   // The gallery settings in effect: defaults, then config.gallery (the frame's look from
   // config.frame_defaults unless frame_override), then the time-of-day colours.
   // Values of the wrong type fall back to the default; numbers are clamped to GALLERY_LIMITS.
-  function resolveGallery(config, tod) {
+  // scale: the display's PicMeScale factor, for the widths on this screen (README → Screen
+  // sizes); the editor leaves it at 1, so its fields show the configured, reference px.
+  function resolveGallery(config, tod, scale = 1) {
     const out = { ...GALLERY_DEFAULTS };
     const g = isObject(config) && isObject(config.gallery) ? config.gallery : {};
     const own = g.frame_override === true;
@@ -86,6 +88,10 @@
     }
     if (isObject(tod)) {
       for (const key of TOD_KEYS) if (typeof tod[key] === 'string' && tod[key]) out[key] = tod[key];
+    }
+    const k = Number(scale);
+    if (Number.isFinite(k) && k > 0 && k !== 1) {
+      for (const key of Object.keys(GALLERY_LIMITS)) out[key] = Math.round(out[key] * k);
     }
     return out;
   }

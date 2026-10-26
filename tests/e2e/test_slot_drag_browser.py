@@ -151,8 +151,7 @@ class Touch:
         self.cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": points})
 
     def drag(self, src, dst, *, hold_ms):
-        # The editor isn't laid out for phones: like a user, pan the preview onto the screen first
-        # (a touch outside the visual viewport isn't a real touch)
+        # Make sure the preview is on screen (a touch outside the visual viewport isn't a real touch)
         self.page.evaluate("document.getElementById('preview-area').scrollIntoView({block: 'center', inline: 'center'})")
         x0, y0 = _center(self.page, src)
         x1, y1 = _center(self.page, dst)

@@ -7,11 +7,12 @@ Playwright route on /api/metadata.
 
 Slot sizes at 1920x1080 (12 px collage padding and gap): classic-4 slots are 942 x 522, so the
 pill box (10 px inset) is 922 x 502 and medium text is 0.04 x 502 = 20 px. hero-center side slots
-are 310 x 522; at 1280 x 720 they are 203 x 342.
+are 310 x 522; at 960 x 540 (SMALL_VIEWPORT) they are 155 x 261.
 
 Every slot on screen gets the same size, from the smallest pill box (README → Metadata pills):
-on hero-center that is a side slot's 290 px (1080p) or 183 px (720p), so medium is the 14 px floor
-everywhere, even in the big centre slot.
+on hero-center that is a side slot's 290 px (1080p), so medium is the 14 px floor everywhere,
+even in the big centre slot. On a smaller screen the floors scale with it (README → Screen
+sizes): at 960 x 540, s = 0.5 and the floor is the 10 px legibility minimum.
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ sync_api = pytest.importorskip("playwright.sync_api")
 # Imported fixtures run per module; `server` resolves `e2e_config_path` to this module's override.
 from test_browser import VIEWPORT, PageWatcher, browser, server  # noqa: E402,F401
 
-SMALL_VIEWPORT = {"width": 1280, "height": 720}
+SMALL_VIEWPORT = {"width": 960, "height": 540}
 ALL_FIELDS = {"show_date": True, "show_camera": True, "show_megapixels": True, "show_fstop": True,
               "show_shutter_speed": True, "show_iso": True, "show_focal_length": True}
 NON_DATE = 6
@@ -286,7 +287,7 @@ def test_small_slots_hide_lowest_priority_pills_but_never_the_date(write_cfg, op
         flags = [p["hidden"] for p in info["pills"] if not p["date"]]
         assert flags == sorted(flags), flags
         hidden_any |= any(flags)
-    side = slot(w.page, 1)  # 203 x 342
+    side = slot(w.page, 1)  # 155 x 261
     assert any(p["hidden"] for p in side["pills"])
     assert hidden_any
     assert w.errors == []
@@ -331,7 +332,7 @@ def test_resize_refits_size_and_hidden_pills(write_cfg, open_display):
         info = slot(page, slot_id)
         assert_fits(info)
         assert_date_last(info)
-    assert fonts(page) == {i: 21 for i in range(1, 6)}  # 183 px: still the floor, still uniform
+    assert fonts(page) == {i: 15 for i in range(1, 6)}  # the scaled floor (10 px) x 1.5, still uniform
     assert not any(p["hidden"] for p in slot(page, 3)["pills"])  # the fit pass is per slot
     page.set_viewport_size(VIEWPORT)
     _until(page, "() => !document.querySelector('.overlay-pill.fit-hidden')")

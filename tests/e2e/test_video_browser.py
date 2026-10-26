@@ -8,6 +8,7 @@ Skipped if ffmpeg is missing or the browser can't play H.264 (bundled Chromium).
 from __future__ import annotations
 
 import json
+import shutil
 import time
 
 import pytest
@@ -452,5 +453,76 @@ def test_a_fitted_video_gets_a_blurred_backdrop_of_its_frame(h264_browser, serve
         const bd = [...s.querySelectorAll('canvas.backdrop')].find(c => c.classList.contains('visible'));
         return s.classList.contains('backdrop-on') && bd && bd.classList.contains('painted') &&
                getComputedStyle(bd).opacity === '1'; }""", timeout=5_000)
+    assert w.errors == []
+
+
+# --- iPhone Safari ---
+
+# iOS ignores preload: nothing is buffered until play() is called, so canplay never comes first
+IOS_PRELOAD = """Object.defineProperty(HTMLMediaElement.prototype, 'preload', {
+  configurable: true, get() { return 'none'; }, set() { this.setAttribute('preload', 'none'); } });"""
+# Low Power Mode: play() is refused until the screen is touched
+BLOCKED_AUTOPLAY = """(() => { const play = HTMLMediaElement.prototype.play; window.__touched = false;
+  document.addEventListener('click', () => { window.__touched = true; }, true);
+  HTMLMediaElement.prototype.play = function () {
+    return window.__touched ? play.call(this) : Promise.reject(new DOMException('blocked', 'NotAllowedError')); }; })();"""
+
+
+def _open_display_with(open_page, server, *scripts):
+    w = open_page("about:blank")
+    w.page.add_init_script(RECORDER)
+    for script in scripts:
+        w.page.add_init_script(script)
+    w.page.goto(f"{server}/display/", wait_until="networkidle")
+    return w
+
+
+def test_videos_play_when_the_browser_buffers_nothing_before_play(h264_browser, server, open_page, e2e_config_path, video_lib):
+    """The owner's iPhone: videos were fetched but never played, and the folder re-listed in a loop."""
+    write_config(e2e_config_path, video_lib["photos"], video_lib["videos"], video_slots={1})
+    w = _open_display_with(open_page, server, IOS_PRELOAD)
+    assert w.page.evaluate("() => document.createElement('video').preload") == "none"
+    wait_video_slots_playing(w.page, 1)
+    assert w.errors == []
+
+
+def test_blocked_autoplay_asks_for_one_tap_then_plays(h264_browser, server, open_page, e2e_config_path, video_lib):
+    write_config(e2e_config_path, video_lib["photos"], video_lib["videos"], video_slots={1})
+    w = _open_display_with(open_page, server, BLOCKED_AUTOPLAY)
+    page = w.page
+    page.wait_for_selector("#tap-to-play:not([hidden])", timeout=10_000)
+    assert page.locator("#tap-to-play").inner_text() == "Tap to play videos"
+    # Photo slots don't wait for it
+    page.wait_for_function("() => [...document.querySelectorAll('.slot:not(.video-mode) img.visible')].some(i => i.naturalWidth > 0)")
+    page.locator("#tap-to-play").click()
+    assert page.locator("#tap-to-play").is_hidden()
+    wait_video_slots_playing(page, 1)
+    assert page.locator("#detail").is_hidden()  # the tap didn't open the photo details
+    assert w.errors == []
+
+
+# Autoplay that gets blocked later (Low Power Mode turned on mid-session); counts refusals
+BLOCK_LATER = """(() => { const play = HTMLMediaElement.prototype.play; window.__block = false; window.__refused = 0;
+  document.addEventListener('click', () => { window.__block = false; }, true);
+  HTMLMediaElement.prototype.play = function () {
+    if (window.__block) { window.__refused++; return Promise.reject(new DOMException('blocked', 'NotAllowedError')); }
+    return play.call(this); }; })();"""
+
+
+def test_a_one_clip_folder_asks_for_a_tap_rather_than_spinning(h264_browser, server, open_page, e2e_config_path, video_lib, tmp_path):
+    """QA #44: blocked autoplay on a folder of one clip retried thousands of times a second."""
+    one = tmp_path / "one"
+    one.mkdir()
+    shutil.copy(next(video_lib["four"].glob("*.mp4")), one / "only.mp4")
+    write_config(e2e_config_path, video_lib["photos"], one, video_slots={1}, loops=1)
+    w = _open_display_with(open_page, server, BLOCK_LATER)
+    page = w.page
+    wait_video_slots_playing(page, 1)
+    page.evaluate("() => { window.__block = true; }")  # the clip ends and restarts in place
+    page.wait_for_selector("#tap-to-play:not([hidden])", timeout=15_000)
+    page.wait_for_timeout(1000)
+    assert page.evaluate("window.__refused") <= 3
+    page.locator("#tap-to-play").click()
+    wait_video_slots_playing(page, 1)
     assert w.errors == []
 

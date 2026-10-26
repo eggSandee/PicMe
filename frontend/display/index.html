@@ -19,10 +19,23 @@
     #collage {
       width: 100vw; height: 100vh;
       display: grid;
-      gap: 12px;
-      padding: 12px;
+      /* 12 px at 1920x1080, times the screen's scale in whole px: set by applyTodStyles
+         (README → Screen sizes) */
+      gap: var(--collage-space, 12px);
+      padding: var(--collage-space, 12px);
       background: #1a1a1a;
     }
+
+    /* On a phone or tablet (touch), Safari only hides its tab and address bars when the page
+       scrolls. So the page gets room to scroll while the collage stays pinned to the visible
+       screen (dynamic viewport), and grows when the bars go away (README → Screen sizes).
+       TVs and computers keep the one-screen page. */
+    @media (pointer: coarse) {
+      html, body { height: auto; overflow-x: hidden; overflow-y: auto; }
+      body::after { content: ''; display: block; height: calc(100vh + 160px); }
+      #collage { position: fixed; inset: 0; height: 100dvh; }
+    }
+
     /* A frameless layout (Single, Frame on Single off) is full bleed: no wall border either */
     #collage.full-bleed { padding: 0; gap: 0; }
 
@@ -30,7 +43,8 @@
       position: relative;
       overflow: hidden;
       background: #111;
-      /* Pill tokens: set per slot by applyPillStyle (pill-size.js); these are the fallbacks */
+      /* Pill tokens: set per slot by applyPillStyle (pill-size.js) and --pill-inset by
+         applyTodStyles (scaled); these are the fallbacks */
       --pill-inset: 10px;
       --pill-font-size: 12px;
       --pill-pad-y: 0.25em;
@@ -197,6 +211,18 @@
       animation: detail-fade 0.2s ease;
     }
     #detail[hidden] { display: none; }
+
+    /* iPhone in Low Power Mode (or a browser set to block autoplay): videos wait for one tap */
+    #tap-to-play {
+      position: fixed; inset: 0; z-index: 1100;
+      display: flex; align-items: flex-end; justify-content: center;
+      padding-bottom: 8vh; background: transparent; cursor: pointer;
+    }
+    #tap-to-play[hidden] { display: none; }
+    #tap-to-play span {
+      background: rgba(0, 0, 0, 0.7); color: #fff; font: 600 16px sans-serif;
+      padding: 12px 22px; border-radius: 999px;
+    }
     .detail-card {
       display: flex;
       align-items: center;
@@ -282,6 +308,7 @@
     <button type="button" class="detail-close" aria-label="Close">×</button>
   </div>
 
+  <script src="/display/scale.js"></script>
   <script src="/display/layout-rotation.js"></script>
   <script src="/display/pill-size.js"></script>
   <script src="/display/label-styles.js"></script>
@@ -419,12 +446,24 @@
       return !!meta.show_date || (slotCfg.mode !== 'video' && METADATA_FIELDS.some(f => meta[f.flag]));
     }
 
+    // A size in px at the 1920x1080 reference, on this screen (README → Screen sizes), whole px
+    function scaled(v) {
+      return Math.round(window.PicMeScale ? PicMeScale.px(v) : Number(v) || 0);
+    }
+
+    // Pills on the photo sit this far (reference px) in from the slot's edge, or the moulding's
+    const PILL_INSET = 10;
+    // #collage's padding and gap between separate frames (reference px; aspect.js REFERENCE)
+    const COLLAGE_SPACE = 12;
+
     // Frames, then one pill size for every slot on screen (README → Metadata pills): each slot's
     // pill area is measured, the shortest side sizes them all, and labels on the mat get a
-    // caption band sized from it.
+    // caption band sized from it. Everything is sized for this screen's scale, read afresh.
     function applyTodStyles() {
+      window.PicMeScale?.update();
       const tod = getTimeOfDayTemplate();
       const collage = document.getElementById('collage');
+      collage.style.setProperty('--collage-space', `${scaled(COLLAGE_SPACE)}px`);
       collage.style.background = tod?.wall_color ?? config.wall_color ?? '#1a1a1a';
       collage.classList.toggle('full-bleed', activeMode !== 'gallery' && !PicMeRotation.framedLayout(config, activeLayout));
       const placement = labelPlacement();
@@ -437,7 +476,10 @@
       if (activeMode === 'gallery') {
         // One frame and mat for the whole display (time of day changes their colours only);
         // per-slot frame settings apply on separate-frame layouts
-        const gcfg = PicMeGallery.resolveGallery(config, tod);
+        const gcfg = PicMeGallery.resolveGallery(config, tod, window.PicMeScale?.factor() ?? 1);
+        for (const slotCfg of activeSlots) {
+          document.getElementById(`slot-${slotCfg.id}`)?.style.setProperty('--pill-inset', `${scaled(PILL_INSET)}px`);
+        }
         let openings;
         ({ short, openings } = PicMeGallery.layoutWithLabels(collage, gcfg, activeLayout,
                                                              activeSlots, { placement, sizes, style }));
@@ -505,10 +547,11 @@
       // Single shows the photo edge to edge unless its frame is turned on (Frame on Single)
       if (!PicMeRotation.framedLayout(config, activeLayout)) Object.assign(frameCfg, { show_frame: false, mat_width: 0 });
 
-      const matWidth  = Number(frameCfg.mat_width ?? 16) || 0;
+      // Widths are px at 1920x1080 (README → Screen sizes)
+      const matWidth  = scaled(Number(frameCfg.mat_width ?? 16) || 0);
       const matColor  = frameCfg.mat_color  ?? '#000000';
       const frameOn   = frameCfg.show_frame ?? true;
-      const frameWidth = frameCfg.frame_width ?? 8;
+      const frameWidth = scaled(Number(frameCfg.frame_width ?? 8) || 0);
       const frameColor = frameCfg.frame_color ?? '#2c2318';
       const asset = frameOn ? frameAsset(frameCfg.frame_style ?? 'solid') : null;
 
@@ -524,19 +567,19 @@
         // (or, for a style whose manifest says so, one long edge tile is stretched to fit).
         // On a small slot the moulding is capped at a sixth of the short side.
         const fit = Math.floor(Math.min(slotEl.clientWidth, slotEl.clientHeight) / 6);
-        const w = Math.min(Number(frameWidth) || 0, Math.max(4, fit));
+        const w = Math.min(frameWidth, Math.max(4, fit));
         matFrame.style.border = `${w}px solid transparent`;
         matFrame.style.borderImage = `url("${asset.src}") ${asset.slice} / ${w}px / 0 ${asset.repeat || 'round'}`;
         matFrame.style.backgroundClip = 'padding-box';
         // Keep the metadata pills inside the moulding
-        slotEl.style.setProperty('--pill-inset', `${w + 10}px`);
+        slotEl.style.setProperty('--pill-inset', `${w + scaled(PILL_INSET)}px`);
         border = w;
       } else {
         matFrame.style.border = frameOn ? `${frameWidth}px solid ${frameColor}` : 'none';
         matFrame.style.borderImage = 'none';
         matFrame.style.backgroundClip = '';
-        slotEl.style.removeProperty('--pill-inset');
-        border = frameOn ? Number(frameWidth) || 0 : 0;
+        slotEl.style.setProperty('--pill-inset', `${scaled(PILL_INSET)}px`);
+        border = frameOn ? frameWidth : 0;
       }
 
       // A caption sits in the bottom mat, under the photo, centred on it
@@ -634,10 +677,10 @@
       const style = labelStyle();
       if (!geo || style === 'pill') return null;
       const where = PicMeLabels.placement(style, config.label_position, activeMode);
-      const pillPx = parseFloat(slotEl.style.getPropertyValue('--pill-font-size')) || PicMePills.FONT_MIN;
+      const pillPx = parseFloat(slotEl.style.getPropertyValue('--pill-font-size')) || PicMePills.fontMin();
       const matFrame = slotEl.querySelector('.mat-frame');
       const area = geo.gallery ? PicMeLabels.openingArea(geo.gallery, where, matFrame)
-                               : PicMeLabels.frameArea(geo.slots, where, matFrame);
+                               : PicMeLabels.frameArea(geo.slots, where, matFrame, scaled(PILL_INSET));
       return area && PicMeLabels.visibleArea({ ...area, where, fontPx: PicMeLabels.fontPx(style, pillPx), matColor: geo.matColor },
                                              fitMediaSize(slotEl));
     }
@@ -729,7 +772,7 @@
         if (overflows()) pills.forEach(p => { if (p.dataset.date) p.classList.add('caption-squeeze'); });
       } else {
         while (overflows() && optional.length) optional.pop().classList.add('fit-hidden');
-        if (overflows() && window.PicMePills) overlay.style.setProperty('--pill-font-size', `${PicMePills.FONT_MIN}px`);
+        if (overflows() && window.PicMePills) overlay.style.setProperty('--pill-font-size', `${PicMePills.fontMin()}px`);
       }
 
       const windowSec = slotWindowSec(slotEl);
@@ -1066,20 +1109,46 @@
       state.retryTimer = setTimeout(() => loadNextVideo(slotCfg), VIDEO_RETRY_MS);
     }
 
-    function waitForPlayable(v) {
+    // Play `v` from its new src and resolve once it's playing. iPhone Safari ignores preload and
+    // buffers nothing until play() is called, so waiting for canplay first never ended there:
+    // start playing at once (it's hidden until the crossfade) and wait for that, an error or the
+    // timeout. A NotAllowedError (autoplay blocked) is passed on as is.
+    function startPlayback(v, slotCfg) {
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => done(new Error('timed out waiting for canplay')), VIDEO_LOAD_TIMEOUT_MS);
+        const timer = setTimeout(() => done(new Error('timed out waiting for playback')), VIDEO_LOAD_TIMEOUT_MS);
         function done(err) {
           clearTimeout(timer);
-          v.removeEventListener('canplay', onReady);
           v.removeEventListener('error', onError);
           err ? reject(err) : resolve();
         }
-        const onReady = () => done();
         const onError = () => done(v.error || new Error('video error'));
-        v.addEventListener('canplay', onReady);
         v.addEventListener('error', onError);
+        playVideo(v, slotCfg).then(() => done(), e => done(e));
       });
+    }
+
+    // Autoplay blocked (an iPhone in Low Power Mode blocks even muted video until the screen is
+    // touched): ask for one tap. Calling play() on every video element inside that tap unlocks
+    // them for good, then each video slot starts again. Clips aren't marked unplayable for this.
+    function askTapToPlay() {
+      let el = document.getElementById('tap-to-play');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'tap-to-play';
+        el.setAttribute('role', 'button');
+        el.innerHTML = '<span>Tap to play videos</span>';
+        el.addEventListener('click', e => {
+          e.stopPropagation();
+          // The stopped video slots, before play() below marks every element as not paused; one
+          // already playing keeps its clip
+          const stopped = activeSlots.filter(s => s.mode === 'video' && slotState[s.id] && (videoEls(s)?.current.paused ?? true));
+          for (const v of document.querySelectorAll('video')) v.play()?.catch(() => {});
+          el.hidden = true;
+          for (const s of stopped) loadNextVideo(s);
+        });
+        document.body.appendChild(el);
+      }
+      el.hidden = false;
     }
 
     async function loadNextVideo(slotCfg) {
@@ -1119,7 +1188,13 @@
         if (nextPath === state.currentPath && current.getAttribute('src')) {
           state.playCount = 0;
           current.currentTime = 0;
-          await playVideo(current, slotCfg);
+          try {
+            await playVideo(current, slotCfg);
+          } catch (e) {
+            // Autoplay blocked mid-session (Low Power Mode turned on): ask, don't spin on retries
+            if (e?.name === 'NotAllowedError') { askTapToPlay(); return; }
+            throw e;
+          }
           armWatchdog(slotCfg, current);
           return;
         }
@@ -1129,9 +1204,15 @@
         try {
           next.muted = !slotCfg.video_audio;
           next.src = videoUrl(nextPath);
-          await waitForPlayable(next);
-          await playVideo(next, slotCfg);
+          await startPlayback(next, slotCfg);
         } catch (e) {
+          if (e?.name === 'NotAllowedError') {
+            // Not the clip's fault: autoplay is blocked until the screen is tapped
+            releaseVideo(next);
+            releasePath(nextPath);
+            askTapToPlay();
+            return;
+          }
           // E.g. a profile this TV can't decode, or a clip deleted since listing — skip it
           console.warn(`Slot ${slotCfg.id}: failed to play ${nextPath}`, e);
           releaseVideo(next);
@@ -1809,12 +1890,15 @@
       }, 30000);
     }
 
-    // Decorative frame widths, gallery openings and pill sizes depend on size, so re-fit them after a resize
+    // The screen's scale (README → Screen sizes), decorative frame widths, gallery openings and
+    // pill sizes depend on size, so re-fit them after a resize or a turn of a tablet
     let resizeTimer = null;
-    window.addEventListener('resize', () => {
+    function onResize() {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => { if (config) applyTodStyles(); fitDetailMedia(); }, 150);
-    });
+    }
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
 
     // A label style's serif arrives after its first fit (font-display: swap): fit again with it
     if (document.fonts) {

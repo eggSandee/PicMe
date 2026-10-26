@@ -754,11 +754,100 @@
     /* Any other disabled control in a form still reads as disabled */
     :is(.field, .toggle-row) :is(input, select):disabled:not(.field-inactive *) { opacity: 0.45; cursor: not-allowed; }
     .toggle input:disabled:not(.field-inactive *) + .toggle-track { opacity: 0.45; cursor: not-allowed; }
+
+    /* Dialogs fit any screen and scroll inside */
+    .modal { max-width: min(420px, 95vw); max-height: 90vh; overflow-y: auto; }
+
+    /* ── Phones and portrait tablets (editor-tab): Layout | Settings tabs instead of the sidebar ── */
+    #mobile-tabs { display: none; }
+    /* A phone turned sideways (or a tablet) is wider than 820 px, so it gets this layout too.
+       Safari only hides its tab and address bars when the page scrolls, and here only the panes
+       do: give the page room to scroll while the editor stays pinned to the visible screen and
+       grows when the bars go away. Computers (a mouse) keep the one-screen page. */
+    @media (pointer: coarse) and (min-width: 821px) {
+      html, body { height: auto; }
+      body::after { content: ''; display: block; height: calc(100vh + 160px); }
+      #app { position: fixed; inset: 0; height: 100dvh; }
+    }
+
+    @media (max-width: 820px) {
+      :root { --tabs-h: 57px; }
+      html { -webkit-text-size-adjust: 100%; }
+      #app { display: flex; flex-direction: column; height: auto; min-height: 100vh; }
+      #mobile-tabs {
+        display: flex;
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        margin: 0;
+        border-width: 0 0 1px;
+        border-radius: 0;
+        padding: 8px 12px;
+      }
+      #mobile-tabs button { font-size: 14px; }
+      #mobile-tabs button[aria-selected="true"] { background: var(--accent); color: white; }
+      #app[data-tab="layout"] #sidebar, #app[data-tab="settings"] #main { display: none; }
+
+      #sidebar { border-right: none; overflow: visible; }
+      .sidebar-section { padding: 8px 16px 16px; }
+      .sidebar-section.collapsed { padding-bottom: 8px; }
+      .sidebar-section:first-child { padding-top: 16px; }
+      .sidebar-section h3, .sidebar-header-row { margin-bottom: 4px; }
+      .section-toggle { min-height: 40px; }
+      #undo-row { scroll-margin-top: var(--tabs-h); }
+
+      /* The preview at full width (16:9), the slot settings below it; the page scrolls */
+      #main { display: block; padding: 12px; overflow: visible; }
+      #pane-divider { display: none; }
+      #preview-area { padding: 10px; margin-bottom: 12px; }
+      #preview-fit { flex: none; display: block; }
+      #slot-panel { overflow: visible; scroll-margin-top: calc(var(--tabs-h) + 8px); }
+
+      #footer { flex-wrap: wrap; padding: 12px; }
+      #footer > div { flex-wrap: wrap; flex: 1 1 auto; }
+      #footer > div > .btn { flex: 1 1 auto; }
+
+      /* Touch targets of 40 px or more */
+      .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; }
+      .mode-switch button { min-height: 40px; }
+      .link-btn, #advanced-hint button { display: inline-flex; align-items: center; min-height: 40px; padding: 0 4px; }
+      #rotation-bulk { align-items: center; }
+      input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select {
+        min-height: 40px;
+        font-size: 16px !important;  /* below 16 px, iOS zooms the page on focus */
+      }
+      .field input[type="color"] { height: 40px; }
+      .toggle { width: 48px; height: 40px; }
+      .toggle-track { inset: 8px 0; border-radius: 12px; }
+      .toggle-track::after { width: 18px; height: 18px; }
+      .toggle input:checked + .toggle-track::after { transform: translateX(24px); }
+      .toggle-sm { width: 40px; height: 40px; }
+      .toggle-sm .toggle-track { inset: 10px 0; }
+      .toggle-sm .toggle-track::after { width: 14px; height: 14px; }
+      .toggle-sm input:checked + .toggle-track::after { transform: translateX(20px); }
+      .layout-thumb { min-height: 40px; }
+      .layout-thumb .rotation-pick-corner { width: 40px; height: 40px; }
+      .layout-thumb .rotation-pick { width: 20px; height: 20px; }
+      .layout-thumb .layout-mode-chip { min-height: 40px; padding: 0 14px; font-size: 12px; border-radius: 20px; }
+      .folder-item { min-height: 44px; }
+      .modal-cb-row input[type="checkbox"] { width: 20px; height: 20px; margin-top: 0; }
+      .tod-same-label { min-height: 40px; padding: 0 6px; }
+      .tod-same-label input[type="checkbox"] { width: 20px; height: 20px; }
+    }
+    @media (max-width: 560px) {
+      #slot-panel .panel-grid { grid-template-columns: 1fr; }
+    }
   </style>
   <link rel="stylesheet" href="/display/label-styles.css" />
 </head>
 <body>
-<div id="app" class="mode-basic">
+<div id="app" class="mode-basic" data-tab="layout">
+
+  <!-- ── Phone tabs (shown at 820 px wide or less) ── -->
+  <div class="mode-switch" id="mobile-tabs" role="tablist" aria-label="Editor view">
+    <button type="button" role="tab" data-tab="layout" aria-controls="main" aria-selected="true">Layout</button>
+    <button type="button" role="tab" data-tab="settings" aria-controls="sidebar" aria-selected="false">Settings</button>
+  </div>
 
   <!-- ── Sidebar ── -->
   <aside id="sidebar">
@@ -1123,6 +1212,7 @@
   </footer>
 
 </div>
+<script src="/display/scale.js"></script>
 <script src="/display/layout-rotation.js"></script>
 <script src="/display/pill-size.js"></script>
 <script src="/display/label-styles.js"></script>
@@ -2582,6 +2672,8 @@
     selectedSlotId = id;
     buildPreview();
     renderSlotPanel();
+    // On a phone the slot settings are below the preview: bring them into view
+    if (isNarrow()) document.getElementById('slot-panel').scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
   }
 
   // ── Global settings ──
@@ -3299,6 +3391,7 @@
       inp.value = own;
       inp.oninput = () => { tmpl[key] = own = inp.value; scheduleAutoSave(); };
       const sameLbl = document.createElement('label');
+      sameLbl.className = 'tod-same-label';  // the whole label is the tap target (40 px tall on a phone)
       sameLbl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:12px;margin:0;white-space:nowrap;';
       const same = document.createElement('input');
       same.type = 'checkbox';
@@ -4026,8 +4119,8 @@
     const section = row.closest('.sidebar-section');
     // Unfold through its title, so the open state is saved like a click
     if (section?.classList.contains('collapsed')) section.querySelector('.section-toggle').click();
-    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    row.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+    if (isNarrow()) setEditorTab('settings');
+    row.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
     row.classList.remove('flash');
     void row.offsetWidth;  // restart the animation
     row.classList.add('flash');
@@ -4220,7 +4313,8 @@
   function fitPreview() {
     const fit = document.getElementById('preview-fit');
     const preview = document.getElementById('collage-preview');
-    const w = Math.floor(Math.min(fit.clientWidth, (fit.clientHeight * 16) / 9));
+    // On a phone the page scrolls: the preview takes the full width
+    const w = Math.floor(isNarrow() ? fit.clientWidth : Math.min(fit.clientWidth, (fit.clientHeight * 16) / 9));
     if (!(w > 0) || w === _fitWidth) return;
     _fitWidth = w;
     preview.style.width = `${w}px`;
@@ -4322,6 +4416,46 @@
     }
   }
 
+  // Phones and portrait tablets (the CSS breakpoint): a Layout | Settings tab bar replaces the
+  // sidebar. The chosen tab is remembered per browser, like the editor mode.
+  const TAB_KEY = 'picme.editorTab';
+  const NARROW = window.matchMedia('(max-width: 820px)');
+  function isNarrow() { return NARROW.matches; }
+  function scrollBehavior() { return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'; }
+
+  function applyEditorTab(tab) {
+    document.getElementById('app').dataset.tab = tab;
+    for (const btn of document.querySelectorAll('#mobile-tabs button')) {
+      btn.setAttribute('aria-selected', String(btn.dataset.tab === tab));
+      btn.tabIndex = btn.dataset.tab === tab ? 0 : -1;
+    }
+    // The preview was drawn while hidden (no width): draw it again at its real size
+    if (tab === 'layout') { _fitWidth = 0; fitPreview(); }
+  }
+
+  function setEditorTab(tab) {
+    tab = tab === 'settings' ? 'settings' : 'layout';
+    savePref(TAB_KEY, tab);
+    applyEditorTab(tab);
+    window.scrollTo(0, 0);
+  }
+
+  function bindEditorTabs() {
+    const buttons = [...document.querySelectorAll('#mobile-tabs button')];
+    for (const btn of buttons) {
+      btn.onclick = () => setEditorTab(btn.dataset.tab);
+      btn.onkeydown = e => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        const other = buttons.find(b => b !== btn);
+        setEditorTab(other.dataset.tab);
+        other.focus();
+      };
+    }
+    applyEditorTab(loadPref(TAB_KEY) === 'settings' ? 'settings' : 'layout');
+    // Turning a tablet to landscape (or back) switches layouts: fit the preview to the new one
+    NARROW.addEventListener?.('change', () => { _fitWidth = 0; applySplit(); });
+  }
+
   // Before the first render, so Basic never flashes the advanced controls
   editorMode = loadEditorMode();
   applySettingTiers(document);
@@ -4329,6 +4463,7 @@
   for (const btn of document.querySelectorAll('#editor-mode button')) btn.onclick = () => setEditorMode(btn.dataset.mode);
   document.getElementById('advanced-hint-show').onclick = () => setEditorMode('advanced');
   bindSidebarSections();
+  bindEditorTabs();
   bindPaneDivider();
 
   init();

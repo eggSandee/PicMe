@@ -5,7 +5,10 @@
 // #collage grid (12 px padding and gap) and applyFrameStyle (frame border, then the mat, then a
 // caption band under the photo). Gallery openings come from gallery.js's own layout.
 (function () {
-  const REFERENCE = { width: 1920, height: 1080, padding: 12, gap: 12 };  // #collage in display/index.html
+  // The display's reference screen (scale.js: s = 1 there), and #collage's padding and gap at it
+  // (display/index.html); the display multiplies these by its scale on other screens
+  const REF = window.PicMeScale ? window.PicMeScale.REFERENCE : { width: 1920, height: 1080 };
+  const REFERENCE = { width: REF.width, height: REF.height, padding: 12, gap: 12 };
 
   // Common photo shapes, as width:height: phones (4:3, 16:9), prints (3:2 = 4x6, 5:4 = 8x10,
   // 7:5 = 5x7) and square, each both ways round
