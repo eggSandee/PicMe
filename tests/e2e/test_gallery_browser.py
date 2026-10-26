@@ -574,7 +574,9 @@ def test_long_caption_pill_scrolls_and_the_date_stays(write_cfg, open_display):
 
 def test_small_captions_show_the_date_and_hide_the_rest(write_cfg, open_display):
     write_cfg(show_metadata=True, metadata_defaults={**CAMERA_FIELDS, "text_size": "x-large"}, max_metadata_pills=None)
-    w = open_display(viewport={"width": 1280, "height": 720})
+    # Text scales with the screen down to a 10 px floor (README → Screen sizes): at 960 x 540
+    # (s = 0.5) x-large is 15 px, under openings half their 1080p size
+    w = open_display(viewport={"width": 960, "height": 540})
     page = w.page
     _until(page, PILLS_VISIBLE_JS)
     for i in range(1, 13):
@@ -799,11 +801,12 @@ def _frame_defaults(**kw) -> dict:
 
 def test_decorative_frame_on_the_gallery(write_cfg, open_display):
     # The style comes from frame_defaults (the Frame section); the width is the gallery's own
-    write_cfg(gallery={"frame_width": 120}, frame_defaults=_frame_defaults(frame_style="wood", frame_width=28))
-    page = open_display(viewport={"width": 640, "height": 360}).page
+    # 480 x 270 is under the 0.3 scale floor (README → Screen sizes): 160 px x 0.3 = 48 px
+    write_cfg(gallery={"frame_width": 160}, frame_defaults=_frame_defaults(frame_style="wood", frame_width=28))
+    page = open_display(viewport={"width": 480, "height": 270}).page
     f = page.evaluate("() => { const cs = getComputedStyle(document.querySelector('.gallery-frame')); return [cs.borderImageSource, cs.borderTopWidth, cs.borderImageRepeat]; }")
     assert "/assets/frames/wood.png" in f[0]
-    assert f[1] == "60px"  # capped at a sixth of the 360 px short side
+    assert f[1] == "45px"  # capped at a sixth of the 270 px short side
     assert "round" in f[2]
     page.evaluate("window.__marker = 1")
     write_cfg(gallery={"frame_width": 48}, frame_defaults=_frame_defaults(frame_style="gold"))

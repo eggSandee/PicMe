@@ -13,6 +13,10 @@
 // (PicMePills.fontSize for the shortest area) times the style's scale, never below its floor.
 (function () {
   const P = () => window.PicMePills;
+  // The px floors below are at the 1920x1080 reference: on another screen they follow
+  // PicMeScale (scale.js), never below its legible size
+  const floorPx = v => (window.PicMeScale ? PicMeScale.floor(v) : v);
+  const scalePx = v => (window.PicMeScale ? PicMeScale.px(v) : v);
 
   // where: 'mat' | 'photo', or null when label_position decides (pills).
   // scale: of the pill font; min: px floor at the 1920x1080 display, so the smallest text in the
@@ -54,8 +58,10 @@
   function fontPx(style, pillPx) {
     const s = SPEC[resolveStyle(style)];
     if (!s.scale) return pillPx;
-    const max = P() ? P().FONT_MAX : 48;
-    return Math.round(Math.min(max, Math.max(s.min, (Number(pillPx) || 0) * s.scale)));
+    // The style's floor moves with MIN_TEXT_PX's, so its smallest text stays legible
+    const min = s.min * floorPx(MIN_TEXT_PX) / MIN_TEXT_PX;
+    const max = Math.max(min, scalePx(P() ? P().FONT_MAX : 48));
+    return Math.round(Math.min(max, Math.max(min, (Number(pillPx) || 0) * s.scale)));
   }
 
   // px height of the caption band for this style, from the slot's sizes and the screen's short side
@@ -345,11 +351,12 @@
     // A whisper whose date alone is too big (a heart or a circle) tries again with the date at
     // the size of the rest (the screen's size stays, only the hierarchy flattens), then, like a
     // pill date that doesn't fit, at the smallest legible size
-    const font = st.area.fontPx || MIN_TEXT_PX;
+    const minText = floorPx(MIN_TEXT_PX);
+    const font = st.area.fontPx || minText;
     // (the date alone then: smaller details would be under MIN_TEXT_PX)
     const most = optional.length;
     const passes = style === 'whisper'
-      ? [[false, '', most], [true, '', most], [true, `${Math.min(1, MIN_TEXT_PX / font)}em`, minKeep]]
+      ? [[false, '', most], [true, '', most], [true, `${Math.min(1, minText / font)}em`, minKeep]]
       : [[false, '', most]];
     let root = null;
     search:
