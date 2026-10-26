@@ -211,6 +211,18 @@
       animation: detail-fade 0.2s ease;
     }
     #detail[hidden] { display: none; }
+
+    /* iPhone in Low Power Mode (or a browser set to block autoplay): videos wait for one tap */
+    #tap-to-play {
+      position: fixed; inset: 0; z-index: 1100;
+      display: flex; align-items: flex-end; justify-content: center;
+      padding-bottom: 8vh; background: transparent; cursor: pointer;
+    }
+    #tap-to-play[hidden] { display: none; }
+    #tap-to-play span {
+      background: rgba(0, 0, 0, 0.7); color: #fff; font: 600 16px sans-serif;
+      padding: 12px 22px; border-radius: 999px;
+    }
     .detail-card {
       display: flex;
       align-items: center;
@@ -1097,20 +1109,43 @@
       state.retryTimer = setTimeout(() => loadNextVideo(slotCfg), VIDEO_RETRY_MS);
     }
 
-    function waitForPlayable(v) {
+    // Play `v` from its new src and resolve once it's playing. iPhone Safari ignores preload and
+    // buffers nothing until play() is called, so waiting for canplay first never ended there:
+    // start playing at once (it's hidden until the crossfade) and wait for that, an error or the
+    // timeout. A NotAllowedError (autoplay blocked) is passed on as is.
+    function startPlayback(v, slotCfg) {
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => done(new Error('timed out waiting for canplay')), VIDEO_LOAD_TIMEOUT_MS);
+        const timer = setTimeout(() => done(new Error('timed out waiting for playback')), VIDEO_LOAD_TIMEOUT_MS);
         function done(err) {
           clearTimeout(timer);
-          v.removeEventListener('canplay', onReady);
           v.removeEventListener('error', onError);
           err ? reject(err) : resolve();
         }
-        const onReady = () => done();
         const onError = () => done(v.error || new Error('video error'));
-        v.addEventListener('canplay', onReady);
         v.addEventListener('error', onError);
+        playVideo(v, slotCfg).then(() => done(), e => done(e));
       });
+    }
+
+    // Autoplay blocked (an iPhone in Low Power Mode blocks even muted video until the screen is
+    // touched): ask for one tap. Calling play() on every video element inside that tap unlocks
+    // them for good, then each video slot starts again. Clips aren't marked unplayable for this.
+    function askTapToPlay() {
+      let el = document.getElementById('tap-to-play');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'tap-to-play';
+        el.setAttribute('role', 'button');
+        el.innerHTML = '<span>Tap to play videos</span>';
+        el.addEventListener('click', e => {
+          e.stopPropagation();
+          for (const v of document.querySelectorAll('video')) v.play()?.catch(() => {});
+          el.hidden = true;
+          for (const s of activeSlots) if (s.mode === 'video' && slotState[s.id]) loadNextVideo(s);
+        });
+        document.body.appendChild(el);
+      }
+      el.hidden = false;
     }
 
     async function loadNextVideo(slotCfg) {
@@ -1160,9 +1195,15 @@
         try {
           next.muted = !slotCfg.video_audio;
           next.src = videoUrl(nextPath);
-          await waitForPlayable(next);
-          await playVideo(next, slotCfg);
+          await startPlayback(next, slotCfg);
         } catch (e) {
+          if (e?.name === 'NotAllowedError') {
+            // Not the clip's fault: autoplay is blocked until the screen is tapped
+            releaseVideo(next);
+            releasePath(nextPath);
+            askTapToPlay();
+            return;
+          }
           // E.g. a profile this TV can't decode, or a clip deleted since listing — skip it
           console.warn(`Slot ${slotCfg.id}: failed to play ${nextPath}`, e);
           releaseVideo(next);

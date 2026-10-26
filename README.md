@@ -226,6 +226,7 @@ Each slot supports the following settings:
 - Video slots ignore `cycle_seconds` and `group` — they advance when their loops finish, and group timers never cut a video off.
 - Only the date pill is shown, read from the clip's recording date (MP4/MOV `mvhd` creation time). Clips without a plausible date show no pill.
 - Browsers usually block autoplay with sound until someone interacts with the page. If sound is blocked, the video keeps playing muted.
+- **iPhone and iPad.** Safari only buffers a video once it's asked to play, so the display starts each clip at once, out of sight, and fades it in when it's playing. In Low Power Mode, or with autoplay turned off, iOS won't start any video until the screen is touched: the display then shows **Tap to play videos**, and one tap starts every video slot. Photo slots don't wait.
 - iPhone (HEVC), HDR and ProRes clips are converted to H.264 in the background so every browser can play them. Until a clip is converted it's left out of the rotation. See **iPhone videos (HEVC)** below.
 - Each playing video uses a hardware decoder; on TVs keep the number of video slots small. Clips larger than `video_max_edge` (default 1080p) are scaled down for this reason.
 
