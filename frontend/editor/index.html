@@ -760,6 +760,16 @@
 
     /* ── Phones and portrait tablets (editor-tab): Layout | Settings tabs instead of the sidebar ── */
     #mobile-tabs { display: none; }
+    /* A phone turned sideways (or a tablet) is wider than 820 px, so it gets this layout too.
+       Safari only hides its tab and address bars when the page scrolls, and here only the panes
+       do: give the page room to scroll while the editor stays pinned to the visible screen and
+       grows when the bars go away. Computers (a mouse) keep the one-screen page. */
+    @media (pointer: coarse) and (min-width: 821px) {
+      html, body { height: auto; }
+      body::after { content: ''; display: block; height: calc(100vh + 160px); }
+      #app { position: fixed; inset: 0; height: 100dvh; }
+    }
+
     @media (max-width: 820px) {
       :root { --tabs-h: 57px; }
       html { -webkit-text-size-adjust: 100%; }
