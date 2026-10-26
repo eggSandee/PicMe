@@ -25,6 +25,17 @@
       padding: var(--collage-space, 12px);
       background: #1a1a1a;
     }
+
+    /* On a phone or tablet (touch), Safari only hides its tab and address bars when the page
+       scrolls. So the page gets room to scroll while the collage stays pinned to the visible
+       screen (dynamic viewport), and grows when the bars go away (README → Screen sizes).
+       TVs and computers keep the one-screen page. */
+    @media (pointer: coarse) {
+      html, body { height: auto; overflow-x: hidden; overflow-y: auto; }
+      body::after { content: ''; display: block; height: calc(100vh + 160px); }
+      #collage { position: fixed; inset: 0; height: 100dvh; }
+    }
+
     /* A frameless layout (Single, Frame on Single off) is full bleed: no wall border either */
     #collage.full-bleed { padding: 0; gap: 0; }
 

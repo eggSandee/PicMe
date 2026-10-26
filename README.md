@@ -696,6 +696,7 @@ On a phone or a portrait tablet (a window 820 px wide or less) the sidebar gives
 - **Settings** shows the sidebar's sections at full width, in the same order, with the Basic / Advanced switch at the top. Sections fold as usual. After a reset the editor switches to Settings and scrolls to **Undo**.
 - **Remembered per browser.** The last tab is saved in the browser (`localStorage`), like the editor mode. A browser that has never chosen opens on Layout.
 - Buttons, switches, boxes and layout thumbnails are at least 40 px tall for fingers, and dialogs fit the screen and scroll inside.
+- **Hiding Safari's bars.** On a phone or tablet, swipe up anywhere on the page (the editor, or the display turned sideways) to let Safari hide its tab and address bars; the editor or the photos stay on screen and grow into the space. Swipe down, or tap the top of the screen, to bring the bars back. The page only gets this room to scroll on touch screens, so a TV or computer is unchanged.
 
 #### Presets and reset
 
