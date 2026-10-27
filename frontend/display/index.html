@@ -1680,7 +1680,59 @@
       if (e.target.closest('.detail-close') || !e.target.closest('.detail-media > *, .detail-panel')) closeDetail();
     });
 
-    // Config polling — apply changes live when config.json is updated by the editor
+    // Config updates — apply changes live when config.json is updated by the editor. The server
+    // pushes a `config` event on every save (/api/events); polling is the fallback: every 3 s with
+    // no live connection (no EventSource, or it dropped), every 30 s alongside one.
+    const POLL_FALLBACK_MS = 3000;
+    const POLL_CONNECTED_MS = 30000;
+    const EVENTS_RETRY_MAX_MS = 30000;
+    let eventsLive = false;
+    let eventsRetryMs = 1000;
+    let pollTimer = null;
+    let configCheck = null;
+    let configCheckAgain = false;
+
+    // One check at a time, so a slow older response can't undo a newer one; a request made
+    // mid-check runs one more check after it
+    function requestConfigCheck() {
+      if (configCheck) { configCheckAgain = true; return configCheck; }
+      configCheck = (async () => {
+        do { configCheckAgain = false; await checkConfigUpdate(); } while (configCheckAgain);
+        configCheck = null;
+      })();
+      return configCheck;
+    }
+
+    function schedulePoll() {
+      clearTimeout(pollTimer);
+      pollTimer = setTimeout(async () => {
+        await requestConfigCheck();
+        schedulePoll();
+      }, eventsLive ? POLL_CONNECTED_MS : POLL_FALLBACK_MS);
+    }
+
+    function setEventsLive(live) {
+      if (live === eventsLive) return;
+      eventsLive = live;
+      schedulePoll();
+    }
+
+    function connectEvents() {
+      if (typeof window.EventSource !== 'function') return;  // polling alone, every 3 s
+      let source;
+      try { source = new EventSource(`${API}/api/events`); } catch (e) { return; }
+      source.addEventListener('open', () => { eventsRetryMs = 1000; setEventsLive(true); });
+      // Also sent on (re)connect, which catches up on a save made while disconnected
+      source.addEventListener('config', () => { setEventsLive(true); requestConfigCheck(); });
+      source.addEventListener('error', () => {
+        // Reconnect with our own backoff (the browser's retry is fixed); poll meanwhile
+        source.close();
+        setEventsLive(false);
+        setTimeout(connectEvents, eventsRetryMs);
+        eventsRetryMs = Math.min(eventsRetryMs * 2, EVENTS_RETRY_MAX_MS);
+      });
+    }
+
     let configHash = '';
     async function checkConfigUpdate() {
       try {
@@ -1768,7 +1820,7 @@
             delete photoRetryTimers[key];
           }
         }
-      } catch (e) { /* non-critical — try again next interval */ }
+      } catch (e) { /* non-critical — try again on the next event or poll */ }
     }
 
     // Group cycling: slots in the same group advance together
@@ -1878,9 +1930,11 @@
         scheduleSlot(slotCfg);
       }
 
-      // Seed the hash and begin polling — display reloads automatically when config changes
+      // Seed the hash, then listen for saves (polling as the fallback) — the display patches
+      // itself or reloads when the config changes
       configHash = JSON.stringify(config);
-      setInterval(checkConfigUpdate, 3000);
+      schedulePoll();
+      connectEvents();
 
       // Re-apply TOD styles at period boundaries and switch the rotated layout at change_at
       // (checked every 30 s)

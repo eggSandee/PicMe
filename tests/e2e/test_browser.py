@@ -204,7 +204,7 @@ def test_editor_change_reaches_open_display(server, open_page, e2e_config_path):
             NEW_WALL_COLOR,
         )
         started = time.monotonic()
-        # Editor autosaves after 500ms; display polls /api/config every 3s.
+        # Editor autosaves after 300 ms; the server pushes the save to the display at once.
         display.page.wait_for_function(
             "rgb => getComputedStyle(document.getElementById('collage')).backgroundColor === rgb",
             arg=NEW_WALL_RGB,

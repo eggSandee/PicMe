@@ -400,7 +400,7 @@ def test_a_pending_edit_is_saved_before_reset_and_cant_overwrite_it(write_cfg, o
     write_cfg()
     page = open_editor().page
     page.locator("#g-wall-color").evaluate("el => { el.value = '#654321'; el.dispatchEvent(new Event('input')); }")
-    page.locator("#reset-defaults").click()  # within the 500 ms autosave delay
+    page.locator("#reset-defaults").click()  # within the 300 ms autosave delay
     modal = _modal(page)
     modal.locator("li").first.wait_for()
     assert "Wall color" in modal.locator("li").all_text_contents()
