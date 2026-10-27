@@ -4515,7 +4515,7 @@
     document.getElementById('slot-bar').classList.toggle('shown', !!selectedSlotId && _previewAway);
     if (selectedSlotId) {
       document.getElementById('slot-bar-label').textContent =
-        `${slotCfg?.mode === 'video' ? '▶ ' : ''}Slot ${selectedSlotId} settings`;
+        `${slotCfg?.mode === 'video' ? '▶ ' : ''}Slot ${selectedSlotId}`;  // the panel title below says "settings"
     }
   }
 

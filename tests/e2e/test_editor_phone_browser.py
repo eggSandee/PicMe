@@ -467,7 +467,7 @@ def test_slot_bar_shows_once_a_slot_is_selected_and_the_preview_is_away(write_cf
     page.evaluate("() => window.scrollTo(0, 0)")
     page.locator(_cell(2)).tap()
     _bar(page).wait_for(state="visible")
-    assert _bar_label(page) == "Slot 2 settings"
+    assert _bar_label(page) == "Slot 2"  # short: the panel title says "Slot 2 settings" (QA #46)
     # It sits under the tab bar and the slot settings land below it, their title uncovered
     _until(page, _PANEL_UNDER_BARS_JS)
     tabs, bar, title = _box(page, "#mobile-tabs"), _box(page, "#slot-bar"), _box(page, "#slot-panel-title")
@@ -480,7 +480,7 @@ def test_slot_bar_shows_once_a_slot_is_selected_and_the_preview_is_away(write_cf
     # A video slot is marked
     page.locator(_cell(3)).tap()
     _bar(page).wait_for(state="visible")
-    assert _bar_label(page) == "▶ Slot 3 settings"
+    assert _bar_label(page) == "▶ Slot 3"
     assert w.errors == []
 
 
@@ -493,7 +493,7 @@ def test_slot_bar_steps_to_the_next_and_previous_slot_wrapping(write_cfg, device
     for button, n in [("next", 3), ("next", 4), ("next", 1), ("prev", 4), ("prev", 3)]:
         page.locator(f"#slot-bar-{button}").tap()
         _until(page, f"() => document.getElementById('slot-panel-title').textContent.includes('Slot {n} ')")
-        assert _bar_label(page) == ("▶ " if n == 3 else "") + f"Slot {n} settings"
+        assert _bar_label(page) == ("▶ " if n == 3 else "") + f"Slot {n}"
         assert page.locator(f"{_cell(n)}.selected").count() == 1  # as if tapped in the preview
         # Still at the slot settings, with the bar showing
         _until(page, _PANEL_UNDER_BARS_JS)
