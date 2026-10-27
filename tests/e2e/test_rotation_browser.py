@@ -289,7 +289,9 @@ def test_display_switches_layout_live_at_change_at(server, open_at, rotation_con
     _wait_for_layout(page, "classic-4")
     page.evaluate("window.__marker = 1")
 
-    page.clock.run_for(90_000)  # past 04:00 — the 30 s check reloads into today's layout
+    # Past 04:00 — the 30 s check reloads into today's layout. Only to the first check after
+    # 04:00: the fake clock would run the next one before the reload lands, counting it twice
+    page.clock.run_for(65_000)
     _wait_for_layout(page, "classic-6")
     assert page.evaluate("window.__marker") is None  # it really reloaded
     assert page.evaluate("new Date().getHours() * 60 + new Date().getMinutes()") >= 4 * 60  # clock carried over

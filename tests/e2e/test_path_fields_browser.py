@@ -86,7 +86,7 @@ def test_typing_the_global_folder_saves_once_on_enter(server, open_at, write_con
     saves = _count_saves(w.page)
     field = w.page.locator("#g-source-path")
     # As if the user deleted "red" off the end and typed a new folder name — slowly, so the
-    # 500 ms autosave would fire between keystrokes (and the display polls several times)
+    # 300 ms autosave would fire between keystrokes (and the display polls several times)
     field.evaluate("(el, v) => { el.value = v; }", folders["root"] + "/")
     field.focus()
     w.page.keyboard.press("End")

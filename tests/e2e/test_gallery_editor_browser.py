@@ -1,7 +1,7 @@
 """Browser end-to-end tests for gallery mat mode in the editor (README → Gallery mat, Editor modes).
 
 Reuses the server/browser plumbing from ``test_browser.py`` and overrides ``e2e_config_path``.
-The editor saves on its own (500 ms debounce); tests poll the config file for the result.
+The editor saves on its own (300 ms debounce); tests poll the config file for the result.
 """
 from __future__ import annotations
 

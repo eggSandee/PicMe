@@ -313,7 +313,7 @@ def test_editor_video_mode_controls(h264_browser, server, open_page, e2e_config_
         loops.fill(bad)
         loops.press("Tab")
         assert loops.input_value() == "3", bad
-    page.wait_for_timeout(800)  # past the 500ms autosave debounce
+    page.wait_for_timeout(800)  # past the 300 ms autosave debounce
     assert json.loads(e2e_config_path.read_text())["slots"][0]["video_loops"] == 3
 
     page.locator("#slot-panel-body select:has(option[value='video'])").select_option("photos")
