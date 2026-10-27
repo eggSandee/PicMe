@@ -621,6 +621,18 @@ def test_footer_is_pinned_to_the_bottom_while_scrolling_both_tabs(write_cfg, dev
 
 
 @PHONES
+@pytest.mark.parametrize("engine", ["webkit", "chrome"])
+def test_footer_sits_at_the_bottom_of_a_short_page(write_cfg, device, screen, engine):
+    """QA #49: the Layout tab with no slot open doesn't scroll, and the footer sat mid-screen."""
+    write_cfg()
+    w = device(screen, init_scripts=[ON_LAYOUT], engine=engine)
+    page = w.page
+    assert page.evaluate(_FOOTER_JS)["scrollMax"] < 50  # short: nothing to scroll
+    _assert_footer_pinned(page, "short Layout tab")
+    assert w.errors == []
+
+
+@PHONES
 def test_footer_does_not_cover_the_slot_bar_or_the_tabs(write_cfg, device, screen):
     write_cfg()
     w = device(screen, init_scripts=[ON_LAYOUT], engine="webkit")

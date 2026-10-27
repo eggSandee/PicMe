@@ -791,7 +791,7 @@
     @media (max-width: 820px) {
       :root { --tabs-h: 57px; --slotbar-h: 49px; --footer-h: 53px; }
       html { -webkit-text-size-adjust: 100%; }
-      #app { display: flex; flex-direction: column; height: auto; min-height: 100vh; }
+      #app { display: flex; flex-direction: column; height: auto; min-height: 100vh; min-height: 100dvh; }
       #mobile-tabs {
         display: flex;
         position: sticky;
@@ -870,6 +870,7 @@
       #footer {
         position: sticky;
         bottom: 0;
+        margin-top: auto;  /* a short page (Layout, no slot open) still has it at the screen's bottom */
         z-index: 48;
         box-sizing: border-box;
         min-height: var(--footer-h);
