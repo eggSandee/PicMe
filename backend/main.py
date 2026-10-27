@@ -1,14 +1,17 @@
+import asyncio
 import copy
 import json
 import logging
 import os
 import random
+import signal
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 import media_index
@@ -43,6 +46,7 @@ def start_transcoder() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_transcoder()
+    end_event_streams_on_exit_signal()
     yield
     transcode.transcoder.stop()  # kills a running ffmpeg (uvicorn reload restarts the process)
 
@@ -149,6 +153,115 @@ def write_json_atomic(path: Path, data) -> None:
 
 def save_config(config: dict) -> None:
     write_json_atomic(CONFIG_PATH, config)
+    config_events.changed()
+
+
+# --- Server push: open displays hear about a config change at once (README → Configuration) ---
+
+EVENTS_CHECK_S = 1.0       # how often a stream looks at config.json's mtime (a hand edit)
+EVENTS_KEEPALIVE_S = 15.0  # a comment line, so proxies and TV browsers keep the stream open
+
+
+class ConfigEvents:
+    """Wakes every open /api/events stream when the config is saved, and ends them all when
+    the server is shutting down. Saves run in the threadpool, streams on the event loop."""
+
+    def __init__(self):
+        self.version = 0
+        self.closing = False
+        self._lock = threading.Lock()
+        self._waiters: set[tuple[asyncio.AbstractEventLoop, asyncio.Event]] = set()
+
+    def changed(self) -> None:
+        with self._lock:
+            self.version += 1
+            waiters = list(self._waiters)
+        self._wake(waiters)
+
+    def close(self) -> None:
+        # Called from a signal handler on the event loop's thread, which may hold the lock
+        # (subscribe/unsubscribe): copying the set needs no lock under the GIL
+        self.closing = True
+        self._wake(list(self._waiters))
+
+    @staticmethod
+    def _wake(waiters) -> None:
+        for loop, event in waiters:
+            try:
+                loop.call_soon_threadsafe(event.set)
+            except RuntimeError:  # that loop has closed
+                pass
+
+    def subscribe(self) -> asyncio.Event:
+        event = asyncio.Event()
+        with self._lock:
+            self._waiters.add((asyncio.get_running_loop(), event))
+        return event
+
+    def unsubscribe(self, event: asyncio.Event) -> None:
+        with self._lock:
+            self._waiters = {w for w in self._waiters if w[1] is not event}
+
+
+config_events = ConfigEvents()
+
+
+def end_event_streams_on_exit_signal() -> None:
+    """Uvicorn waits for open connections before it exits (or restarts under reload=True), and
+    an event stream never finishes by itself. So wrap uvicorn's signal handler to end the streams
+    first. Only possible from the main thread, which is where uvicorn runs the app."""
+    config_events.closing = False
+    if threading.current_thread() is not threading.main_thread():
+        return
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        previous = signal.getsignal(sig)
+        if not callable(previous) or getattr(previous, "_picme_events", False):
+            continue
+
+        def handler(signum, frame, previous=previous):
+            config_events.close()
+            previous(signum, frame)
+
+        handler._picme_events = True
+        signal.signal(sig, handler)
+
+
+def _config_mtime() -> int | None:
+    try:
+        return CONFIG_PATH.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
+async def config_event_stream(request: Request):
+    """``config`` on connect (catches up after a reconnect), then on every save or hand edit of
+    config.json; a keep-alive comment when quiet. Ends on disconnect or server shutdown."""
+    wake = config_events.subscribe()
+    try:
+        version, mtime = config_events.version, _config_mtime()
+        sent = 0
+        yield f"retry: 2000\nid: {sent}\nevent: config\ndata: {version}\n\n"
+        loop = asyncio.get_running_loop()
+        quiet_since = loop.time()
+        while not config_events.closing:
+            try:
+                await asyncio.wait_for(wake.wait(), timeout=EVENTS_CHECK_S)
+            except asyncio.TimeoutError:
+                pass
+            wake.clear()
+            if config_events.closing or await request.is_disconnected():
+                break
+            new_version, new_mtime = config_events.version, _config_mtime()
+            if new_version != version or new_mtime != mtime:
+                version, mtime = new_version, new_mtime
+                sent += 1
+                yield f"id: {sent}\nevent: config\ndata: {version}\n\n"
+                quiet_since = loop.time()
+            elif loop.time() - quiet_since >= EVENTS_KEEPALIVE_S:
+                yield ": keep-alive\n\n"
+                quiet_since = loop.time()
+    finally:
+        config_events.unsubscribe(wake)
 
 
 def effective_subfolders(slot: dict, config: dict) -> bool:
@@ -225,6 +338,15 @@ def get_config():
     except OSError as e:
         logging.getLogger(__name__).warning("Could not write default config to %s: %s", CONFIG_PATH, e)
     return config
+
+
+@app.get("/api/events")
+def config_events_stream(request: Request):
+    return StreamingResponse(
+        config_event_stream(request),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # Values the display and editor understand (pill-size.js, label-styles.js); anything else is

@@ -4046,7 +4046,7 @@
     refreshTodNotes();
     refreshInactiveControls();
     clearTimeout(_saveTimer);
-    _saveTimer = setTimeout(() => { _saveTimer = null; saveConfig(savedMsg); }, 500);
+    _saveTimer = setTimeout(() => { _saveTimer = null; saveConfig(savedMsg); }, 300);
   }
 
   // Save an edit still waiting for its autosave, and wait for any save in flight, so a reset or
