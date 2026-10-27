@@ -694,6 +694,7 @@ Settings that only exist for one kind of slot are hidden rather than greyed: a p
 On a phone or a portrait tablet (a window 820 px wide or less) the sidebar gives way to two tabs at the top of the page, **Layout** and **Settings**; they stay at the top as the page scrolls. A wider window keeps the sidebar and the resizable preview as above.
 
 - **Layout** shows the preview at the full width of the screen, in the display's 16:9 shape, with the selected slot's settings below it. Tap a slot to bring its settings into view; press and hold a slot, then drag, to swap two slots.
+- **Slot bar.** Once the preview has scrolled away, a slim bar under the tabs shows the selected slot ("Slot 2 settings", with ▶ for a video slot): **‹** and **›** step to the previous and next slot (wrapping round) and keep you at its settings, and **↑ Preview** scrolls back up to the preview.
 - **Settings** shows the sidebar's sections at full width, in the same order, with the Basic / Advanced switch at the top. Sections fold as usual. After a reset the editor switches to Settings and scrolls to **Undo**.
 - **Remembered per browser.** The last tab is saved in the browser (`localStorage`), like the editor mode. A browser that has never chosen opens on Layout.
 - Buttons, switches, boxes and layout thumbnails are at least 40 px tall for fingers, and dialogs fit the screen and scroll inside.
