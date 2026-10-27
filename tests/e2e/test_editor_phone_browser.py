@@ -100,6 +100,14 @@ _IN_VIEW_BELOW_TABS_JS = """sel => {
     return r.height > 0 && r.top >= tabs.bottom - 1 && r.bottom <= window.innerHeight; }"""
 
 
+# Whether the slot settings start just below the sticky bars (the slot bar shows once the preview is away)
+_PANEL_UNDER_BARS_JS = """() => { const r = document.getElementById('slot-panel').getBoundingClientRect();
+    const tabs = document.getElementById('mobile-tabs').getBoundingClientRect();
+    const bar = document.getElementById('slot-bar').getBoundingClientRect();
+    const top = Math.max(tabs.bottom, bar.bottom);
+    return r.top >= top - 1 && r.top < top + 40; }"""
+
+
 class Touch:
     """Real touch input through CDP: the browser turns it into pointer, touch and scroll events."""
 
@@ -221,10 +229,8 @@ def test_tapping_a_slot_shows_its_settings(write_cfg, device, screen):
     page.locator(_cell(2)).tap()
     assert "Slot 2" in page.locator("#slot-panel-title").text_content()
     assert _tab(page, "layout").get_attribute("aria-selected") == "true"  # stays on Layout
-    # The slot settings are brought into view, under the tab bar
-    _until(page, """() => { const r = document.getElementById('slot-panel').getBoundingClientRect();
-        const tabs = document.getElementById('mobile-tabs').getBoundingClientRect();
-        return r.top >= tabs.bottom - 1 && r.top < tabs.bottom + 40; }""")
+    # The slot settings are brought into view, under the tab bar and the slot bar
+    _until(page, _PANEL_UNDER_BARS_JS)
     assert page.locator("#slot-fill-mode").is_visible()
     assert w.errors == []
 
@@ -422,4 +428,127 @@ def test_laptop_has_no_tab_bar_and_keeps_the_sidebar_and_divider(write_cfg, devi
     assert preview["width"] < LAPTOP["width"] - 280
     # The page itself doesn't scroll; the slot settings scroll inside their pane
     assert page.evaluate("() => document.documentElement.scrollHeight <= window.innerHeight")
+    assert w.errors == []
+
+
+# --- The sticky slot bar (Layout tab) ---
+
+SMALL_PHONE = {"width": 360, "height": 740}
+PHONES = pytest.mark.parametrize("screen", [PHONE, SMALL_PHONE], ids=["390", "360"])
+ON_LAYOUT = "try { localStorage.setItem('picme.editorTab', 'layout') } catch (e) {}"
+VIDEO_3 = {3: {"mode": "video"}}
+
+
+def _bar(page):
+    return page.locator("#slot-bar")
+
+
+def _bar_label(page):
+    return page.locator("#slot-bar-label").text_content().strip()
+
+
+def _select_and_wait_for_bar(page, n):
+    page.locator(_cell(n)).tap()
+    _bar(page).wait_for(state="visible")
+    _until(page, _PANEL_UNDER_BARS_JS)
+
+
+@PHONES
+def test_slot_bar_shows_once_a_slot_is_selected_and_the_preview_is_away(write_cfg, device, screen):
+    write_cfg(slot_overrides=VIDEO_3)
+    w = device(screen, init_scripts=[ON_LAYOUT])
+    page = w.page
+    assert not _bar(page).is_visible()
+    # No slot selected: scrolling the preview away shows nothing
+    page.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)")
+    page.wait_for_timeout(300)
+    assert not _bar(page).is_visible()
+
+    page.evaluate("() => window.scrollTo(0, 0)")
+    page.locator(_cell(2)).tap()
+    _bar(page).wait_for(state="visible")
+    assert _bar_label(page) == "Slot 2"  # short: the panel title says "Slot 2 settings" (QA #46)
+    # It sits under the tab bar and the slot settings land below it, their title uncovered
+    _until(page, _PANEL_UNDER_BARS_JS)
+    tabs, bar, title = _box(page, "#mobile-tabs"), _box(page, "#slot-bar"), _box(page, "#slot-panel-title")
+    assert bar["y"] == pytest.approx(tabs["y"] + tabs["height"], abs=1)
+    assert title["y"] >= bar["y"] + bar["height"]
+    # A selected slot with the preview in view: no bar
+    page.evaluate("() => window.scrollTo(0, 0)")
+    _bar(page).wait_for(state="hidden")
+
+    # A video slot is marked
+    page.locator(_cell(3)).tap()
+    _bar(page).wait_for(state="visible")
+    assert _bar_label(page) == "▶ Slot 3"
+    assert w.errors == []
+
+
+@PHONES
+def test_slot_bar_steps_to_the_next_and_previous_slot_wrapping(write_cfg, device, screen):
+    write_cfg(slot_overrides=VIDEO_3)
+    w = device(screen, init_scripts=[ON_LAYOUT])
+    page = w.page
+    _select_and_wait_for_bar(page, 2)
+    for button, n in [("next", 3), ("next", 4), ("next", 1), ("prev", 4), ("prev", 3)]:
+        page.locator(f"#slot-bar-{button}").tap()
+        _until(page, f"() => document.getElementById('slot-panel-title').textContent.includes('Slot {n} ')")
+        assert _bar_label(page) == ("▶ " if n == 3 else "") + f"Slot {n}"
+        assert page.locator(f"{_cell(n)}.selected").count() == 1  # as if tapped in the preview
+        # Still at the slot settings, with the bar showing
+        _until(page, _PANEL_UNDER_BARS_JS)
+        assert _bar(page).is_visible()
+    assert w.errors == []
+
+
+@PHONES
+def test_slot_bar_preview_button_scrolls_back_up_and_the_bar_hides(write_cfg, device, screen):
+    write_cfg()
+    w = device(screen, init_scripts=[ON_LAYOUT])
+    page = w.page
+    _select_and_wait_for_bar(page, 4)
+    assert not page.evaluate(_IN_VIEW_BELOW_TABS_JS, "#collage-preview")
+    page.locator("#slot-bar-top").tap()
+    _until(page, f"() => ({_IN_VIEW_BELOW_TABS_JS})('#collage-preview')")
+    _bar(page).wait_for(state="hidden")
+    assert "Slot 4" in page.locator("#slot-panel-title").text_content()  # still selected
+    assert w.errors == []
+
+
+def test_slot_bar_is_not_shown_on_settings_or_on_a_laptop(write_cfg, device):
+    write_cfg()
+    w = device(PHONE, init_scripts=[ON_LAYOUT])
+    page = w.page
+    _select_and_wait_for_bar(page, 2)
+    _tab(page, "settings").tap()
+    page.locator("#tod-configure-btn").wait_for()
+    page.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)")
+    page.wait_for_timeout(300)
+    assert not _bar(page).is_visible()
+    _tab(page, "layout").tap()  # back at the top, with the preview in view
+    page.wait_for_timeout(300)
+    assert not _bar(page).is_visible()
+
+    w = device(LAPTOP)
+    page = w.page
+    page.locator(_cell(2)).click()
+    page.locator("#slot-panel").evaluate("el => el.scrollTop = el.scrollHeight")
+    page.wait_for_timeout(300)
+    assert not _bar(page).is_visible()
+    assert w.errors == []
+
+
+@PHONES
+def test_slot_bar_targets_are_at_least_40px_without_overflow(write_cfg, device, screen):
+    write_cfg(slot_overrides=VIDEO_3)
+    w = device(screen, init_scripts=[ON_LAYOUT])
+    page = w.page
+    _select_and_wait_for_bar(page, 3)
+    boxes = [_box(page, f"#slot-bar-{b}") for b in ("prev", "next", "top")]
+    assert all(b["width"] >= 40 and b["height"] >= 40 for b in boxes)
+    assert all(b["x"] >= 0 and b["x"] + b["width"] <= screen["width"] for b in boxes)
+    # The label fits whole between the buttons, and the page doesn't scroll sideways
+    assert page.evaluate("() => { const el = document.getElementById('slot-bar-label'); return el.scrollWidth <= el.clientWidth; }")
+    scroll, width = _no_horizontal_scroll(page)
+    assert scroll <= width == screen["width"]
     assert w.errors == []
