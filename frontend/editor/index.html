@@ -52,7 +52,8 @@
     }
 
     /* Preview, a draggable divider, then the slot settings (which scroll). --preview-h is set by
-       the divider (editor-split): the preview keeps the display's 16:9, scaled to fit. */
+       the divider (editor-split): the preview keeps the previewed screen's shape (16:9 for a TV),
+       scaled to fit. */
     #main {
       padding: 24px 24px 16px;
       overflow: hidden;
@@ -387,9 +388,25 @@
       margin-bottom: 12px;
       font-weight: 500;
     }
+    /* The title, and the Screen picker at its right. The picker's negative margins keep the row
+       the title's height, so the preview gets the room it had without it. */
+    #preview-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 12px; margin-bottom: 12px; }
+    #preview-head h2 { margin-bottom: 0; }
+    #screen-picker { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); margin: -4px 0; }
+    /* Drawn by CSS, not as a native control, with a text arrow: Chrome's native select (or an
+       image or a drawn triangle on it) changes how the preview below is anti-aliased, and the TV
+       preview must stay as it was, pixel for pixel */
+    #screen-picker { position: relative; }
+    #screen-picker select { appearance: none; -webkit-appearance: none; font-size: 12px; padding: 1px 18px 1px 6px; height: 22px;
+      background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+    #screen-picker::after { content: '\25BE'; position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
+      font-size: 10px; line-height: 1; color: var(--text-muted); pointer-events: none; }
+    #screen-hint { font-size: 12px; color: var(--text-muted); margin: 0 0 8px; text-align: right; }
+    #screen-hint[hidden] { display: none; }
 
     #collage-preview {
       width: 100%;
+      margin: 0 auto;  /* a narrow (portrait) screen shape is centred */
       flex-shrink: 0;
       aspect-ratio: 16/9;
       min-height: 0;
@@ -430,7 +447,8 @@
     .drag-ghost { z-index: 2000; opacity: 0.85; box-shadow: 0 8px 24px rgba(0,0,0,0.6); }
     body.drag-active, body.drag-active * { cursor: grabbing !important; }
 
-    /* Gallery mat: the display's renderer (/display/gallery.js) on a 1920x1080 stage, scaled to fit */
+    /* Gallery mat: the display's renderer (/display/gallery.js) on a 1920x1080 stage, scaled to fit
+       (the preview's stage is the previewed screen's size) */
     #collage-preview.gallery-preview { display: block; position: relative; overflow: hidden; padding: 0; }
     .gallery-stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
     .gallery-stage .opening { cursor: pointer; }
@@ -1234,7 +1252,11 @@
   <main id="main">
 
     <div id="preview-area">
-      <h2>Layout Preview — click a slot to configure it<span data-setting="slots.rearrange">, drag to swap</span></h2>
+      <div id="preview-head">
+        <h2>Layout Preview — click a slot to configure it<span data-setting="slots.rearrange">, drag to swap</span></h2>
+        <label id="screen-picker" data-setting="preview.screen">Screen <select id="preview-screen"></select></label>
+      </div>
+      <p id="screen-hint" data-setting="preview.screen" hidden>Preview only: the display fits whatever screen it's on.</p>
       <div id="preview-fit"><div id="collage-preview"></div></div>
       <div id="rotation-slot-hint" data-setting="rotation.slot_hint" hidden></div>
     </div>
@@ -1480,6 +1502,7 @@
     'slots.reset_all':    { tier: 'advanced', label: 'Reset slots to global settings' },
     'slots.rearrange':    { tier: 'basic',    label: 'Drag slots to swap' },
     'preview.tags':       { tier: 'basic',    label: 'Slot sizes and Fit / Fill in the preview' },
+    'preview.screen':     { tier: 'basic',    label: 'Screen shape of the preview' },
     'slot.source':        { tier: 'basic',    label: 'Media folder' },
     'slot.source_adopt':  { tier: 'advanced', label: 'Media folder: use global' },
     'slot.include_subfolders': { tier: 'advanced', label: 'Include subfolders',
@@ -2063,15 +2086,16 @@
     refreshGallerySection();
   }
 
-  // Gallery previews are drawn at 1920x1080 on a stage scaled to their box, so they are the
-  // display's layout exactly; re-scaled whenever the box resizes
+  // Gallery previews are drawn at display size (1920x1080; the layout preview at the previewed
+  // screen's) on a stage scaled to their box, so they are the display's layout exactly;
+  // re-scaled whenever the box resizes
   const stageObserver = window.ResizeObserver
     ? new ResizeObserver(entries => entries.forEach(e => fitStage(e.target.querySelector(':scope > .gallery-stage'))))
     : null;
 
   function fitStage(stage) {
     if (!stage || !stage.parentElement) return 0;
-    const k = stage.parentElement.clientWidth / 1920;
+    const k = stage.parentElement.clientWidth / (stage.offsetWidth || 1920);
     stage.style.transform = `scale(${k})`;
     return k;
   }
@@ -2102,12 +2126,17 @@
     PicMeGallery.applyStyles(stage, galleryCfg(), layout, config.slots, { deco: false });
   }
 
-  function buildGalleryPreview(layout, preview) {
+  // Inside PicMeScale.at for the previewed screen: `s` is the display's scale there
+  function buildGalleryPreview(layout, preview, s) {
     preview.classList.add('gallery-preview');
     preview.style.background = config.wall_color || '#1a1a1a';
     preview.innerHTML = '';
     const stage = makeStage(preview);
+    stage.style.width = `${previewScreen.w}px`;
+    stage.style.height = `${previewScreen.h}px`;
     const k = fitStage(stage) || 0.5;
+    // The display's gallery widths on that screen (the fields show the configured values)
+    const gcfg = PicMeGallery.resolveGallery(config, null, s);
     const activeSlots = config.slots.slice(0, layout.slots.length);
     // Unconfigured slots are padded on the display from slot 1's config — mirror its mode here
     const slotAt = i => activeSlots[i] || { id: layout.slots[i].id, mode: config.slots[0]?.mode };
@@ -2117,7 +2146,7 @@
       makeSlot: slotDef => {
         const matFrame = document.createElement('div');
         matFrame.className = 'mat-frame';
-        matFrame.style.cssText = 'background:#2e2e2e;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:72px;font-weight:600;color:#888;';
+        matFrame.style.cssText = `background:#2e2e2e;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:${72 * s}px;font-weight:600;color:#888;`;
         matFrame.textContent = slotDef.id;
         const overlay = document.createElement('div');
         overlay.className = 'slot-overlay';
@@ -2129,7 +2158,7 @@
     const style = labelStyle();
     const placement = PicMeLabels.placement(style, config.label_position, 'gallery');
     const sizes = layout.slots.map((d, i) => (previewShowsPills(slotAt(i)) ? pillSizes(getSlotMeta(slotAt(i))) : null));
-    const { openings, short } = PicMeGallery.layoutWithLabels(stage, galleryCfg(), layout, activeSlots, { placement, sizes, style }, {
+    const { openings, short } = PicMeGallery.layoutWithLabels(stage, gcfg, layout, activeSlots, { placement, sizes, style }, {
       idPrefix: 'pv', selectedId: selectedSlotId, selectWidth: Math.max(6, 3 / k),
     });
 
@@ -2141,11 +2170,13 @@
       el.classList.toggle('selected', id === selectedSlotId);
       el.addEventListener('click', () => selectSlot(id));
       const boxEl = el.querySelector('.opening-box');
-      // The photo's opening: the shape's box inside the bevel (the stage is the 1920x1080 reference).
-      // Under the number, outside the shape's clip so a heart doesn't cut it off.
+      // The photo's opening: the shape's box inside the bevel (stage px are the previewed screen's
+      // display px). Under the number, outside the shape's clip so a heart doesn't cut it off.
+      // The marks are sized like the display's own drawing on that screen (times s).
       const tags = makeSlotTags();
       tags.classList.add('opening-mark');
-      tags.style.cssText = `left:${o.box.w / 2}px;top:${o.box.h / 2 + 46}px;transform:translateX(-50%);`;
+      tags.style.cssText = `left:${o.box.w / 2}px;top:${o.box.h / 2 + 46 * s}px;transform:translateX(-50%);` +
+        (s !== 1 ? `font-size:${32 * s}px;` : '');
       setSlotTags(tags, { w: o.box.w - 2 * o.bevel, h: o.box.h - 2 * o.bevel }, activeSlots[i] || config.slots[0]);
       boxEl.appendChild(tags);
       // Badges at the top corners of the part of the shape the pills may use
@@ -2153,7 +2184,7 @@
         const dot = document.createElement('div');
         dot.className = 'opening-mark custom-dot';
         dot.title = 'This slot has custom settings (not using global defaults)';
-        dot.style.cssText = `left:${o.safe.x + o.safe.w - 30}px;top:${o.safe.y + 14}px;width:16px;height:16px;background:var(--accent);border-radius:50%;opacity:0.85;`;
+        dot.style.cssText = `left:${o.safe.x + o.safe.w - 30 * s}px;top:${o.safe.y + 14 * s}px;width:${16 * s}px;height:${16 * s}px;background:var(--accent);border-radius:50%;opacity:0.85;`;
         boxEl.appendChild(dot);
       }
       if (slotCfg.mode === 'video') {
@@ -2161,14 +2192,14 @@
         play.className = 'opening-mark';
         play.textContent = '▶';
         play.title = activeSlots[i] ? 'Video slot' : 'Video slot (copies slot 1 until configured)';
-        play.style.cssText = `left:${o.safe.x + 12}px;top:${o.safe.y + 8}px;font-size:26px;color:#aaa;`;
+        play.style.cssText = `left:${o.safe.x + 12 * s}px;top:${o.safe.y + 8 * s}px;font-size:${26 * s}px;color:#aaa;`;
         boxEl.appendChild(play);
       }
       if (sizes[i] && style !== 'pill') {
         // Stage px are display px: the display's area for the opening, and its font
         const area = PicMeLabels.openingArea(o, placement, el.querySelector('.mat-frame'));
         const fontPx = PicMeLabels.fontPx(style, PicMePills.fontSize(sizes[i], short, short));
-        previewLabel(el.querySelector('.slot-overlay'), slotCfg, area && { ...area, where: placement, fontPx, matColor: galleryCfg().mat_color });
+        previewLabel(el.querySelector('.slot-overlay'), slotCfg, area && { ...area, where: placement, fontPx, matColor: gcfg.mat_color });
       } else if (sizes[i]) {
         // Stage px are display px; the overlay is placed by gallery.js, on the photo or in the caption
         const room = o.caption ? o.caption.w : o.safe.h - 2 * o.inset;
@@ -2498,19 +2529,63 @@
 
   // ── Collage preview ──
 
+  // The screen the preview shows the layout on (README → Editor layout). A view preference,
+  // remembered per browser and never in config: the display fits whatever screen it's on.
+  const PREVIEW_SCREENS = [
+    { id: 'tv',              label: 'TV 16:9',             w: 1920, h: 1080 },
+    { id: 'monitor',         label: 'Monitor 16:10',       w: 1920, h: 1200 },
+    { id: 'tablet',          label: 'Tablet 4:3',          w: 1024, h: 768 },
+    { id: 'tablet-portrait', label: 'Portrait tablet 3:4', w: 768,  h: 1024 },
+    { id: 'portrait',        label: 'Portrait 9:16',       w: 1080, h: 1920 },
+    { id: 'ultrawide',       label: 'Ultrawide 21:9',      w: 2560, h: 1080 },
+  ];
+  const SCREEN_KEY = 'picme.previewScreen';
+  let previewScreen = PREVIEW_SCREENS[0];
+
+  function setPreviewScreen(id) {
+    previewScreen = PREVIEW_SCREENS.find(sc => sc.id === id) || PREVIEW_SCREENS[0];
+    const select = document.getElementById('preview-screen');
+    select.value = previewScreen.id;
+    select.title = `Preview the layout on a ${previewScreen.w}×${previewScreen.h} screen`;
+    document.getElementById('screen-hint').hidden = previewScreen.id === 'tv';
+  }
+
+  function bindScreenPicker() {
+    const select = document.getElementById('preview-screen');
+    for (const sc of PREVIEW_SCREENS) select.add(new Option(sc.label, sc.id));
+    setPreviewScreen(loadPref(SCREEN_KEY));
+    select.onchange = () => {
+      setPreviewScreen(select.value);
+      savePref(SCREEN_KEY, previewScreen.id === 'tv' ? null : previewScreen.id);
+      if (!config || !layouts) return;
+      applySplit();  // the preview's height for the new shape (redraws a separate-frames preview)
+      buildPreview();
+    };
+  }
+
+  // A size in px at the 1920x1080 reference on the previewed screen, whole px: the display's
+  // scaled(). Inside PicMeScale.at (buildPreview).
+  const screenPx = v => Math.round(PicMeScale.px(v));
+
+  // Drawn as the display draws on the previewed screen: its scale sizes the widths, pills and labels
   function buildPreview() {
     const layout = layouts.find(l => l.id === config.layout) || PicMeRotation.fallbackLayout(layouts);
     const preview = document.getElementById('collage-preview');
     renderLabelStylePicker();  // its swatches show the current mat and date format
-    if (layoutMode(layout) === 'gallery') { buildGalleryPreview(layout, preview); return; }
+    PicMeScale.at(previewScreen.w, previewScreen.h, s => (layoutMode(layout) === 'gallery'
+      ? buildGalleryPreview(layout, preview, s) : buildSlotsPreview(layout, preview)));
+  }
+
+  function buildSlotsPreview(layout, preview) {
     preview.classList.remove('gallery-preview');
     preview.style.gridTemplateColumns = layout.grid_template_columns;
     preview.style.gridTemplateRows = layout.grid_template_rows;
-    // At the display's proportions: #collage's 12 px gap and padding, the mat and frame, in
-    // preview px (`k` per display px), so a smaller preview is the same picture, smaller
-    const k = preview.clientWidth / 1920 || 0.5;
+    // At the display's proportions on the previewed screen: #collage's 12 px gap and padding,
+    // the mat and frame at its scale, in preview px (`k` per display px), so a smaller preview
+    // is the same picture, smaller
+    const k = preview.clientWidth / previewScreen.w || 0.5;
     // A frameless Single is full bleed, as on the display: no wall border
-    const wall = PicMeRotation.framedLayout(config, layout) ? 12 * k : 0;
+    const wall = PicMeRotation.framedLayout(config, layout) ? screenPx(12) * k : 0;
     preview.style.gap = `${wall}px`;
     preview.style.padding = `${wall}px`;
     preview.style.background = config.wall_color || '#1a1a1a';
@@ -2522,7 +2597,9 @@
       const slotDef = layout.slots[i];
       // Unconfigured slots are padded on the display from slot 1's config — mirror its mode here
       const slotCfg = activeSlots[i] || { id: slotDef.id, mode: config.slots[0]?.mode };
-      const frameCfg = layoutFrame(layout, getSlotFrame(slotCfg));
+      // Widths in the previewed screen's display px, as the display's applyFrameStyle uses them
+      const ref = layoutFrame(layout, getSlotFrame(slotCfg));
+      const frameCfg = { ...ref, mat_width: screenPx(ref.mat_width ?? 16), frame_width: screenPx(ref.frame_width ?? 8) };
 
       const div = document.createElement('div');
       div.className = 'preview-slot' + (slotCfg.id === selectedSlotId ? ' selected' : '');
@@ -2567,8 +2644,10 @@
     }
 
     const band = buildPreviewPills(preview, cells);
-    // Each photo opening at the 1920x1080 reference: the display's grid, less frame, mat and caption
-    const refCells = PicMeAspect.cells(layout, PicMeRotation.framedLayout(config, layout) ? {} : { padding: 0, gap: 0 });
+    // Each photo opening on the previewed screen: the display's grid, less frame, mat and caption
+    const { w: W, h: H } = previewScreen;
+    const refCells = PicMeAspect.cells(layout, PicMeRotation.framedLayout(config, layout)
+      ? PicMeAspect.collageAt(W, H) : { width: W, height: H, padding: 0, gap: 0 });
     cells.forEach(({ tags, slotCfg, frameCfg, padded }, i) => {
       const o = PicMeAspect.framedOpening(refCells[i], frameCfg, { decorative: !!frameAsset(frameCfg.frame_style), band });
       setSlotTags(tags, o, padded ? config.slots[0] : slotCfg);
@@ -2599,7 +2678,7 @@
       if (el.scrollWidth > el.clientWidth + 1) el.hidden = true;
     }
     if (el.parentElement) el.parentElement.title = el.hidden ? `${ratio} · ${fill ? 'Fill' : 'Fit'}. ${el.title}` : '';
-    el.title = `Photo opening ${Math.round(opening.w)}×${Math.round(opening.h)} px on a 1920×1080 screen` +
+    el.title = `Photo opening ${Math.round(opening.w)}×${Math.round(opening.h)} px on a ${previewScreen.w}×${previewScreen.h} screen` +
       (near && !near.common ? ` — not a common photo shape (nearest ${near.ratio})` : '') + '. ' +
       (fill ? 'Fill: photos and videos are cropped to the opening, no black bars.'
             : 'Fit: whole photos and videos, with bars where their shape differs.') +
@@ -2607,10 +2686,10 @@
   }
 
   // Pills as on the display (applySlotFrames): every slot sized from the shortest pill area,
-  // in display px of a 1920 px wide screen; on the mat, a caption band in each bottom mat.
+  // in display px of the previewed screen; on the mat, a caption band in each bottom mat.
   // Returns the band (display px), 0 without one.
   function buildPreviewPills(preview, cells) {
-    const scale = preview.clientWidth / 1920;
+    const scale = preview.clientWidth / previewScreen.w;
     if (!(scale > 0) || !window.PicMePills) return 0;
     const style = labelStyle();
     const placement = PicMeLabels.placement(style, config.label_position, 'slots');
@@ -2621,7 +2700,7 @@
       const asset = frameOn ? frameAsset(frameCfg.frame_style ?? 'solid') : null;
       const width = Number(frameCfg.frame_width ?? 8) || 0;
       const border = asset ? Math.min(width, Math.max(4, Math.floor(Math.min(w, h) / 6))) : (frameOn ? width : 0);
-      const inset = 10 + (asset ? border : 0);
+      const inset = screenPx(10) + (asset ? border : 0);
       const edge = border + mat;
       return { slot: { w: w - 2 * inset, h: h - 2 * inset }, photo: { w: Math.max(0, w - 2 * edge), h: Math.max(0, h - 2 * edge) } };
     });
@@ -2645,7 +2724,7 @@
         overlay.className = 'slot-overlay';
         div.appendChild(overlay);
         const g = { edge: matPx, mat: matPx, band: band * scale, w: div.clientWidth, h: div.clientHeight };
-        const area = PicMeLabels.frameArea(g, placement, div, 10 * scale);
+        const area = PicMeLabels.frameArea(g, placement, div, screenPx(10) * scale);
         const fontPx = PicMeLabels.fontPx(style, PicMePills.fontSize(sizes[i], short, short)) * scale;
         previewLabel(overlay, slotCfg, area && { ...area, where: placement, fontPx, matColor: frameCfg.mat_color ?? '#000000' });
         return;
@@ -4311,8 +4390,8 @@
   }
 
   // The divider between the preview and the slot settings. Its position is the preview's share of
-  // the height they split (0–1), so it suits any window size. The preview keeps the display's
-  // 16:9 inside whatever height it gets, so it stays the display, smaller.
+  // the height they split (0–1), so it suits any window size. The preview keeps the previewed
+  // screen's shape (a TV's 16:9) inside whatever height it gets, so it stays the display, smaller.
   const SPLIT_KEY = 'picme.previewSplit';
   const SPLIT_DEFAULT = 0.6;
   const SPLIT_MIN_PREVIEW = 160, SPLIT_MIN_PANEL = 120;  // px
@@ -4325,11 +4404,12 @@
     return Math.max(0, main.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - divider);
   }
 
-  // Tallest useful preview: the full-width 16:9 preview plus the area's title, padding and hint
+  // Tallest useful preview: the full-width preview at the screen's shape plus the area's title,
+  // padding and hints
   function splitNatural() {
     const area = document.getElementById('preview-area');
     const fit = document.getElementById('preview-fit');
-    return area.offsetHeight - fit.offsetHeight + fit.clientWidth * 9 / 16;
+    return area.offsetHeight - fit.offsetHeight + (fit.clientWidth * previewScreen.h) / previewScreen.w;
   }
 
   function storedSplit() {
@@ -4356,18 +4436,23 @@
     savePref(SPLIT_KEY, String(h / (splitRoom() || 1)));
   }
 
-  // Size the preview to its box at 16:9; a separate-frames preview is re-drawn at the new size
-  // (decorative frame widths and pill sizes follow it; a gallery stage just re-scales)
-  let _fitWidth = 0;
+  // Size the preview to its box at the screen's shape (16:9 for a TV); a separate-frames preview
+  // is re-drawn at the new size (decorative frame widths and pill sizes follow it; a gallery
+  // stage just re-scales)
+  let _fitWidth = 0, _fitScreen = null;
   function fitPreview() {
     const fit = document.getElementById('preview-fit');
     const preview = document.getElementById('collage-preview');
-    // On a phone the page scrolls: the preview takes the full width
-    const w = Math.floor(isNarrow() ? fit.clientWidth : Math.min(fit.clientWidth, (fit.clientHeight * 16) / 9));
-    if (!(w > 0) || w === _fitWidth) return;
+    const { w: W, h: H } = previewScreen;
+    // On a phone the page scrolls: the preview takes the full width, though a tall shape no more
+    // of the window's height than 60% (or a TV's height at that width, if that's more)
+    const tallest = Math.max((fit.clientWidth * 9) / 16, 0.6 * window.innerHeight);
+    const w = Math.floor(Math.min(fit.clientWidth, ((isNarrow() ? tallest : fit.clientHeight) * W) / H));
+    if (!(w > 0) || (w === _fitWidth && _fitScreen === previewScreen)) return;
     _fitWidth = w;
+    _fitScreen = previewScreen;
     preview.style.width = `${w}px`;
-    preview.style.height = `${(w * 9) / 16}px`;  // exactly 16:9, whatever the cells hold
+    preview.style.height = `${(w * H) / W}px`;  // exactly the screen's shape, whatever the cells hold
     if (config && layouts && !preview.classList.contains('gallery-preview') && !PicMeSlotDrag.isDragging()) buildPreview();
   }
 
@@ -4553,6 +4638,7 @@
   bindSidebarSections();
   bindEditorTabs();
   bindSlotBar();
+  bindScreenPicker();
   bindPaneDivider();
 
   init();

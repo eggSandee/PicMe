@@ -5,7 +5,7 @@
 // design and a 3840x2160 (DPR 1) monitor a larger one. A 4K TV reports 1920x1080 CSS px, so 1.
 //
 // Loaded by the display and the editor (as /display/scale.js). Only the display calls update():
-// the editor previews the 1920x1080 reference, so its factor stays 1.
+// the editor's factor stays 1, and its preview of another screen shape draws inside at().
 (function () {
   const REFERENCE = { width: 1920, height: 1080 };
   const MIN = 0.3, MAX = 2;
@@ -30,11 +30,19 @@
 
   function factor() { return current; }
 
+  // Run fn() with the factor of a w x h viewport, then put the current one back: the editor's
+  // preview of another screen shape sizes pills and labels as the display would there.
+  function at(w, h, fn) {
+    const saved = current;
+    current = compute(w, h);
+    try { return fn(current); } finally { current = saved; }
+  }
+
   // A reference px size at the current scale (unrounded)
   function px(v) { return (Number(v) || 0) * current; }
 
   // A floor tuned at the reference, at the current scale, never below LEGIBLE_PX
   function floor(v) { return Math.max(LEGIBLE_PX, px(v)); }
 
-  window.PicMeScale = { REFERENCE, MIN, MAX, LEGIBLE_PX, compute, update, factor, px, floor };
+  window.PicMeScale = { REFERENCE, MIN, MAX, LEGIBLE_PX, compute, update, factor, at, px, floor };
 })();
