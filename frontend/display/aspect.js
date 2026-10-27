@@ -10,6 +10,14 @@
   const REF = window.PicMeScale ? window.PicMeScale.REFERENCE : { width: 1920, height: 1080 };
   const REFERENCE = { width: REF.width, height: REF.height, padding: 12, gap: 12 };
 
+  // cells() options for the collage on a w x h screen: #collage's padding and gap at that
+  // screen's scale, whole px like the display's
+  function collageAt(width, height) {
+    const s = window.PicMeScale ? window.PicMeScale.compute(width, height) : 1;
+    const space = Math.round(REFERENCE.padding * s);
+    return { width, height, padding: space, gap: space };
+  }
+
   // Common photo shapes, as width:height: phones (4:3, 16:9), prints (3:2 = 4x6, 5:4 = 8x10,
   // 7:5 = 5x7) and square, each both ways round
   const COMMON = [[1, 1], [4, 3], [3, 4], [16, 9], [9, 16], [3, 2], [2, 3], [5, 4], [4, 5], [7, 5], [5, 7]];
@@ -85,5 +93,5 @@
     return w >= h ? `${trim(w / h)}:1` : `1:${trim(h / w)}`;
   }
 
-  window.PicMeAspect = { REFERENCE, COMMON, EXACT, TOLERANCE, tracks, cells, framedOpening, nearest, label };
+  window.PicMeAspect = { REFERENCE, COMMON, EXACT, TOLERANCE, tracks, cells, collageAt, framedOpening, nearest, label };
 })();
