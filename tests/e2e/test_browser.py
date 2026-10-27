@@ -99,11 +99,8 @@ def server(e2e_config_path):
 
 
 @pytest.fixture(scope="module")
-def browser():
-    try:
-        pw = sync_api.sync_playwright().start()
-    except Exception as e:  # pragma: no cover - environment dependent
-        pytest.skip(f"Playwright could not start: {e}")
+def browser(playwright_driver):
+    pw = playwright_driver
     launched = None
     errors = []
     for kwargs in ({"channel": "chrome"}, {}):
@@ -113,11 +110,9 @@ def browser():
         except Exception as e:  # try bundled Chromium next
             errors.append(f"{kwargs or 'bundled'}: {e}")
     if launched is None:
-        pw.stop()
         pytest.skip("Chrome could not launch: " + " | ".join(errors))
     yield launched
     launched.close()
-    pw.stop()
 
 
 class PageWatcher:

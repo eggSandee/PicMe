@@ -53,14 +53,27 @@ def no_profile_files(e2e_config_path):
         (e2e_config_path.parent / name).unlink(missing_ok=True)
 
 
+@pytest.fixture(scope="module")
+def webkit(playwright_driver):
+    """Safari's engine, for what Safari draws differently; skipped where it isn't installed."""
+    try:
+        launched = playwright_driver.webkit.launch(headless=True)
+    except Exception as e:  # pragma: no cover - environment dependent
+        pytest.skip(f"WebKit could not launch: {e}")
+    yield launched
+    launched.close()
+
+
 @pytest.fixture
-def device(browser, server):
-    """An editor page in a touch context of the given size (a phone or a tablet), or a laptop."""
+def device(request, browser, server):
+    """An editor page in a touch context of the given size (a phone or a tablet), or a laptop;
+    in Chrome, or in WebKit with engine="webkit"."""
     contexts = []
 
-    def _open(viewport, editor_mode="advanced", init_scripts=()) -> PageWatcher:
+    def _open(viewport, editor_mode="advanced", init_scripts=(), engine="chrome") -> PageWatcher:
         touch = viewport["width"] <= 1024
-        ctx = browser.new_context(viewport=viewport, has_touch=touch, is_mobile=touch)
+        engine_browser = request.getfixturevalue("webkit") if engine == "webkit" else browser
+        ctx = engine_browser.new_context(viewport=viewport, has_touch=touch, is_mobile=touch)
         contexts.append(ctx)
         ctx.add_init_script(editor_mode_init_js(editor_mode))
         for script in init_scripts:
@@ -551,4 +564,220 @@ def test_slot_bar_targets_are_at_least_40px_without_overflow(write_cfg, device, 
     assert page.evaluate("() => { const el = document.getElementById('slot-bar-label'); return el.scrollWidth <= el.clientWidth; }")
     scroll, width = _no_horizontal_scroll(page)
     assert scroll <= width == screen["width"]
+    assert w.errors == []
+
+
+# --- The footer stays at hand (Save) ---
+
+ON_SETTINGS = "try { localStorage.setItem('picme.editorTab', 'settings') } catch (e) {}"
+
+# The footer's box, its buttons' boxes and the screen, in viewport px
+_FOOTER_JS = """() => {
+    const f = document.getElementById('footer').getBoundingClientRect();
+    const btns = [...document.querySelectorAll('#footer .btn')].map(b => b.getBoundingClientRect())
+        .map(b => ({ top: b.top, left: b.left, right: b.right, w: b.width, h: b.height }));
+    return { top: f.top, bottom: f.bottom, left: f.left, right: f.right, h: f.height, btns,
+             position: getComputedStyle(document.getElementById('footer')).position,
+             vh: window.innerHeight, vw: document.documentElement.clientWidth,
+             scrollMax: document.documentElement.scrollHeight - window.innerHeight }; }"""
+
+
+def _scroll_to(page, fraction):
+    page.evaluate("f => window.scrollTo(0, Math.round(f * (document.documentElement.scrollHeight - window.innerHeight)))",
+                  fraction)
+    page.wait_for_timeout(100)
+
+
+def _assert_footer_pinned(page, where):
+    f = page.evaluate(_FOOTER_JS)
+    assert f["bottom"] == pytest.approx(f["vh"], abs=1), where  # at the bottom of the screen
+    assert f["top"] >= f["vh"] - 70, where  # compact: one row
+    assert f["left"] >= 0 and f["right"] <= f["vw"] + 0.5, where
+    assert {round(b["top"]) for b in f["btns"]} == {round(f["btns"][0]["top"])}, where  # one row
+    assert all(b["w"] >= 40 and b["h"] >= 40 and b["left"] >= 0 and b["right"] <= f["vw"] for b in f["btns"]), where
+
+
+@PHONES
+def test_footer_is_pinned_to_the_bottom_while_scrolling_both_tabs(write_cfg, device, screen):
+    write_cfg()
+    w = device(screen, init_scripts=[ON_LAYOUT], engine="webkit")
+    page = w.page
+    page.locator(_cell(1)).tap()  # the slot settings make the Layout tab scroll
+    page.wait_for_selector("#slot-panel-body .panel-section")
+    for tab in ("layout", "settings"):
+        if tab == "settings":
+            _tab(page, "settings").tap()
+        assert page.evaluate(_FOOTER_JS)["scrollMax"] > 300, tab  # a long page
+        for fraction in (0, 0.5, 1):
+            _scroll_to(page, fraction)
+            _assert_footer_pinned(page, f"{tab} at {fraction}")
+        scroll, width = _no_horizontal_scroll(page)
+        assert scroll <= width == screen["width"]
+        # At the bottom, the last of the page sits above the footer, not behind it
+        last = "#slot-panel-body" if tab == "layout" else "#sidebar > .sidebar-section:last-child"
+        assert page.evaluate("""sel => document.querySelector(sel).getBoundingClientRect().bottom
+            <= document.getElementById('footer').getBoundingClientRect().top + 1""", last), tab
+    assert w.errors == []
+
+
+@PHONES
+@pytest.mark.parametrize("engine", ["webkit", "chrome"])
+def test_footer_sits_at_the_bottom_of_a_short_page(write_cfg, device, screen, engine):
+    """QA #49: the Layout tab with no slot open doesn't scroll, and the footer sat mid-screen."""
+    write_cfg()
+    w = device(screen, init_scripts=[ON_LAYOUT], engine=engine)
+    page = w.page
+    assert page.evaluate(_FOOTER_JS)["scrollMax"] < 50  # short: nothing to scroll
+    _assert_footer_pinned(page, "short Layout tab")
+    assert w.errors == []
+
+
+@PHONES
+def test_footer_does_not_cover_the_slot_bar_or_the_tabs(write_cfg, device, screen):
+    write_cfg()
+    w = device(screen, init_scripts=[ON_LAYOUT], engine="webkit")
+    page = w.page
+    _select_and_wait_for_bar(page, 2)
+    f = page.evaluate(_FOOTER_JS)
+    bar, tabs = _box(page, "#slot-bar"), _box(page, "#mobile-tabs")
+    assert bar["y"] + bar["height"] <= f["top"] and tabs["y"] + tabs["height"] <= f["top"]
+    # The status line is cut short rather than wrapping or widening the footer
+    page.evaluate("() => setStatus('Swapped slots 1 and 3 — the display picks the change up on its next refresh.')")
+    status = page.evaluate("""() => { const el = document.getElementById('status-msg');
+        return { one: el.getBoundingClientRect().height < 24, cut: el.scrollWidth > el.clientWidth, title: el.title }; }""")
+    assert status["one"] and status["cut"] and status["title"].startswith("Swapped slots")
+    _assert_footer_pinned(page, "long status")
+    assert w.errors == []
+
+
+def test_save_works_from_the_middle_of_the_settings_tab(write_cfg, device):
+    write_cfg()
+    w = device(PHONE, init_scripts=[ON_SETTINGS], engine="webkit")
+    page = w.page
+    _scroll_to(page, 0.5)
+    posts = []
+    page.on("request", lambda r: r.method == "POST" and r.url.endswith("/api/config") and posts.append(r))
+    save = page.locator("#footer .btn-primary")
+    assert save.inner_text().strip() == "Save"  # short on a phone
+    save.tap()
+    _until(page, "() => document.getElementById('status-msg').textContent === 'Saved.'")
+    assert len(posts) == 1
+    assert page.evaluate("() => window.scrollY") > 300  # Save didn't jump the page
+    assert w.errors == []
+
+
+def test_laptop_footer_is_unchanged(write_cfg, device):
+    write_cfg()
+    w = device(LAPTOP)
+    page = w.page
+    f = page.evaluate(_FOOTER_JS)
+    assert f["position"] == "static" and f["bottom"] == pytest.approx(LAPTOP["height"], abs=1)
+    assert page.locator("#footer .btn-primary").inner_text().strip() == "Save changes"
+    assert page.locator("#footer .btn-secondary", has_text="Discard").inner_text().strip() == "Discard changes"
+    assert w.errors == []
+
+
+# --- The preview and the layout thumbnails are drawn when they come into view ---
+# On a phone, Safari sometimes showed them white until a tap redrew them (QA 2026-10-26; not
+# reproducible in desktop WebKit or Chrome: they paint there). A pane drawn while hidden is drawn
+# again when it shows, and both are drawn again when the page comes back (visibilitychange, pageshow).
+
+GALLERY_HERO = {"layout_modes": {"hero-left": "gallery"}}
+
+# Whether the visible panes are drawn at their size: the preview's cells (or its gallery stage) and
+# every layout thumbnail have a size, and every gallery stage is scaled to its box
+_PAINTED_JS = """() => {
+    const scale = el => new DOMMatrix(getComputedStyle(el).transform).a;
+    const sized = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+    const bad = [];
+    const preview = document.getElementById('collage-preview');
+    if (preview.clientWidth) {
+        const stage = preview.querySelector(':scope > .gallery-stage');
+        const cells = stage ? [...stage.querySelectorAll('.opening')] : [...preview.querySelectorAll('.preview-slot')];
+        if (!sized(preview) || !cells.length || !cells.every(sized)) bad.push('preview');
+        if (stage && !(Math.abs(scale(stage) - preview.clientWidth / stage.offsetWidth) < 0.001)) bad.push('preview stage');
+    }
+    const picker = document.getElementById('layout-picker');
+    if (picker.clientWidth) {
+        const grids = [...picker.querySelectorAll('.thumb-grid')];
+        if (!grids.length || !grids.every(sized)) bad.push('thumbnails');
+        for (const st of picker.querySelectorAll('.gallery-stage'))
+            if (!(scale(st) > 0.01)) bad.push('thumbnail stage ' + st.closest('.layout-thumb').dataset.id);
+    }
+    return bad; }"""
+
+# Marks what's drawn in both panes now; _REDRAWN_JS tells which pane has been drawn again since
+_MARK_JS = """() => { for (const id of ['collage-preview', 'layout-picker'])
+    for (const el of document.getElementById(id).children) el.dataset.stale = '1'; }"""
+_REDRAWN_JS = """() => ({ preview: !document.querySelector('#collage-preview > [data-stale]'),
+                          picker: !document.querySelector('#layout-picker > [data-stale]') })"""
+
+
+@pytest.mark.parametrize("start", ["layout", "settings"])
+@pytest.mark.parametrize("layout_modes", [{}, GALLERY_HERO], ids=["frames", "gallery"])
+def test_the_pane_a_tab_shows_is_drawn_at_its_size(write_cfg, device, start, layout_modes):
+    write_cfg(layout="hero-left", layout_modes=layout_modes) if layout_modes else write_cfg(layout="hero-left")
+    w = device(PHONE, init_scripts=[ON_LAYOUT if start == "layout" else ON_SETTINGS], engine="webkit")
+    page = w.page
+    _until(page, f"() => !({_PAINTED_JS})().length")  # cold load
+    other = "settings" if start == "layout" else "layout"
+    page.evaluate(_MARK_JS)  # the other tab's pane was drawn while hidden
+    _tab(page, other).tap()
+    assert page.evaluate(_REDRAWN_JS)["preview" if other == "layout" else "picker"]
+    assert page.evaluate(_PAINTED_JS) == []
+    # A change while that tab is hidden redraws its pane with no width: it's drawn again on the way back
+    page.evaluate("""() => { const el = document.getElementById('g-wall-color');
+        el.value = '#335577'; el.dispatchEvent(new Event('input', { bubbles: true })); }""")
+    page.evaluate(_MARK_JS)
+    _tab(page, start).tap()
+    assert page.evaluate(_REDRAWN_JS)["preview" if start == "layout" else "picker"]
+    assert page.evaluate(_PAINTED_JS) == []
+    assert w.errors == []
+
+
+def test_thumbnails_drawn_while_hidden_are_drawn_again_once_they_have_a_width(write_cfg, device):
+    # A tablet on the Layout tab, turned to landscape: the sidebar (drawn while hidden) shows
+    write_cfg(layout="hero-left", **GALLERY_HERO)
+    w = device(TABLET, init_scripts=[ON_LAYOUT], engine="webkit")
+    page = w.page
+    page.evaluate(_MARK_JS)
+    page.set_viewport_size({"width": 1024, "height": 768})
+    _until(page, f"() => ({_REDRAWN_JS})().picker")
+    assert page.evaluate(_PAINTED_JS) == []
+    assert w.errors == []
+
+
+@pytest.mark.parametrize("tab", ["layout", "settings"])
+def test_both_panes_are_drawn_again_when_the_page_comes_back(write_cfg, device, tab):
+    write_cfg(layout="hero-left", **GALLERY_HERO)
+    w = device(PHONE, init_scripts=[ON_LAYOUT if tab == "layout" else ON_SETTINGS], engine="webkit")
+    page = w.page
+    visible = "preview" if tab == "layout" else "picker"
+    # Back from the background (the page is visible again)
+    page.evaluate(_MARK_JS)
+    page.evaluate("() => document.dispatchEvent(new Event('visibilitychange'))")
+    _until(page, f"() => ({_REDRAWN_JS})().{visible}")
+    assert page.evaluate(_PAINTED_JS) == []
+    # Back with the back button, from the back/forward cache: the same page, as it was left. Headless
+    # WebKit and Chrome load the page again instead, so the restore's pageshow is sent here.
+    page.evaluate(_MARK_JS)
+    page.evaluate("() => dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))")
+    _until(page, f"() => ({_REDRAWN_JS})().{visible}")
+    assert page.evaluate(_PAINTED_JS) == []
+    assert w.errors == []
+
+
+def test_screen_picker_on_a_portrait_shape_is_drawn_after_switching_tabs(write_cfg, device):
+    write_cfg(layout="hero-left", **GALLERY_HERO)
+    w = device(PHONE, init_scripts=[ON_LAYOUT, "try { localStorage.setItem('picme.previewScreen', 'portrait') } catch (e) {}"],
+               engine="webkit")
+    page = w.page
+    assert page.evaluate(_PAINTED_JS) == []
+    _tab(page, "settings").tap()
+    page.evaluate(_MARK_JS)
+    _tab(page, "layout").tap()
+    assert page.evaluate(_REDRAWN_JS)["preview"]
+    assert page.evaluate(_PAINTED_JS) == []
+    preview = _box(page, "#collage-preview")
+    assert preview["height"] / preview["width"] == pytest.approx(16 / 9, abs=0.02)
     assert w.errors == []

@@ -789,9 +789,9 @@
     }
 
     @media (max-width: 820px) {
-      :root { --tabs-h: 57px; --slotbar-h: 49px; }
+      :root { --tabs-h: 57px; --slotbar-h: 49px; --footer-h: 53px; }
       html { -webkit-text-size-adjust: 100%; }
-      #app { display: flex; flex-direction: column; height: auto; min-height: 100vh; }
+      #app { display: flex; flex-direction: column; height: auto; min-height: 100vh; min-height: 100dvh; }
       #mobile-tabs {
         display: flex;
         position: sticky;
@@ -863,9 +863,24 @@
         font-weight: 500;
       }
 
-      #footer { flex-wrap: wrap; padding: 12px; }
-      #footer > div { flex-wrap: wrap; flex: 1 1 auto; }
-      #footer > div > .btn { flex: 1 1 auto; }
+      /* Save stays at hand on both tabs: the footer is pinned to the bottom of the screen, one row,
+         above the iPhone's home indicator. It sits last in the page, so at the bottom nothing is
+         behind it; scrolling a field into view leaves room for it. */
+      html { scroll-padding-bottom: var(--footer-h); }
+      #footer {
+        position: sticky;
+        bottom: 0;
+        margin-top: auto;  /* a short page (Layout, no slot open) still has it at the screen's bottom */
+        z-index: 48;
+        box-sizing: border-box;
+        min-height: var(--footer-h);
+        gap: 8px;
+        padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
+      }
+      #status-msg { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+      #footer > div { flex: none; gap: 6px !important; }
+      #footer > div > .btn { padding: 0 12px; white-space: nowrap; }
+      #footer .wide-only { display: none; }
 
       /* Touch targets of 40 px or more */
       .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; }
@@ -1276,8 +1291,8 @@
     <span id="status-msg">Changes save automatically.</span>
     <div style="display:flex;gap:8px">
       <a class="btn btn-secondary" href="/display">← Display</a>
-      <button class="btn btn-secondary" onclick="reloadConfig()">Discard changes</button>
-      <button class="btn btn-primary" onclick="saveConfig()">Save changes</button>
+      <button class="btn btn-secondary" onclick="reloadConfig()">Discard<span class="wide-only"> changes</span></button>
+      <button class="btn btn-primary" onclick="saveConfig()">Save<span class="wide-only"> changes</span></button>
     </div>
   </footer>
 
@@ -1319,9 +1334,10 @@
   function setStatus(msg, type = '') {
     const el = document.getElementById('status-msg');
     el.textContent = msg;
+    el.title = msg;  // a phone cuts a long message short; the full one shows on hover
     el.className = type;
     if (type === 'success') setTimeout(() => {
-      el.textContent = 'Changes save automatically.';
+      el.textContent = el.title = 'Changes save automatically.';
       el.className = '';
     }, 3000);
   }
@@ -2512,6 +2528,7 @@
     }
     // Once laid out: drawn at display size and scaled to the thumbnail
     for (const [grid, layout] of galleryThumbs) renderGalleryThumb(grid, layout);
+    _drawnWidth.picker = container.clientWidth;
   }
 
   function selectLayout(id) {
@@ -2574,6 +2591,7 @@
     renderLabelStylePicker();  // its swatches show the current mat and date format
     PicMeScale.at(previewScreen.w, previewScreen.h, s => (layoutMode(layout) === 'gallery'
       ? buildGalleryPreview(layout, preview, s) : buildSlotsPreview(layout, preview)));
+    _drawnWidth.preview = preview.clientWidth;
   }
 
   function buildSlotsPreview(layout, preview) {
@@ -4563,8 +4581,8 @@
       btn.setAttribute('aria-selected', String(btn.dataset.tab === tab));
       btn.tabIndex = btn.dataset.tab === tab ? 0 : -1;
     }
-    // The preview was drawn while hidden (no width): draw it again at its real size
-    if (tab === 'layout') { _fitWidth = 0; fitPreview(); }
+    // The pane coming into view may have been drawn while hidden (no width): draw it again
+    redrawPane(tab === 'layout' ? 'preview' : 'picker');
   }
 
   function setEditorTab(tab) {
@@ -4588,6 +4606,54 @@
     applyEditorTab(loadPref(TAB_KEY) === 'settings' ? 'settings' : 'layout');
     // Turning a tablet to landscape (or back) switches layouts: fit the preview to the new one
     NARROW.addEventListener?.('change', () => { _fitWidth = 0; applySplit(); });
+  }
+
+  // The preview and the layout picker are drawn to their box's width. One drawn while it had none
+  // (its tab hidden, or before the page was laid out) is drawn again once it has a width; on
+  // phones, Safari can also come back from the background or the back button without painting
+  // them (white until a tap redraws them), so they're drawn again then too, as a tap does.
+  const _drawnWidth = { preview: 0, picker: 0 };
+  const PANE_IDS = { preview: 'collage-preview', picker: 'layout-picker' };
+
+  function redrawPane(pane) {
+    const el = document.getElementById(PANE_IDS[pane]);
+    if (!config || !layouts || !el.clientWidth || PicMeSlotDrag.isDragging()) return;  // hidden: when it shows
+    if (pane === 'picker') { buildLayoutPicker(); return; }
+    _fitWidth = 0;
+    fitPreview();  // sizes the preview; a separate-frames preview is drawn again at that size
+    if (el.classList.contains('gallery-preview')) buildPreview();
+  }
+
+  // Once per burst of resizes or events, after it settles
+  const _redrawQueue = new Set();
+  let _redrawTimer = 0;
+  function redrawSoon(...panes) {
+    panes.forEach(p => _redrawQueue.add(p));
+    clearTimeout(_redrawTimer);
+    _redrawTimer = setTimeout(() => {
+      const panes = [..._redrawQueue];
+      _redrawQueue.clear();
+      panes.forEach(redrawPane);
+    }, 80);
+  }
+
+  function bindPaneRedraw() {
+    if (window.ResizeObserver) {
+      // The preview's width comes from #preview-fit (fitPreview sizes the preview itself)
+      const watched = new Map([[document.getElementById('preview-fit'), 'preview'],
+                               [document.getElementById('layout-picker'), 'picker']]);
+      const observer = new ResizeObserver(entries => {
+        for (const e of entries) {
+          const pane = watched.get(e.target);
+          if (e.contentRect.width > 0 && !_drawnWidth[pane]) redrawSoon(pane);
+        }
+      });
+      for (const el of watched.keys()) observer.observe(el);
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') redrawSoon('preview', 'picker');
+    });
+    window.addEventListener('pageshow', e => { if (e.persisted) redrawSoon('preview', 'picker'); });  // the back/forward cache
   }
 
   // Phones, Layout tab: once the preview has scrolled behind the tabs, a bar under them shows the
@@ -4640,6 +4706,7 @@
   bindSlotBar();
   bindScreenPicker();
   bindPaneDivider();
+  bindPaneRedraw();
 
   init();
 </script>

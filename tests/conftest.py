@@ -251,6 +251,19 @@ def nested_library(tmp_path) -> SimpleNamespace:
     )
 
 
+@pytest.fixture(scope="module")
+def playwright_driver():
+    """One Playwright per e2e module (its sync API allows one at a time), shared by the module's
+    Chrome (test_browser.browser) and WebKit browsers. Skips if Playwright can't start."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    try:
+        pw = sync_api.sync_playwright().start()
+    except Exception as e:  # pragma: no cover - environment dependent
+        pytest.skip(f"Playwright could not start: {e}")
+    yield pw
+    pw.stop()
+
+
 @pytest.fixture(scope="session")
 def photo_library(tmp_path_factory) -> SimpleNamespace:
     """Session-wide generated photo library (read-only — don't mutate)."""
